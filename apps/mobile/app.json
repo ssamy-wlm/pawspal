@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "PawsPal Dahab",
+    "slug": "pawspal-dahab",
+    "scheme": "pawspal",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#FFF7EC",
+    "splash": { "backgroundColor": "#1F2D3D", "resizeMode": "contain" },
+    "ios": {
+      "bundleIdentifier": "com.pawspal.dahab",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "PawsPal uses the camera for your verification selfie, your ID check and handover photos of pets.",
+        "NSPhotoLibraryUsageDescription": "Choose photos of your pets and your home.",
+        "NSLocationWhenInUseUsageDescription": "Drop your pin so neighbours can see your area. Your exact location is only shared after a confirmed booking."
+      }
+    },
+    "android": {
+      "package": "com.pawspal.dahab",
+      "adaptiveIcon": { "backgroundColor": "#FFF7EC" },
+      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION"],
+      "blockedPermissions": ["ACCESS_BACKGROUND_LOCATION", "READ_CONTACTS"]
+    },
+    "plugins": ["expo-router", "expo-secure-store", "expo-localization", "expo-font"],
+    "experiments": { "typedRoutes": true },
+    "extra": { "supportsRTL": true }
+  }
+}
