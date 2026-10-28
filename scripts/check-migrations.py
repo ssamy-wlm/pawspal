@@ -83,10 +83,9 @@ def main():
         if status != 'A':
             if status == 'M' and approved_edit(path):
                 print(f'{path}: edit of an existing migration allowed by supabase/approved-migration-edits.txt')
-                checked.append(path)
+            else:
+                problems.append(f'{path}: an existing migration was changed or deleted. Add a new numbered migration instead.')
                 continue
-            problems.append(f'{path}: an existing migration was changed or deleted. Add a new numbered migration instead.')
-            continue
         sql = git('show', f'HEAD:{path}')
         checked.append(path)
         bad = findings(sql)
