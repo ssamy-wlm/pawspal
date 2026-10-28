@@ -29,10 +29,10 @@ export function SwipeDeck<T>({ items, keyOf, renderCard, onSwipe, bindControls, 
     const item = items[index];
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setIndex((i) => i + 1);
-    x.value = 0;
-    promote.value = 0;
+    x.set(0);
+    promote.set(0);
     if (item) onSwipe(item, dir);
-  }, [index, items, onSwipe]);
+  }, [index, items, onSwipe, x, promote]);
 
   const fling = useCallback((dir: SwipeDirection, fromButton: boolean) => {
     'worklet';
@@ -41,24 +41,27 @@ export function SwipeDeck<T>({ items, keyOf, renderCard, onSwipe, bindControls, 
       if (fin) runOnJS(done)(dir);
     });
     // Buttons get the small anticipation nudge from the video; finger swipes do not.
-    x.value = fromButton && !reduced ? withSequence(withTiming(-sign * 30, { duration: 200, easing: ease.out }), out) : out;
-    promote.value = withDelay(150, withTiming(1, { duration: M.duration.promote, easing: ease.out }));
-  }, [width, done, reduced]);
+    x.set(fromButton && !reduced ? withSequence(withTiming(-sign * 30, { duration: 200, easing: ease.out }), out) : out);
+    promote.set(withDelay(150, withTiming(1, { duration: M.duration.promote, easing: ease.out })));
+  }, [width, done, reduced, x, promote]);
 
   React.useEffect(() => { bindControls?.((dir) => fling(dir, true)); }, [bindControls, fling]);
 
   const pan = Gesture.Pan()
-    .onUpdate((e) => { x.value = e.translationX; })
+    .onUpdate((e) => { x.set(e.translationX); })
     .onEnd((e) => {
       const commit = Math.abs(e.translationX) > width * 0.35 || Math.abs(e.velocityX) > 800;
       if (commit) fling(e.translationX > 0 ? 'like' : 'pass', false);
-      else x.value = withSpring(0, { damping: 15, stiffness: 180 });
+      else x.set(withSpring(0, { damping: 15, stiffness: 180 }));
     });
 
-  const top = useAnimatedStyle(() => ({
-    transform: [{ translateX: x.value }, { rotate: reduced ? '0deg' : `${x.value / 20}deg` }],
-    opacity: Math.abs(x.value) > width ? 1 - (Math.abs(x.value) - width) / (width * 0.4) : 1,
-  }));
+  const top = useAnimatedStyle(() => {
+    const dx = x.get();
+    return {
+      transform: [{ translateX: dx }, { rotate: reduced ? '0deg' : `${dx / 20}deg` }],
+      opacity: Math.abs(dx) > width ? 1 - (Math.abs(dx) - width) / (width * 0.4) : 1,
+    };
+  });
 
   const visible = items.slice(index, index + 3);
   return (
@@ -70,7 +73,7 @@ export function SwipeDeck<T>({ items, keyOf, renderCard, onSwipe, bindControls, 
 
 function Layer({ depth, promote, topStyle, pan, height, children }: any) {
   const style = useAnimatedStyle(() => {
-    const level = depth === 0 ? 0 : depth - promote.value;
+    const level = depth === 0 ? 0 : depth - promote.get();
     const rot = depth === 0 ? 0 : (depth % 2 ? -5 : 5) * Math.min(level, 1);
     return { transform: [{ translateY: level * 26 }, { scale: 1 - level * 0.05 }, { rotate: `${rot}deg` }] };
   });

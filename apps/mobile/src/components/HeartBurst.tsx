@@ -11,7 +11,7 @@ const HEARTS = Array.from({ length: 9 }, (_, i) => ({
 
 function Heart({ h, p }: { h: (typeof HEARTS)[number]; p: SharedValue<number> }) {
   const style = useAnimatedStyle(() => {
-    const t = Math.max(0, Math.min(1, (p.value * M.duration.heartBurst - h.d) / (M.duration.heartBurst - 250)));
+    const t = Math.max(0, Math.min(1, (p.get() * M.duration.heartBurst - h.d) / (M.duration.heartBurst - 250)));
     const out = 1 - Math.pow(1 - t, 3);
     const grow = Math.min(1, t / 0.3);
     const back = 1 + 2.8 * Math.pow(grow - 1, 3) + 1.8 * Math.pow(grow - 1, 2);
@@ -30,16 +30,16 @@ function Heart({ h, p }: { h: (typeof HEARTS)[number]; p: SharedValue<number> })
 export interface HeartBurstHandle { burst: () => void }
 
 /** Nine hearts rising from a point. Place it centred on the like button and call ref.burst(). */
-export const HeartBurst = forwardRef<HeartBurstHandle>((_, ref) => {
+export const HeartBurst = forwardRef<HeartBurstHandle>(function HeartBurst(_, ref) {
   const reduced = useReducedMotion();
   const p = useSharedValue(0);
   useImperativeHandle(ref, () => ({
     burst: () => {
       if (reduced) return;
-      p.value = 0;
-      p.value = withDelay(0, withTiming(1, { duration: M.duration.heartBurst, easing: Easing.linear }));
+      p.set(0);
+      p.set(withDelay(0, withTiming(1, { duration: M.duration.heartBurst, easing: Easing.linear })));
     },
-  }));
+  }), [reduced, p]);
   return (
     <View pointerEvents="none" accessible={false} style={{ position: 'absolute', left: '50%', top: '50%' }}>
       {HEARTS.map((h, i) => <Heart key={i} h={h} p={p} />)}

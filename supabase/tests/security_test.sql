@@ -149,11 +149,13 @@ select public.set_my_location(28.49512, 34.51345);   -- same exact point as user
 reset role;
 select (select approx_lat from public.profiles where first_name='aaaaaaaa') <> (select approx_lat from public.profiles where first_name='ffffffff')
     or (select approx_lng from public.profiles where first_name='aaaaaaaa') <> (select approx_lng from public.profiles where first_name='ffffffff') as same_spot_different_public_point;
-select off_lat as offset_before from private.locations where user_id='ffffffff-0000-0000-0000-000000000006' \gset
+-- keep the value inside the database: psql would round a float8 to 15 digits and make the comparison fail
+create table public.test_scratch (k text primary key, v double precision);
+insert into public.test_scratch select 'f_off_before', off_lat from private.locations where user_id='ffffffff-0000-0000-0000-000000000006';
 set role authenticated; set request.jwt.claim.sub = 'ffffffff-0000-0000-0000-000000000006';
 select public.set_my_location(28.5, 34.52);
 reset role;
-select off_lat = :offset_before as offset_kept_after_move from private.locations where user_id='ffffffff-0000-0000-0000-000000000006';
+select off_lat = (select v from public.test_scratch where k='f_off_before') as offset_kept_after_move from private.locations where user_id='ffffffff-0000-0000-0000-000000000006';
 
 \echo '--- T22 photos of people awaiting review are hidden from others'
 insert into auth.users (id, phone, phone_confirmed_at) values ('99999999-0000-0000-0000-000000000009','+201000000009',now());

@@ -1,78 +1,37 @@
-# Goes live after CI passes on main. Every step that needs a secret is skipped (with a clear note)
-# until that secret exists, so this works before the hosted accounts are created.
+# Goes live after ci passes on main.
+#  - Database: the Supabase GitHub integration deploys migrations from the `production` branch.
+#    This workflow moves `production` to the tested commit, so only commits that passed ci reach the
+#    live database. No Supabase secrets are used anywhere.
+#  - App: over-the-air update, or a store build when native code changed. Needs the EXPO_TOKEN secret;
+#    skipped with a note until it exists.
 name: deploy
-
 on:
   workflow_run:
     workflows: [ci]
     types: [completed]
     branches: [main]
-
 permissions:
-  contents: write   # moves the deployed-db / deployed-mobile tags
-
+  contents: write   # moves the `production` branch and the `deployed-mobile` tag
 # One deploy at a time, in order. Never cancel a deploy that is half way.
 concurrency:
   group: deploy
   cancel-in-progress: false
-
 jobs:
   database:
-    name: Supabase migrations
+    name: Release to the Supabase integration
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
-      - name: Check secrets
-        id: gate
-        run: |
-          missing=""
-          for v in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF; do
-            [ -n "${!v}" ] || missing="$missing $v"
-          done
-          if [ -n "$missing" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Supabase deploy skipped::Missing GitHub secrets:$missing. Add them (see SETUP.md) and the next push will deploy."
-            echo "### Supabase deploy skipped" >> "$GITHUB_STEP_SUMMARY"
-            echo "Missing secrets:$missing. See SETUP.md." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
       - uses: actions/checkout@v4
-        if: steps.gate.outputs.run == 'true'
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
-      - name: Block destructive migrations
-        if: steps.gate.outputs.run == 'true'
+      - name: Fast-forward the production branch
         run: |
-          base=$(git rev-parse -q --verify "refs/tags/deployed-db^{commit}" || echo ROOT)
-          python3 scripts/check-migrations.py "$base"
-      - uses: supabase/setup-cli@v1
-        if: steps.gate.outputs.run == 'true'
-        with:
-          version: latest
-      - name: Push migrations
-        if: steps.gate.outputs.run == 'true'
-        run: |
-          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
-          supabase db push --password "$SUPABASE_DB_PASSWORD"
-      - name: Deploy edge functions (once any exist)
-        if: steps.gate.outputs.run == 'true'
-        run: |
-          if ls supabase/functions/*/index.ts >/dev/null 2>&1; then
-            supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
-          else
-            echo "No edge functions yet; nothing to deploy."
-          fi
-      - name: Mark database as deployed
-        if: steps.gate.outputs.run == 'true'
-        run: |
-          git tag -f deployed-db "${{ github.event.workflow_run.head_sha }}"
-          git push -f origin refs/tags/deployed-db
+          # Plain push (never forced): fails safely if production is not an ancestor of this commit.
+          git push origin "${{ github.event.workflow_run.head_sha }}:refs/heads/production"
+          echo "### Database" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`production\` now points at the tested commit. The Supabase GitHub integration deploys its migrations." >> "$GITHUB_STEP_SUMMARY"
 
   mobile:
     name: Expo update or build
@@ -82,7 +41,7 @@ jobs:
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     steps:
-      - name: Check secrets and setup
+      - name: Check secrets
         id: gate
         run: |
           if [ -z "$EXPO_TOKEN" ]; then

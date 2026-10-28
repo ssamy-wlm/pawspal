@@ -8,14 +8,11 @@ import { Illustration } from '../src/components/Illustration';
 import { fontFamily, useTheme } from '../src/theme';
 import { isRTL, t as tr } from '../src/i18n';
 
-/** Welcome screen (mockup 01-welcome), with the logo entrance from the intro video. */
-export default function Welcome() {
+function Option({ title, sub, primary, onPress, delay }: { title: string; sub: string; primary?: boolean; onPress: () => void; delay: number }) {
   const t = useTheme();
-  const { width, height } = useWindowDimensions();
   const rtl = isRTL();
   const c = t.color;
-
-  const Option = ({ title, sub, primary, onPress, delay }: { title: string; sub: string; primary?: boolean; onPress: () => void; delay: number }) => (
+  return (
     <Animated.View entering={FadeInDown.delay(delay).duration(500)}>
       <Pressable
         accessibilityRole="button"
@@ -39,6 +36,14 @@ export default function Welcome() {
       </Pressable>
     </Animated.View>
   );
+}
+
+/** Welcome screen (mockup 01-welcome), with the logo entrance from the intro video. */
+export default function Welcome() {
+  const t = useTheme();
+  const { width, height } = useWindowDimensions();
+  const rtl = isRTL();
+  const c = t.color;
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background, overflow: 'hidden' }}>

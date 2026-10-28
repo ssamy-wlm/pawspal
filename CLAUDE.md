@@ -12,7 +12,7 @@ You are building **PawsPal Dahab**, a pet-sitting and pet-swapping app for Dahab
 ## Commands
 - App: `cd apps/mobile && npm start` | `npm run typecheck` | `npm run lint` | `npm test`
 - Shared files: `node scripts/sync-shared.mjs` (runs before every start)
-- Database: `supabase db reset` (local), `bash scripts/test-db.sh` (security tests)
+- Database: `supabase db reset` (local), `bash scripts/test-db.sh` (security tests on plain Postgres, also what CI runs), `bash scripts/test-db-supabase.sh` (the same tests on the real local Supabase; run it whenever you change a migration)
 - Slash commands: `/phase N`, `/security-review`, `/design-check`, `/new-migration <name>`
 
 ## Rules you must follow
@@ -25,7 +25,17 @@ You are building **PawsPal Dahab**, a pet-sitting and pet-swapping app for Dahab
 7. **Accessibility:** 44 pt touch targets, labels on icon buttons, AA contrast (tokens are pre-checked).
 8. **Copy:** warm, short and plain, as in the posts. No exclamation marks except "Booking confirmed".
 9. **Privacy:** collect only what HANDOVER lists. Never log message text, codes, ID data or exact locations.
-10. Before saying a phase is done: run typecheck, lint, tests and the DB security tests, and check the phase's acceptance list.
+10. Before saying a phase is done: run typecheck, lint, tests and the DB security tests, and check the phase's acceptance list. Then follow "How work ships" below.
 
 ## When unsure
 Check HANDOVER section 13 (open decisions). If something is still open, build the safest reasonable default behind a clearly named setting and note it in your summary. Do not invent legal terms, fees or provider names.
+
+## How work ships (the founder does not review or test anything)
+The automated checks are the only gate, so they stay strict. Everything that passes goes live on its own.
+- **Work directly on `main`.** No pull requests.
+- **After each task or phase run all four:** `npm run typecheck`, `npm run lint`, `npm test` (in `apps/mobile`) and `bash scripts/test-db.sh`. With a new migration, also run `python3 scripts/check-migrations.py origin/main`.
+- **All pass: commit and `git push origin main`.** The `ci` workflow repeats the checks. When it passes, `deploy` publishes the app (over-the-air update, or a store build if native code changed) and moves the `production` branch, which the Supabase GitHub integration deploys to the live database.
+- **Anything fails: fix the cause first.** Never push failing code. Never skip, delete, loosen or comment out a test, lint rule or type check to get green. If the checks cannot run or cannot pass, do not push; tell the founder what is blocking.
+- **Destructive migrations** (`DROP TABLE`, `DROP COLUMN`, `DROP SCHEMA`, `TRUNCATE`, `DELETE` without `WHERE`) fail the check unless the file contains `-- destructive-approved`. Add that comment **only when the founder explicitly says so in chat**, for that migration. Once a migration has been pushed to `main`, never edit it.
+- **No secrets in Git, and no secret-based database deploys.** Database deploys use the Supabase GitHub integration. Steps that need a secret (Expo) skip themselves with a note until the secret exists.
+- Force-push and branch deletion stay forbidden (`.claude/settings.json`). Still ask first before anything that costs money, deletes data, or changes a legal text, fee or provider.

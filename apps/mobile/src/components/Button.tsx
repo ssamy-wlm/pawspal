@@ -9,7 +9,7 @@ export function Button({ title, onPress, variant = 'primary', disabled, style, n
   { title: string; onPress: () => void; variant?: Variant; disabled?: boolean; style?: ViewStyle; navy?: boolean }) {
   const t = useTheme(navy);
   const s = useSharedValue(1);
-  const anim = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: s.get() }] }));
   const bg = { primary: t.color.primary, secondary: 'transparent', accent: t.color.accent, danger: t.color.danger }[variant];
   const fg = { primary: t.color.onPrimary, secondary: t.color.primary, accent: t.color.onAccent, danger: '#FFFFFF' }[variant];
   return (
@@ -18,8 +18,8 @@ export function Button({ title, onPress, variant = 'primary', disabled, style, n
       accessibilityState={{ disabled: !!disabled }}
       disabled={disabled}
       onPress={onPress}
-      onPressIn={() => { s.value = withTiming(0.96, { duration: 120 }); }}
-      onPressOut={() => { s.value = withTiming(1, { duration: 160 }); }}
+      onPressIn={() => { s.set(withTiming(0.96, { duration: 120 })); }}
+      onPressOut={() => { s.set(withTiming(1, { duration: 160 })); }}
     >
       <Animated.View style={[{
         minHeight: 56, borderRadius: 999, paddingHorizontal: 28, alignItems: 'center', justifyContent: 'center',

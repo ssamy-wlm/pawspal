@@ -15,7 +15,11 @@
       "Bash(git status)",
       "Bash(git diff:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push origin main)",
+      "Bash(python3 scripts/check-migrations.py:*)",
+      "Bash(git log:*)",
+      "Bash(git fetch:*)"
     ],
     "deny": [
       "Read(./.env)",
@@ -24,7 +28,12 @@
       "Read(./supabase/.env)",
       "Bash(git push --force:*)",
       "Bash(supabase db push --linked:*)",
-      "Bash(rm -rf:*)"
+      "Bash(rm -rf:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * +*)",
+      "Bash(git push origin :*)",
+      "Bash(git push * --delete*)"
     ]
   }
 }

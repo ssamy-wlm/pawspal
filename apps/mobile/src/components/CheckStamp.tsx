@@ -14,12 +14,12 @@ export function CheckStamp({ size = 160, color = '#1FA3A3' }: { size?: number; c
   const draw = useSharedValue(reduced ? 1 : 0);
   useEffect(() => {
     if (reduced) return;
-    s.value = pop(0, M.overshoot.bouncy, M.duration.stamp);
-    sq.value = squash(0.12, M.duration.stamp, 300);
-    draw.value = withDelay(350, withTiming(1, { duration: 400, easing: ease.out }));
-  }, [reduced]);
-  const style = useAnimatedStyle(() => ({ transform: [{ scaleX: s.value * sq.value }, { scaleY: s.value * (2 - sq.value) }] }));
-  const props = useAnimatedProps(() => ({ strokeDashoffset: TICK_LENGTH * (1 - draw.value) }));
+    s.set(pop(0, M.overshoot.bouncy, M.duration.stamp));
+    sq.set(squash(0.12, M.duration.stamp, 300));
+    draw.set(withDelay(350, withTiming(1, { duration: 400, easing: ease.out })));
+  }, [reduced, s, sq, draw]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scaleX: s.get() * sq.get() }, { scaleY: s.get() * (2 - sq.get()) }] }));
+  const props = useAnimatedProps(() => ({ strokeDashoffset: TICK_LENGTH * (1 - draw.get()) }));
   return (
     <Animated.View accessible accessibilityRole="image" accessibilityLabel="Booking confirmed" style={[{ width: size, height: size }, style]}>
       <Svg width={size} height={size} viewBox="0 0 100 100">

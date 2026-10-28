@@ -21,12 +21,12 @@ function Toe({ i, size, play }: { i: number; size: number; play: boolean }) {
   const wiggle = useSharedValue(0);
   useEffect(() => {
     if (!play || reduced) return;
-    s.value = pop(200 + i * M.stagger.toes, M.overshoot.bouncy, 400);
-    wiggle.value = withDelay(1600, withRepeat(withSequence(
+    s.set(pop(200 + i * M.stagger.toes, M.overshoot.bouncy, 400));
+    wiggle.set(withDelay(1600, withRepeat(withSequence(
       withTiming(1, { duration: 520, easing: Easing.inOut(Easing.sin) }),
-      withTiming(-1, { duration: 520, easing: Easing.inOut(Easing.sin) })), -1, true));
-  }, [play, reduced]);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: s.value }, { rotate: `${wiggle.value * 4}deg` }] }));
+      withTiming(-1, { duration: 520, easing: Easing.inOut(Easing.sin) })), -1, true)));
+  }, [play, reduced, i, s, wiggle]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: s.get() }, { rotate: `${wiggle.get() * 4}deg` }] }));
   const k = size / 200;
   return (
     <Animated.View
@@ -49,19 +49,23 @@ export function AnimatedLogo({ size = 200, play = true }: { size?: number; play?
 
   useEffect(() => {
     if (!play || reduced) return;
-    grow.value = pop(0, M.overshoot.pop, 750);
-    sq.value = squash(0.08, 750, 450);
-    sway.value = withDelay(1200, withRepeat(withTiming(1, { duration: 1650, easing: ease.inOut }), -1, true));
-  }, [play, reduced]);
+    grow.set(pop(0, M.overshoot.pop, 750));
+    sq.set(squash(0.08, 750, 450));
+    sway.set(withDelay(1200, withRepeat(withTiming(1, { duration: 1650, easing: ease.inOut }), -1, true)));
+  }, [play, reduced, grow, sq, sway]);
 
-  const padStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: (1 - Math.min(grow.value, 1)) * 60 },
-      { scaleX: grow.value * sq.value },
-      { scaleY: grow.value * (2 - sq.value) },
-      { rotate: `${(sway.value - 0.5) * 3.2}deg` },
-    ],
-  }));
+  const padStyle = useAnimatedStyle(() => {
+    const g = grow.get();
+    const q = sq.get();
+    return {
+      transform: [
+        { translateY: (1 - Math.min(g, 1)) * 60 },
+        { scaleX: g * q },
+        { scaleY: g * (2 - q) },
+        { rotate: `${(sway.get() - 0.5) * 3.2}deg` },
+      ],
+    };
+  });
 
   return (
     <View accessible accessibilityRole="image" accessibilityLabel="PawsPal logo" style={{ width: size, height: size }}>

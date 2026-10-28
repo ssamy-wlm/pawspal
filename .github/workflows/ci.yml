@@ -1,3 +1,5 @@
+# The gate. Every push to main and every pull request must pass all of this.
+# deploy.yml only runs after this workflow succeeds on main.
 name: ci
 on:
   pull_request:
@@ -5,6 +7,9 @@ on:
     branches: [main]
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   app:
     runs-on: ubuntu-latest
@@ -13,22 +18,27 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npm install --no-audit --no-fund
+      - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
       - run: npm audit --audit-level=high --omit=dev
   database:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env: { POSTGRES_PASSWORD: postgres }
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-retries 10
     env: { PGHOST: localhost, PGUSER: postgres, PGPASSWORD: postgres }
     steps:
       - uses: actions/checkout@v4
-      - name: Migrations and security tests
+        with: { fetch-depth: 0 }
+      - name: Migration safety check
         run: |
-          bash scripts/test-db.sh | tee db.log
-          # Fail if any statement NOT marked "expect ERROR" errored
-          python3 scripts/check-db-log.py db.log
+          base="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then base="${{ github.event.pull_request.base.sha }}"; fi
+          python3 scripts/check-migrations.py "${base:-ROOT}"
+      - name: Migrations and security tests
+        run: bash scripts/test-db.sh

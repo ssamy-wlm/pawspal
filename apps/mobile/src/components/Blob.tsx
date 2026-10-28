@@ -9,10 +9,10 @@ export function Blob({ x, y, size, color, delay = 0 }: { x: number; y: number; s
   const breathe = useSharedValue(0);
   useEffect(() => {
     if (reduced) return;
-    enter.value = pop(delay, M.overshoot.soft, 500);
-    breathe.value = withDelay(delay + 500, withRepeat(withTiming(1, { duration: M.duration.breathe / 2, easing: ease.inOut }), -1, true));
-  }, [reduced]);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: enter.value * (0.98 + breathe.value * 0.04) }] }));
+    enter.set(pop(delay, M.overshoot.soft, 500));
+    breathe.set(withDelay(delay + 500, withRepeat(withTiming(1, { duration: M.duration.breathe / 2, easing: ease.inOut }), -1, true)));
+  }, [reduced, delay, enter, breathe]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: enter.get() * (0.98 + breathe.get() * 0.04) }] }));
   return (
     <Animated.View
       pointerEvents="none"

@@ -62,7 +62,7 @@ export default function Explore() {
     setLoading(true); setError(null);
     try {
       setResults(m === 'swipe' ? await browseRandom(pt) : filters ? await searchStays(filters) : []);
-    } catch (e: any) {
+    } catch {
       setError('Could not load hosts. Check your connection and try again.');
     } finally { setLoading(false); }
   }, [filters, petType]);

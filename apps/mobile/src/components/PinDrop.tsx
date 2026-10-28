@@ -12,17 +12,17 @@ export function PinDrop({ delay = 1000, size = 56 }: { delay?: number; size?: nu
   const glow = useSharedValue(reduced ? 1 : 0);
   useEffect(() => {
     if (reduced) return;
-    fall.value = withDelay(delay, withTiming(1, { duration: M.duration.pinDrop, easing: ease.in }));
-    sq.value = squash(0.18, delay + M.duration.pinDrop, 300);
-    glow.value = withDelay(delay + M.duration.pinDrop, withTiming(1, { duration: 1500, easing: ease.out }));
-  }, [reduced]);
+    fall.set(withDelay(delay, withTiming(1, { duration: M.duration.pinDrop, easing: ease.in })));
+    sq.set(squash(0.18, delay + M.duration.pinDrop, 300));
+    glow.set(withDelay(delay + M.duration.pinDrop, withTiming(1, { duration: 1500, easing: ease.out })));
+  }, [reduced, delay, fall, sq, glow]);
   const pin = useAnimatedStyle(() => ({
-    opacity: fall.value > 0 ? 1 : 0,
-    transform: [{ translateY: (fall.value - 1) * 320 }, { scaleX: sq.value }, { scaleY: 2 - sq.value }],
+    opacity: fall.get() > 0 ? 1 : 0,
+    transform: [{ translateY: (fall.get() - 1) * 320 }, { scaleX: sq.get() }, { scaleY: 2 - sq.get() }],
   }));
   const ring = useAnimatedStyle(() => ({
-    opacity: glow.value > 0 ? 0.9 - 0.4 * glow.value : 0,
-    transform: [{ scale: 0.3 + 0.9 * glow.value }],
+    opacity: glow.get() > 0 ? 0.9 - 0.4 * glow.get() : 0,
+    transform: [{ scale: 0.3 + 0.9 * glow.get() }],
   }));
   const h = size * (80 / 60);
   return (
