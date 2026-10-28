@@ -1,11 +1,14 @@
 """Gate for database migrations. Usage: python3 scripts/check-migrations.py <base-ref>
 
 Looks at the migrations that changed between <base-ref> and HEAD (use "ROOT" to check every migration) and fails if:
-  1. an already-pushed migration was edited, renamed or deleted (add a new numbered one instead), or
+  1. an already-pushed migration was edited, renamed or deleted (add a new numbered one instead), unless
+     supabase/approved-migration-edits.txt lists that file with the SHA-256 of its exact new contents
+     (a one-time approval for a migration that was never deployed; any further edit changes the hash and fails again), or
   2. a new migration contains DROP TABLE, DROP COLUMN, DROP SCHEMA, TRUNCATE or DELETE without WHERE,
      unless that file contains the comment  -- destructive-approved
      (that comment may only be added when the founder explicitly says so in chat; see CLAUDE.md).
 """
+import hashlib
 import re
 import subprocess
 import sys
@@ -43,6 +46,21 @@ def findings(sql):
     return sorted(set(found))
 
 
+def approved_edit(path):
+    """True if the file's exact current contents are listed in the approvals file (read from HEAD)."""
+    try:
+        listing = git('show', 'HEAD:supabase/approved-migration-edits.txt')
+    except subprocess.CalledProcessError:
+        return False
+    digest = hashlib.sha256(git('show', f'HEAD:{path}').encode()).hexdigest()
+    name = path.rsplit('/', 1)[-1]
+    for line in listing.splitlines():
+        parts = line.split('#')[0].split()
+        if len(parts) == 2 and parts[0] == name and parts[1] == digest:
+            return True
+    return False
+
+
 def main():
     base = sys.argv[1] if len(sys.argv) > 1 else 'ROOT'
     if base != 'ROOT' and set(base) != {'0'}:
@@ -63,6 +81,10 @@ def main():
         if not path.endswith('.sql'):
             continue
         if status != 'A':
+            if status == 'M' and approved_edit(path):
+                print(f'{path}: edit of an existing migration allowed by supabase/approved-migration-edits.txt')
+                checked.append(path)
+                continue
             problems.append(f'{path}: an existing migration was changed or deleted. Add a new numbered migration instead.')
             continue
         sql = git('show', f'HEAD:{path}')

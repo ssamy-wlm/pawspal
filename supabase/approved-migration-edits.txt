@@ -1,0 +1,3 @@
+# One-time approvals to edit a migration that is already on GitHub. Format: <file name> <sha256 of the exact approved contents>
+# Only add a line when the founder explicitly says so in chat. Editing the file again changes its hash and fails the check again.
+0001_init.sql a0cf03bc0da8adef27e6f853dc494d343654e26f56d33c4fc73cd1187acaeff3  # founder approved 2026-10-28: nothing deployed yet; secret location offset, photo visibility, pet unlock on cancel, review visibility
