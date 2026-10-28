@@ -138,3 +138,54 @@ insert into public.availability (user_id, starts_on, ends_on, pets_accepted, off
 set role authenticated; set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select first_name, starts_on - current_date as from_day, covers_dates, in_budget, price_per_night, match_score, match_label
   from public.search_stays(current_date+3, current_date+10, 'cat', 200, 300, '{food_provided}');
+
+-- ================= fixes from the first Claude Code review =================
+reset role;
+\echo '--- T21 public point uses a secret random offset, kept when the pin moves'
+insert into auth.users (id, phone, phone_confirmed_at) values ('ffffffff-0000-0000-0000-000000000006','+201000000006',now());
+update public.profiles set first_name='ffffffff', status='active' where id='ffffffff-0000-0000-0000-000000000006';
+set role authenticated; set request.jwt.claim.sub = 'ffffffff-0000-0000-0000-000000000006';
+select public.set_my_location(28.49512, 34.51345);   -- same exact point as user A
+reset role;
+select (select approx_lat from public.profiles where first_name='aaaaaaaa') <> (select approx_lat from public.profiles where first_name='ffffffff')
+    or (select approx_lng from public.profiles where first_name='aaaaaaaa') <> (select approx_lng from public.profiles where first_name='ffffffff') as same_spot_different_public_point;
+select off_lat as offset_before from private.locations where user_id='ffffffff-0000-0000-0000-000000000006' \gset
+set role authenticated; set request.jwt.claim.sub = 'ffffffff-0000-0000-0000-000000000006';
+select public.set_my_location(28.5, 34.52);
+reset role;
+select off_lat = :offset_before as offset_kept_after_move from private.locations where user_id='ffffffff-0000-0000-0000-000000000006';
+
+\echo '--- T22 photos of people awaiting review are hidden from others'
+insert into auth.users (id, phone, phone_confirmed_at) values ('99999999-0000-0000-0000-000000000009','+201000000009',now());
+insert into storage.objects (bucket_id, name) values ('faces', '99999999-0000-0000-0000-000000000009/selfie.jpg');
+set role authenticated; set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select count(*) as pending_face_visible_to_others from storage.objects where bucket_id='faces';
+set request.jwt.claim.sub = '99999999-0000-0000-0000-000000000009';
+select count(*) as own_face_visible_to_self from storage.objects where bucket_id='faces';
+reset role;
+update public.profiles set status='active' where id='99999999-0000-0000-0000-000000000009';
+set role authenticated; set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select count(*) as approved_face_visible_to_others from storage.objects where bucket_id='faces';
+reset role;
+
+\echo '--- T23 cancelling a confirmed booking unlocks the pet'
+set role authenticated; set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+insert into public.pets (id, owner_id, name, type, size, photo_paths) values ('22222222-0000-0000-0000-000000000002', auth.uid(), 'Pepper','dog','small', array['a/2.jpg']);
+select public.request_booking('bbbbbbbb-0000-0000-0000-000000000002','22222222-0000-0000-0000-000000000002', current_date+1, current_date+2, 'sitter_home','paid', 200, false) as b2 \gset
+select public.accept_terms(:'b2');
+set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
+select public.accept_terms(:'b2');
+reset role;
+set role service_role; select public.confirm_booking_payment(:'b2'); reset role;
+select locked as locked_after_confirm from public.pets where id='22222222-0000-0000-0000-000000000002';
+set role authenticated; set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
+select public.cancel_booking(:'b2', 'plans changed');
+reset role;
+select locked as locked_after_cancel from public.pets where id='22222222-0000-0000-0000-000000000002';
+
+\echo '--- T24 reviews of suspended people are hidden from others'
+update public.profiles set status='suspended' where first_name='bbbbbbbb';
+set role authenticated; set request.jwt.claim.sub = 'eeeeeeee-0000-0000-0000-000000000005';
+select count(*) as reviews_of_suspended_visible from public.reviews;
+reset role;
+update public.profiles set status='active' where first_name='bbbbbbbb';

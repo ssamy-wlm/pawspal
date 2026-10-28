@@ -5,14 +5,18 @@ web-build/
 ios/
 android/
 *.log
+.DS_Store
+# secrets: never commit
 .env
 .env.*
 !.env.example
-*.pem
+apps/mobile/.env.local
+supabase/.env
+supabase/.temp/
 *.p8
 *.p12
 *.key
 *.jks
-.DS_Store
-supabase/.branches/
-supabase/.temp/
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist

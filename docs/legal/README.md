@@ -10,7 +10,7 @@ These documents are **drafts**. They were written to match how PawsPal actually 
 | `terms-of-service.md` | Sign-up, Settings › Legal | Yes, at sign-up |
 | `community-guidelines.md` | Sign-up step 6, Safety Center | Yes, at sign-up step 6 |
 
-The app bundles these Markdown files (`scripts/sync-legal.mjs` copies them into `apps/mobile/src/legal/`). Each file starts with a `version` and `effective` date. When the version changes, the app asks every user to accept again and records it in `legal_acceptances`.
+The app bundles these Markdown files (`scripts/sync-shared.mjs` copies them into `apps/mobile/src/legal/index.ts`). Each file starts with a `version` and `effective` date. When the version changes, the app asks every user to accept again and records it in `legal_acceptances`.
 
 Fill in every `[SQUARE BRACKET]` placeholder before launch.
 

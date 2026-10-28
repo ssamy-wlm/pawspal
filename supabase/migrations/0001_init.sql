@@ -120,6 +120,10 @@ create table private.locations (
   lat        double precision not null,
   lng        double precision not null,
   address    text check (char_length(address) <= 120),
+  -- Secret per-user offset, random and stored only here. Kept when the pin moves,
+  -- so averaging many updates can't reveal the exact point either.
+  off_lat    double precision not null default (random() - 0.5),
+  off_lng    double precision not null default (random() - 0.5),
   updated_at timestamptz not null default now()
 );
 
@@ -127,8 +131,7 @@ create or replace function public.set_my_location(p_lat double precision, p_lng 
 returns void language plpgsql security definer set search_path = public, private as $$
 declare
   v_uid uuid := auth.uid();
-  v_seed_lat double precision;
-  v_seed_lng double precision;
+  v_loc private.locations;
 begin
   if v_uid is null then raise exception 'not signed in'; end if;
   -- Egypt bounding box. Launch area is Dahab; widen when new towns open.
@@ -139,16 +142,13 @@ begin
   insert into private.locations (user_id, lat, lng, address, updated_at)
   values (v_uid, p_lat, p_lng, p_address, now())
   on conflict (user_id) do update set lat = excluded.lat, lng = excluded.lng,
-    address = excluded.address, updated_at = now();
+    address = excluded.address, updated_at = now()      -- offsets deliberately unchanged
+  returning * into v_loc;
 
-  -- Stable per-user offset (about +/-300 m) so averaging many updates
-  -- cannot reveal the exact point.
-  v_seed_lat := (('x' || substr(md5(v_uid::text || 'lat'), 1, 4))::bit(16)::int / 65535.0) - 0.5;
-  v_seed_lng := (('x' || substr(md5(v_uid::text || 'lng'), 1, 4))::bit(16)::int / 65535.0) - 0.5;
-
+  -- Public point = exact point + secret offset (about +/-300 m), rounded to ~100 m.
   update public.profiles
-     set approx_lat = round((p_lat + v_seed_lat * 0.0054)::numeric, 3),
-         approx_lng = round((p_lng + v_seed_lng * 0.0062)::numeric, 3),
+     set approx_lat = round((p_lat + v_loc.off_lat * 0.0054)::numeric, 3),
+         approx_lng = round((p_lng + v_loc.off_lng * 0.0062)::numeric, 3),
          updated_at = now()
    where id = v_uid;
 end $$;
@@ -338,6 +338,10 @@ begin
    where id = p_booking and auth.uid() in (owner_id, sitter_id)
      and status in ('requested', 'terms_agreed', 'confirmed');
   if not found then raise exception 'booking cannot be cancelled'; end if;
+  update public.pets set locked = false
+   where id = (select pet_id from public.bookings where id = p_booking)
+     and not exists (select 1 from public.bookings x
+                     where x.pet_id = pets.id and x.id <> p_booking and x.status in ('confirmed', 'in_progress'));
   -- Refund rules (docs/legal/terms-of-service.md section 6) are applied by the
   -- payments edge function, which reads cancelled_by and the dates.
   insert into public.security_events (user_id, kind, details)
@@ -562,8 +566,11 @@ create table public.reviews (
 );
 alter table public.reviews enable row level security;
 revoke update, delete on public.reviews from anon, authenticated;
-create policy "anyone signed in reads reviews" on public.reviews
-  for select to authenticated using (true);
+create policy "read reviews of active people" on public.reviews
+  for select to authenticated using (
+    public.is_admin() or auth.uid() in (author_id, subject_id)
+    or (public.is_active(subject_id) and not public.is_blocked_between(auth.uid(), subject_id))
+  );
 create policy "review after a completed stay" on public.reviews
   for insert to authenticated with check (
     author_id = auth.uid() and exists (
@@ -768,9 +775,24 @@ create policy "delete own files" on storage.objects
   for delete to authenticated using (
     bucket_id in ('pets', 'homes') and (storage.foldername(name))[1] = auth.uid()::text
   );
--- Profile, pet and home photos are readable by signed-in users (served by signed URL).
-create policy "signed-in users read profile media" on storage.objects
-  for select to authenticated using (bucket_id in ('faces', 'pets', 'homes'));
+-- Profile, pet and home photos: the owner and admins always; everyone else only once the
+-- owner is approved (active) and not blocked. Served by signed URL.
+create or replace function public.can_view_media_of(p_folder text)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare v_owner uuid;
+begin
+  begin
+    v_owner := p_folder::uuid;
+  exception when others then
+    return false;
+  end;
+  return v_owner = auth.uid() or public.is_admin()
+      or (public.is_active(v_owner) and not public.is_blocked_between(auth.uid(), v_owner));
+end $$;
+create policy "read media of approved people" on storage.objects
+  for select to authenticated using (
+    bucket_id in ('faces', 'pets', 'homes') and public.can_view_media_of((storage.foldername(name))[1])
+  );
 -- Handover photos: only the uploader here; the booking partner gets them through an edge function.
 create policy "read own handover uploads" on storage.objects
   for select to authenticated using (

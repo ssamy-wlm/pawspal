@@ -11,5 +11,10 @@ for b in blocks:
         bad.append('MISSING expected error: ' + title)
     if 'expect ERROR' not in title and has_err:
         bad.append('UNEXPECTED error in: ' + title)
-print('\n'.join(bad) or 'security tests OK')
+titles = re.findall(r'^--- T(\d+)', log, re.M)
+if len(titles) < 24:
+    bad.append(f'Only {len(titles)} of 24+ security tests ran: the database or a migration failed. Check the log.')
+if re.search(r'Connection refused|could not connect|^psql: error', log, re.M):
+    bad.append('Could not connect to the database.')
+print('\n'.join(bad) or f'security tests OK ({len(titles)} tests)')
 sys.exit(1 if bad else 0)

@@ -1,49 +1,79 @@
-# Setup
+# Setup: from this folder to a running app
 
-The original SETUP.md was not in the repository, so this file was written fresh. It covers local setup, the hosted accounts and the automatic deploy.
+Written for a non-developer. Do the steps in order. Anything in `code style` is something you type or copy. Budget an afternoon for parts A to D.
 
-## 1. On your computer
-Install Git, Node.js (LTS), Docker Desktop, the Supabase CLI and a Postgres client (`psql`). On Windows run the shell scripts in WSL or Git Bash.
+## A. Put the project on GitHub (private)
 
-```bash
-cd apps/mobile && npm install
+1. Create a free account at **github.com**, if you don't have one.
+2. Click **+ → New repository**. Name it `pawspal-dahab`, choose **Private**, and leave "Add a README" **unticked**. Click **Create repository**.
+3. Upload the files. The GitHub website uploader **skips hidden folders** (`.claude`, `.github`, `.gitignore`) and takes **at most 100 files at a time**, so it can leave parts of the project behind. Use one of these:
+   - **Option 1, easiest:** upload the single file `pawspal-dahab.zip` to the repository (drag it onto *Add file → Upload files*), then ask Claude Code: "Unzip pawspal-dahab.zip into the repo root, merge with what's there, delete the zip, and tell me what changed."
+   - **Option 2:** use **GitHub Desktop** (desktop.github.com). Clone the repository, copy everything inside the unzipped `pawspal-dahab` folder into it, including hidden items (Mac: `Cmd + Shift + .`; Windows: *View → Hidden items*), then **Commit** and **Push**.
+4. Turn on protection in **Settings → Code security**:
+   - **Dependabot alerts** and **Dependabot security updates**: on
+   - **Secret scanning** and **Push protection**: on
+5. Don't add a "require a pull request" rule: Claude Code pushes straight to `main` once the automatic checks pass (see CLAUDE.md).
+
+## B. Accounts you will need
+
+| Service | What for | When |
+|---|---|---|
+| **Claude** (Pro or Max) | Claude Code builds the app | Now |
+| **Supabase** (supabase.com) | Database, sign-in, photos | Now |
+| **Expo** (expo.dev) | Running and building the app | Now |
+| **Twilio** (twilio.com) | SMS codes | Phase 2 |
+| **KYC provider** (to choose) | ID and selfie checks | Phase 2 |
+| **Google Cloud** | Maps | Phase 4–6 |
+| **Paymob** or **Fawry** | Booking fee | Phase 6 |
+| **Apple Developer** ($99/yr) and **Google Play** ($25) | Store release | Phase 9 |
+
+## C. Install the tools (one time)
+
+1. **Node.js LTS** from nodejs.org.
+2. **Claude Code**: follow the instructions at docs.claude.com (Claude Code → Quickstart). Then open a terminal in your project folder and run `claude`.
+3. **Supabase CLI**: follow supabase.com/docs (CLI → Getting started). Also install **Docker Desktop**, which the CLI needs for a local database, and the Postgres command-line client `psql`, which `scripts/test-db.sh` uses.
+   If you use **Claude Code on the web**, it runs in its own cloud computer, so you don't need to install these yourself.
+4. **Expo Go** on your phone (App Store or Google Play) to preview the app.
+
+## D. Create the Supabase project
+
+1. On supabase.com: **New project**, name it `pawspal-dahab`, set a strong database password (save it in a password manager), and pick a region. **Ask your lawyer first** whether data may be stored outside Egypt (see `docs/legal/README.md`). If you must start before the answer, use a development project with test data only.
+2. In **Project Settings → API**, copy the **Project URL** and the **anon public** key.
+3. Copy `apps/mobile/.env.example` to `apps/mobile/.env.local` and paste both values in. This file is never uploaded (it's in `.gitignore`).
+4. **Never** copy the `service_role` key into the app, a chat or GitHub. It goes only into Supabase Edge Function secrets (phase 2 and later).
+5. In **Authentication → Providers**: turn **Phone** on and **Email** off. Twilio details come in phase 2.
+
+## E. Start building with Claude Code
+
+In a terminal, in the project folder:
+
+```
+claude
 ```
 
-Local database: `supabase start` (needs Docker running), then `bash scripts/test-db.sh` for the security tests.
+Then type:
 
-## 2. GitHub branch rules (Settings, Branches or Rules)
-Work happens directly on `main`, and the automated checks are the gate. Use these rules on `main`:
-- **Block force pushes**: on.
-- **Restrict deletions**: on.
-- **Require a pull request before merging**: **off** (removed on purpose).
-- **Require status checks**: leave **off**. GitHub cannot check a commit before a direct push, so requiring it would block every push. The gate works another way: `deploy` runs only after `ci` passes on the pushed commit.
-- Turn on **secret scanning** and **push protection** (Settings, Code security).
-- Turn on **Dependabot** alerts and security updates.
+```
+/phase 0
+```
 
-## 3. GitHub secrets for the automatic deploy
-Add each at: your repository on GitHub, **Settings, Secrets and variables, Actions, New repository secret**. Until a secret exists, its deploy step is skipped and the run summary says so.
+Claude Code reads `CLAUDE.md` and `HANDOVER.md`, sets up the app and database, runs the tests and reports what passed. Check the result on your phone: run `cd apps/mobile && npm start`, scan the QR code with Expo Go, and you should see the animated welcome screen. Then continue with `/phase 1`, `/phase 2` and so on, one at a time. After each phase, review the summary and push in GitHub Desktop.
 
-| Secret | Where to find the value | Used for |
+To link the hosted database (from phase 2), ask Claude Code: "link the Supabase project and push the migrations". It will ask for the project reference and run `supabase link` and `supabase db push`. You approve each step.
+
+## F. Secrets checklist
+
+| Secret | Where it lives | Never |
 |---|---|---|
-| `SUPABASE_ACCESS_TOKEN` | supabase.com, your avatar, **Account preferences, Access Tokens, Generate new token** | Lets the deploy log in to Supabase |
-| `SUPABASE_DB_PASSWORD` | The database password you chose when creating the project. If lost: project, **Project Settings, Database, Reset database password** | Lets the deploy change the database |
-| `SUPABASE_PROJECT_REF` | Project, **Project Settings, General, Reference ID** (also the code in the dashboard URL) | Says which project to deploy to |
-| `EXPO_TOKEN` | expo.dev, your avatar, **Account settings, Access tokens, Create token** (a robot or "robot user" token is best) | Lets the deploy publish app updates and builds |
+| Supabase URL and anon key | `apps/mobile/.env.local` (public values) | n/a |
+| Supabase service_role key | Supabase → Edge Functions → Secrets | In the app or Git |
+| Twilio auth token | Supabase Auth settings | In the app or Git |
+| Paymob API key and HMAC secret | Supabase Edge Function secrets | In the app or Git |
+| KYC API key | Supabase Edge Function secrets | In the app or Git |
+| Google Maps keys | App config, **restricted** to your app IDs | Unrestricted |
 
-These are secrets. Never paste them into chat, a file or an issue.
+If a secret ever leaks: rotate it straight away in the provider's dashboard, then tell Claude Code to update the secret.
 
-## 4. One-time Expo link (before the first app deploy)
-The deploy skips the app step until the Expo project is linked.
-1. Create an account at expo.dev.
-2. On a computer: `cd apps/mobile && npx eas-cli login && npx eas-cli init && npx eas-cli update:configure`.
-3. Commit the changed `app.json` (it now holds the project id and update address).
-4. In the Expo dashboard, project, **Environment variables**, add `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` (Supabase, **Project Settings, API**). The anon key is public by design; never add the service-role key.
-5. The **first store build** needs your Apple and Google developer accounts and signing credentials. Run `npx eas-cli build --platform all --profile production` once yourself so EAS can ask for them. After that, `deploy` can build and submit on its own.
+## G. Before launch
 
-## 5. Supabase settings to turn on
-- **Daily backups:** included in the paid Pro plan (the free plan has none). Check at **Database, Backups, Scheduled backups**.
-- **Point-in-time recovery:** **Database, Backups, Point in time**, turn it on (paid add-on; needs Pro and a compute size that supports it).
-- Phone sign-in only, email sign-up off, OTP expiry 300 s, rate limits (see `docs/security.md`).
-
-## 6. Vercel (admin dashboard, phase 8)
-Create the project from the GitHub repo with root directory `apps/admin`, production branch `main`. Auto-deploy on push is Vercel's default. Note that Vercel deploys on every push to `main` and does not wait for `ci`.
+Work through `docs/security.md` (checklist), `docs/legal/README.md` (lawyer questions) and phase 9 of `docs/build-plan.md`.
