@@ -7,7 +7,10 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#FFF7EC",
-    "splash": { "backgroundColor": "#1F2D3D", "resizeMode": "contain" },
+    "splash": {
+      "backgroundColor": "#1F2D3D",
+      "resizeMode": "contain"
+    },
     "ios": {
       "bundleIdentifier": "com.pawspal.dahab",
       "supportsTablet": false,
@@ -19,12 +22,36 @@
     },
     "android": {
       "package": "com.pawspal.dahab",
-      "adaptiveIcon": { "backgroundColor": "#FFF7EC" },
-      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION"],
-      "blockedPermissions": ["ACCESS_BACKGROUND_LOCATION", "READ_CONTACTS"]
+      "adaptiveIcon": {
+        "backgroundColor": "#FFF7EC"
+      },
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "blockedPermissions": [
+        "ACCESS_BACKGROUND_LOCATION",
+        "READ_CONTACTS"
+      ]
     },
-    "plugins": ["expo-router", "expo-secure-store", "expo-localization", "expo-font"],
-    "experiments": { "typedRoutes": true },
-    "extra": { "supportsRTL": true }
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-localization",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "supportsRTL": true
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    }
   }
 }

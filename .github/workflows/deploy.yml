@@ -1,0 +1,142 @@
+# Goes live after CI passes on main. Every step that needs a secret is skipped (with a clear note)
+# until that secret exists, so this works before the hosted accounts are created.
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write   # moves the deployed-db / deployed-mobile tags
+
+# One deploy at a time, in order. Never cancel a deploy that is half way.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  database:
+    name: Supabase migrations
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Check secrets
+        id: gate
+        run: |
+          missing=""
+          for v in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Supabase deploy skipped::Missing GitHub secrets:$missing. Add them (see SETUP.md) and the next push will deploy."
+            echo "### Supabase deploy skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "Missing secrets:$missing. See SETUP.md." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Block destructive migrations
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          base=$(git rev-parse -q --verify "refs/tags/deployed-db^{commit}" || echo ROOT)
+          python3 scripts/check-migrations.py "$base"
+      - uses: supabase/setup-cli@v1
+        if: steps.gate.outputs.run == 'true'
+        with:
+          version: latest
+      - name: Push migrations
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          supabase db push --password "$SUPABASE_DB_PASSWORD"
+      - name: Deploy edge functions (once any exist)
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          if ls supabase/functions/*/index.ts >/dev/null 2>&1; then
+            supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
+          else
+            echo "No edge functions yet; nothing to deploy."
+          fi
+      - name: Mark database as deployed
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          git tag -f deployed-db "${{ github.event.workflow_run.head_sha }}"
+          git push -f origin refs/tags/deployed-db
+
+  mobile:
+    name: Expo update or build
+    if: github.event.workflow_run.conclusion == 'success'
+    needs: database   # the database goes first, so a new app never meets an old schema
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Check secrets and setup
+        id: gate
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Expo deploy skipped::Missing GitHub secret EXPO_TOKEN. Add it (see SETUP.md) and the next push will deploy."
+            echo "### Expo deploy skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "Missing secret EXPO_TOKEN. See SETUP.md." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Check the Expo project is linked
+        id: linked
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          if grep -q 'u.expo.dev' apps/mobile/app.json && grep -q '"projectId"' apps/mobile/app.json; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Expo deploy skipped::apps/mobile/app.json has no Expo project id or update URL yet. Run the one-time link step in SETUP.md."
+            echo "### Expo deploy skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "The Expo project is not linked yet (no projectId / updates.url in app.json). See SETUP.md." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.linked.outputs.run == 'true'
+        with:
+          node-version: 22
+      - uses: expo/expo-github-action@v8
+        if: steps.linked.outputs.run == 'true'
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Did native code change?
+        id: native
+        if: steps.linked.outputs.run == 'true'
+        run: bash scripts/native-changed.sh | tee -a "$GITHUB_OUTPUT"
+      - name: Install app dependencies
+        if: steps.linked.outputs.run == 'true'
+        working-directory: apps/mobile
+        run: npm ci
+      - name: Over-the-air update
+        if: steps.linked.outputs.run == 'true' && steps.native.outputs.native_changed == 'false'
+        working-directory: apps/mobile
+        run: eas update --channel production --auto --non-interactive
+      - name: Store build and submit
+        if: steps.linked.outputs.run == 'true' && steps.native.outputs.native_changed == 'true'
+        working-directory: apps/mobile
+        run: eas build --platform all --profile production --auto-submit --non-interactive
+      - name: Mark mobile as deployed
+        if: steps.linked.outputs.run == 'true'
+        run: |
+          git tag -f deployed-mobile "${{ github.event.workflow_run.head_sha }}"
+          git push -f origin refs/tags/deployed-mobile
