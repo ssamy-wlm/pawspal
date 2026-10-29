@@ -19,7 +19,17 @@ select pg_temp.check((select bio !~ '[0-9]{4}' and bio !~ 'example' and bio !~* 
 select pg_temp.check((select area = 'Masbat' from public.profiles where id = 'b1b1b1b1-0000-0000-0000-000000000001'), 'normal text is left alone');
 select pg_temp.as_role('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', $$update public.pets set notes = 'Loves walks. Text +20 100 123 4567 for the vet' where id = 'b1b1b1b1-1111-0000-0000-000000000001'$$);
 select pg_temp.check((select notes !~ '123 4567' and notes like 'Loves walks.%' from public.pets where id = 'b1b1b1b1-1111-0000-0000-000000000001'), 'pet notes still hold a phone number');
-select pg_temp.check(public.mask_contact_text('Born 2019, weighs 12 kg') = 'Born 2019, weighs 12 kg', 'ordinary numbers were masked');
+select pg_temp.check(public.mask_contact_text('Born 2019, weighs 12 kg, 3 years') = 'Born 2019, weighs 12 kg, 3 years', 'ordinary numbers were masked');
+select pg_temp.check(public.mask_contact_text('010/1234/5678') !~ '[0-9]', 'a number split by slashes survived');
+select pg_temp.check(public.mask_contact_text('010_1234_5678') !~ '[0-9]', 'a number split by underscores survived');
+select pg_temp.check(public.mask_contact_text('010,1234,5678') !~ '[0-9]', 'a number split by commas survived');
+select pg_temp.check(public.mask_contact_text(E'0101\n2345\n678') !~ '[0-9]', 'a number split over lines survived');
+select pg_temp.check(public.mask_contact_text('٠١٠١٢٣٤٥٦٧٨') !~ '[0-9٠-٩]', 'an Arabic-digit number survived');
+select pg_temp.check(public.mask_contact_text('۰۱۰۱۲۳۴۵۶۷۸') !~ '[0-9۰-۹]', 'a Persian-digit number survived');
+select pg_temp.check(public.mask_contact_text('find me on instagram or signal or viber') !~* 'instagram|signal|viber', 'a messaging app name survived');
+select pg_temp.check(public.mask_contact_text('mona at gmail dot com') !~* 'gmail', 'a spelled-out email survived');
+select pg_temp.check(public.mask_contact_text('linktr.ee/mona and mona.co') !~* 'linktr|\.co', 'a link survived');
+select pg_temp.check(public.mask_contact_text('انستجرام وفايبر') !~ 'انستجرام|فايبر', 'an Arabic app name survived');
 
 \echo '--- P2 vet details are private to the owner'
 select pg_temp.as_role('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', $$select public.set_pet_care('b1b1b1b1-1111-0000-0000-000000000001', 'Dr Samir', '0620000000', 'Gets anxious in storms')$$);
@@ -44,6 +54,18 @@ select pg_temp.as_role('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', 
 select pg_temp.check(exists (select 1 from public.pets where id = 'b1b1b1b1-1111-0000-0000-000000000001'), 'a locked pet was deleted');
 select pg_temp.fails_as('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', $$select public.set_pet_care('b1b1b1b1-1111-0000-0000-000000000001', 'Changed', '1', '1')$$, 'vet details of a locked pet were changed');
 select pg_temp.check((select vet_name = 'Dr Samir' from private.pet_care where pet_id = 'b1b1b1b1-1111-0000-0000-000000000001'), 'vet details of a locked pet changed');
+insert into storage.objects (bucket_id, name) values ('pets', 'b1b1b1b1-0000-0000-0000-000000000001/free.jpg');
+-- Real Supabase refuses direct SQL deletes on storage.objects (it wants the Storage API), so the delete itself may raise;
+-- either way the locked file must still be there, and the rule the delete policy uses must say "locked" only for it.
+do $$ begin
+  begin perform pg_temp.as_role('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', $q$delete from storage.objects where bucket_id = 'pets' and name = 'b1b1b1b1-0000-0000-0000-000000000001/p1.jpg'$q$);
+  exception when others then null; end;
+end $$;
+select pg_temp.check(exists (select 1 from storage.objects where bucket_id = 'pets' and name = 'b1b1b1b1-0000-0000-0000-000000000001/p1.jpg'), 'a locked pet photo file was deleted');
+select pg_temp.check(pg_temp.as_role('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', $$select public.photo_in_locked_pet('b1b1b1b1-0000-0000-0000-000000000001/p1.jpg')$$)::boolean, 'the delete rule does not see the locked pet photo as locked');
+select pg_temp.check(not pg_temp.as_role('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', $$select public.photo_in_locked_pet('b1b1b1b1-0000-0000-0000-000000000001/free.jpg')$$)::boolean, 'a photo no locked pet uses was seen as locked');
+select pg_temp.check((select count(*) = 1 from pg_policies where tablename = 'objects' and policyname = 'delete own files' and qual like '%photo_in_locked_pet%'), 'the storage delete rule does not check for locked pets');
+select pg_temp.fails_as('anon', null, $$select public.get_pet_care(gen_random_uuid())$$, 'anon could reach get_pet_care');
 select pg_temp.as_role('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', $$update public.pets set locked = false where id = 'b1b1b1b1-1111-0000-0000-000000000001'$$);
 select pg_temp.check((select locked from public.pets where id = 'b1b1b1b1-1111-0000-0000-000000000001'), 'an owner unlocked their own pet');
 

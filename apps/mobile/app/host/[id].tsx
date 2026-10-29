@@ -55,7 +55,7 @@ export default function HostProfile() {
           {p.area ? <Text style={{ color: c.textMuted, fontSize: 16, fontFamily: fontFamily('regular', rtl) }}>{p.area}</Text> : null}
         </View>
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Stat value={p.rating_avg != null ? String(p.rating_avg) : tr('host.noRating')} label={tr('host.ratingLabel')} />
+          <Stat value={p.rating_avg != null ? p.rating_avg.toFixed(1) : tr('host.noRating')} label={tr('host.ratingLabel')} />
           <Stat value={String(p.stays_count)} label={tr('host.staysLabel')} />
         </View>
         <Heading>{tr('host.about')}</Heading>
@@ -76,7 +76,7 @@ export default function HostProfile() {
         {homeUrl ? (
           <>
             <Heading>{tr('host.home')}</Heading>
-            <Image source={{ uri: homeUrl }} accessibilityLabel={tr('host.home')} style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: 20 }} resizeMode="cover" />
+            <Image source={{ uri: homeUrl }} accessible accessibilityLabel={tr('host.home')} style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: 20 }} resizeMode="cover" />
           </>
         ) : null}
       </View>

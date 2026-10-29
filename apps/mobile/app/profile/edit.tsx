@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '../../src/components/Button';
 import { BACKGROUNDS, CardArt, CardBackground, CardIllustration, ILLUSTRATIONS } from '../../src/components/CardArt';
@@ -57,6 +57,7 @@ export default function EditProfile() {
   if (loaded === 'loading') return null;
   if (loaded === 'failed') return <EmptyState message={tr('err.generic')} />;
   return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ gap: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
       <CardArt illustration={art} background={bg} height={200} label={tr(`art.${art}`)} />
       <View style={{ paddingHorizontal: 24, gap: 16 }}>
@@ -82,5 +83,6 @@ export default function EditProfile() {
         <Button title={tr('edit.save')} disabled={busy || name.trim().length === 0} onPress={() => { save().catch(() => {}); }} />
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

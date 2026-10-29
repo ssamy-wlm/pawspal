@@ -1,6 +1,6 @@
 import React from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from '../../src/components/Button';
 import { Chip } from '../../src/components/Chip';
@@ -42,6 +42,7 @@ export default function PetScreen() {
   const [vetName, setVetName] = React.useState('');
   const [vetPhone, setVetPhone] = React.useState('');
   const [careNotes, setCareNotes] = React.useState('');
+  const [careLoaded, setCareLoaded] = React.useState(isNew);   // vet details are only saved back if they were read first
   const [busy, setBusy] = React.useState(false);
   const [sure, setSure] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -57,7 +58,7 @@ export default function PetScreen() {
       setVaccinated(p.vaccinated); setNotes(p.notes ?? ''); setPhotos(p.photo_paths);
       if (p.owner_id === userId) {
         const care = await fetchMyPetCare(p.id).catch(() => null);
-        if (live && care) { setVetName(care.vet_name); setVetPhone(care.vet_phone); setCareNotes(care.care_notes); }
+        if (live && care) { setVetName(care.vet_name); setVetPhone(care.vet_phone); setCareNotes(care.care_notes); setCareLoaded(true); }
       }
       if (live) setState('ready');
     })().catch(() => { if (live) setState('missing'); });
@@ -85,7 +86,7 @@ export default function PetScreen() {
     try {
       const years = age.trim() === '' ? null : Math.max(0, Math.min(40, parseInt(age, 10) || 0));
       const savedId = await savePet(userId, isNew ? null : id!, { name, type, size, age_years: years, vaccinated, notes, photo_paths: photos });
-      await saveMyPetCare(savedId, { vet_name: vetName, vet_phone: vetPhone, care_notes: careNotes });
+      if (careLoaded || vetName || vetPhone || careNotes) await saveMyPetCare(savedId, { vet_name: vetName, vet_phone: vetPhone, care_notes: careNotes });
       toast.show(tr('edit.saved'));
       router.back();
     } catch { setError(tr('err.generic')); } finally { setBusy(false); }
@@ -102,6 +103,8 @@ export default function PetScreen() {
 
   const label = (text: string) => <Text style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('medium', rtl) }}>{text}</Text>;
   return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <Stack.Screen options={{ title: isNew ? tr('pet.new') : name }} />
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ padding: 24, gap: 14, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
       {mine && locked ? (
         <View accessible accessibilityRole="alert" style={{ padding: 14, borderRadius: 16, backgroundColor: c.surface, borderWidth: 2, borderColor: c.primary }}>
@@ -126,7 +129,7 @@ export default function PetScreen() {
         ))}
       </ScrollView>
       {editable && photos.length < MAX_PHOTOS ? <Button variant="secondary" title={tr('pet.addPhoto')} disabled={busy} onPress={() => { addPhoto().catch(() => {}); }} /> : null}
-      {editable ? label(tr('pet.photoLimit')) : null}
+      {editable ? label(tr('pet.photoLimit', { n: MAX_PHOTOS })) : null}
 
       {editable ? (
         <>
@@ -139,7 +142,7 @@ export default function PetScreen() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {(['small', 'medium', 'large'] as const).map((k) => <Chip key={k} label={tr(`signup.size.${k}`)} selected={size === k} onPress={() => setSize(k)} />)}
           </View>
-          <TextField label={tr('pet.age')} value={age} onChangeText={(v) => setAge(v.replace(/\D/g, '').slice(0, 2))} keyboardType="number-pad" />
+          <TextField label={tr('pet.age')} value={age} onChangeText={(v) => setAge(v.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, '').slice(0, 2))} keyboardType="number-pad" />
           <View style={{ flexDirection: 'row' }}><Chip label={tr('pet.vaccinated')} selected={vaccinated} onPress={() => setVaccinated((v) => !v)} /></View>
           <TextField label={tr('pet.notes')} hint={tr('pet.notesHint')} value={notes} onChangeText={setNotes} maxLength={600} multiline
             style={{ minHeight: 100, textAlignVertical: 'top', paddingTop: 14 }} />
@@ -154,7 +157,7 @@ export default function PetScreen() {
           {!isNew ? <Button variant="danger" title={sure ? tr('pet.deleteSure') : tr('pet.delete')} disabled={busy} onPress={() => { remove().catch(() => {}); }} /> : null}
         </>
       ) : pet ? (
-        <View style={{ gap: 8 }} accessible>
+        <View style={{ gap: 8 }}>
           <Text accessibilityRole="header" style={{ color: c.text, fontSize: 28, fontFamily: fontFamily('extrabold', rtl) }}>{pet.name}</Text>
           <Text style={{ color: c.textMuted, fontSize: 16, fontFamily: fontFamily('regular', rtl) }}>
             {[tr(`pet.${pet.type}`), tr(`signup.size.${pet.size}`), pet.age_years != null ? tn('count.year', pet.age_years) : null, pet.vaccinated ? tr('pet.vaccinatedYes') : null].filter(Boolean).join(' · ')}
@@ -163,5 +166,6 @@ export default function PetScreen() {
         </View>
       ) : null}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

@@ -82,8 +82,8 @@ describe('my pets', () => {
     await renderIn(<Pets />);
     await waitFor(() => expect(screen.getByText('Biscuit')).toBeTruthy());
     expect(screen.getByText('Dog · Medium · 3 years')).toBeTruthy();
-    expect(screen.getByLabelText('Mango. In a confirmed booking')).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText('Biscuit'));
+    expect(screen.getByLabelText(/^Mango\. .*In a confirmed booking/)).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText(/^Biscuit/));
     expect(router.push).toHaveBeenCalledWith('/pets/pet-1');
   });
 
@@ -129,6 +129,26 @@ describe('pet screen', () => {
     expect(p.deletePet).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByText('Tap again to delete'));
     await waitFor(() => expect(p.deletePet).toHaveBeenCalledWith('pet-1'));
+  });
+
+  it('never wipes saved vet details when they could not be read', async () => {
+    p.fetchMyPetCare.mockRejectedValue(new Error('offline'));
+    params.mockReturnValue({ id: 'pet-1' });
+    await renderIn(<PetScreen />);
+    await waitFor(() => screen.getByDisplayValue('Biscuit'));
+    await fireEvent.changeText(screen.getByLabelText('About your pet'), 'Updated');
+    await fireEvent.press(screen.getByText('Save pet'));
+    await waitFor(() => expect(p.savePet).toHaveBeenCalled());
+    expect(p.saveMyPetCare).not.toHaveBeenCalled();
+  });
+
+  it('understands an age typed with Arabic digits', async () => {
+    params.mockReturnValue({ id: 'pet-1' });
+    await renderIn(<PetScreen />);
+    await waitFor(() => screen.getByDisplayValue('Biscuit'));
+    await fireEvent.changeText(screen.getByLabelText('Age in years (optional)'), '٤');
+    await fireEvent.press(screen.getByText('Save pet'));
+    await waitFor(() => expect(p.savePet).toHaveBeenCalledWith('me', 'pet-1', expect.objectContaining({ age_years: 4 })));
   });
 
   it('keeps at least one photo on a pet', async () => {
@@ -178,7 +198,7 @@ describe('host profile', () => {
     expect(screen.getByLabelText('4.9 rating')).toBeTruthy();
     expect(screen.getByLabelText('32 stays')).toBeTruthy();
     expect(screen.getByText('Dive instructor with a garden.')).toBeTruthy();
-    await waitFor(() => expect(screen.getByLabelText('Biscuit')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText(/^Biscuit/)).toBeTruthy());
     expect(screen.getByLabelText('Home')).toBeTruthy();
   });
 

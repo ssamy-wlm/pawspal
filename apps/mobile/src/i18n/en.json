@@ -241,7 +241,7 @@
   "pet.addPhoto": "Add a photo",
   "pet.removePhoto": "Remove photo {n}",
   "pet.photo": "Photo {n}",
-  "pet.photoLimit": "Up to 8 photos",
+  "pet.photoLimit": "Up to {n} photos",
   "pet.care": "Private details",
   "pet.careSub": "Only you, and your host once a booking is confirmed, can see these.",
   "pet.vetName": "Vet name",

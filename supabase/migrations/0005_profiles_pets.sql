@@ -8,25 +8,20 @@
 -- (In chat they unlock once a booking is paid; here there is no such moment.)
 create or replace function public.mask_contact_text(p_text text)
 returns text language plpgsql immutable set search_path = public as $$
-declare
-  v_body  text := p_text;
-  v_match text;
+declare v text := p_text;
 begin
-  if v_body is null then return null; end if;
-  for v_match in
-    select m[1] from regexp_matches(v_body, '(\+?[0-9٠-٩][0-9٠-٩ ().-]{6,}[0-9٠-٩])', 'g') as m
-  loop
-    if length(regexp_replace(v_match, '[^0-9٠-٩]', '', 'g')) >= 9 then
-      v_body := replace(v_body, v_match, '•••');
-    end if;
-  end loop;
-  v_body := regexp_replace(v_body, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '•••', 'g');
-  v_body := regexp_replace(v_body, '(https?://[^ ]+|www\.[^ ]+|[A-Za-z0-9-]+\.(com|net|org|me|io|eg|ly|link|app)(/[^ ]*)?)', '•••', 'gi');
-  v_body := regexp_replace(v_body, '@[A-Za-z0-9_.]{3,}', '•••', 'g');
-  v_body := regexp_replace(v_body,
-    '(insta ?pay|whats ?app|wa\.me|telegram|vodafone ?cash|etisalat ?cash|orange ?cash|we ?pay|paypal|انستا ?باي|واتس ?اب|واتساب|تليجرام|فودافون ?كاش)',
+  if v is null then return null; end if;
+  -- Arabic-Indic digits become ordinary digits first, so one rule covers both.
+  v := translate(v, '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789');
+  -- Nine or more digits in a row, even when split by a few spaces or symbols (010/1234/5678, 010_1234_5678, 010,1234,5678).
+  v := regexp_replace(v, '[0-9]([^[:alpha:][:digit:]]{0,2}[0-9]){8,}', '•••', 'g');
+  v := regexp_replace(v, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '•••', 'g');
+  v := regexp_replace(v, '(https?://[^ ]+|www\.[^ ]+|[A-Za-z0-9-]+\.(com|net|org|me|io|eg|ly|link|app|co|info|xyz|ee|ws|to|gl|be)(/[^ ]*)?)', '•••', 'gi');
+  v := regexp_replace(v, '@[A-Za-z0-9_.]{3,}', '•••', 'g');
+  v := regexp_replace(v,
+    '(insta ?pay|whats ?app|wa\.me|telegram|vodafone ?cash|etisalat ?cash|orange ?cash|we ?pay|paypal|\m(instagram|insta|signal|viber|snapchat|facebook|messenger|tiktok|gmail|yahoo|hotmail|outlook|icloud)\M|انستا ?باي|واتس ?اب|واتساب|واتس|تليجرام|تيليجرام|تلجرام|تيليغرام|فودافون ?كاش|انستجرام|انستغرام|فايبر|سناب|فيسبوك|ماسنجر)',
     '•••', 'gi');
-  return v_body;
+  return v;
 end $$;
 
 create or replace function public.mask_profile_text()
@@ -49,6 +44,26 @@ begin
 end $$;
 create trigger mask_pet_text_before_write before insert or update of name, notes on public.pets
   for each row execute function public.mask_pet_text();
+
+-- ---------------------------------------------------------------- photos of a locked pet cannot be deleted
+-- The pet's rows are locked while it is in a confirmed booking, but its photo FILES could still be deleted through the
+-- storage API. Now a file that a locked pet uses cannot be deleted.
+create or replace function public.photo_in_locked_pet(p_name text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.pets p where p.locked and p_name = any (p.photo_paths))
+$$;
+revoke execute on function public.photo_in_locked_pet(text) from public, anon;
+grant execute on function public.photo_in_locked_pet(text) to authenticated;
+drop policy "delete own files" on storage.objects;
+create policy "delete own files" on storage.objects
+  for delete to authenticated using (
+    bucket_id in ('pets', 'homes') and (storage.foldername(name))[1] = auth.uid()::text
+    and not public.photo_in_locked_pet(name)
+  );
+
+-- get_pet_care (phase 0) was callable by anyone signed out too (it refused, but should not be reachable at all).
+revoke execute on function public.get_pet_care(uuid) from public, anon;
+grant execute on function public.get_pet_care(uuid) to authenticated;
 
 -- ---------------------------------------------------------------- private vet details
 -- Owners cannot change a pet that is in a confirmed booking, and that includes its vet details.
