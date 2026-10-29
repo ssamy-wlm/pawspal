@@ -15,7 +15,7 @@ test('unknown providers are refused with a clear message', () => {
 });
 
 test('fake provider: approves by default, with a stable per-user document fingerprint', async () => {
-  const p = identityProviderFromEnv(envFrom({ IDENTITY_PROVIDER: 'fake' }))!;
+  const p = identityProviderFromEnv(envFrom({ IDENTITY_PROVIDER: 'fake', PAWSPAL_ENV: 'test' }))!;
   assert.equal(p.name, 'fake');
   assert.deepEqual(await p.checkFace({ userId: 'u1', image: img }), { ok: true });
   const a = await p.checkId({ userId: 'u1' });
@@ -28,7 +28,7 @@ test('fake provider: approves by default, with a stable per-user document finger
 });
 
 test('fake provider: test outcomes', async () => {
-  const p = identityProviderFromEnv(envFrom({ IDENTITY_PROVIDER: 'fake' }))!;
+  const p = identityProviderFromEnv(envFrom({ IDENTITY_PROVIDER: 'fake', PAWSPAL_ENV: 'test' }))!;
   assert.equal((await p.checkFace({ userId: 'u', image: img, testOutcome: 'reject_face' })).ok, false);
   assert.equal((await p.checkFace({ userId: 'u', image: new Uint8Array() })).ok, false);
   assert.equal((await p.checkId({ userId: 'u', testOutcome: 'reject_id' })).ok, false);
@@ -36,7 +36,8 @@ test('fake provider: test outcomes', async () => {
   assert.equal((await p.checkId({ userId: 'u1', testOutcome: 'duplicate' })).documentHash, (await p.checkId({ userId: 'u2', testOutcome: 'duplicate' })).documentHash);
 });
 
-test('fake provider: cannot be used in production unless a second switch is set', () => {
+test('fake provider: fails closed, so it needs a development environment or a second switch', () => {
+  assert.throws(() => identityProviderFromEnv(envFrom({ IDENTITY_PROVIDER: 'fake' })), ConfigError);
   assert.throws(() => identityProviderFromEnv(envFrom({ IDENTITY_PROVIDER: 'fake', PAWSPAL_ENV: 'production' })), ConfigError);
   assert.equal(identityProviderFromEnv(envFrom({ IDENTITY_PROVIDER: 'fake', PAWSPAL_ENV: 'production', ALLOW_FAKE_IDENTITY: 'true' }))!.name, 'fake');
 });

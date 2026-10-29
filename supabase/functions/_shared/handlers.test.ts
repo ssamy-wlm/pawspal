@@ -341,7 +341,7 @@ test('process-upload: a file that is not a real photo is refused and deleted', a
 });
 
 // ---------------------------------------------------------------- verify-identity
-const idEnv = (extra: Record<string, string> = {}) => envFrom({ IDENTITY_PROVIDER: 'fake', ...extra });
+const idEnv = (extra: Record<string, string> = {}) => envFrom({ IDENTITY_PROVIDER: 'fake', PAWSPAL_ENV: 'test', ...extra });
 const idDeps = (rpc: Rpc, env = idEnv(), files: Record<string, Uint8Array> = { [`faces/${UID}/f.jpg`]: Uint8Array.of(1, 2, 3) }, user: { id: string } | null = { id: UID }) => ({
   env, authUser: async () => user, download: async (b: string, p: string) => files[`${b}/${p}`] ?? null, rpc });
 

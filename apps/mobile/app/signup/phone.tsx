@@ -61,7 +61,7 @@ export default function PhoneStep() {
     );
   }
   return (
-    <StepScreen step={1} title={tr('signup.code.title')} sub={tr('signup.code.sub', { phone })}
+    <StepScreen step={1} title={tr('signup.code.title')} sub={tr('signup.code.sub', { phone: `\u2066${phone}\u2069` })}
       onBack={() => { setSent(false); setError(null); }}
       footer={<Button navy title={tr('signup.code.verify')} disabled={busy || code.length < 4} onPress={() => { verify().catch(() => {}); }} />}>
       <TextField label={tr('signup.code.label')} value={code} onChangeText={(v) => setCode(v.replace(/\D/g, ''))}

@@ -146,7 +146,7 @@
   "signup.about.title": "About you",
   "signup.about.sub": "Tell us who you are and what you need.",
   "signup.about.name": "First name",
-  "signup.role.title": "I want to",
+  "signup.role.title": "What brings you here?",
   "signup.role.both": "Both",
   "signup.pet.title": "Your pet",
   "signup.pet.name": "Pet name",
@@ -190,5 +190,7 @@
   "err.generic": "Something went wrong. Try again.",
   "trust.noIdPhoto": "We do not keep your ID photo",
   "trust.noIdPhotoSub": "Only the result of the check is saved.",
-  "pending.stoppedTitle": "This account is not active"
+  "pending.stoppedTitle": "This account is not active",
+  "signup.camera.settings": "Open settings",
+  "signup.selfie.preview": "Your selfie"
 }

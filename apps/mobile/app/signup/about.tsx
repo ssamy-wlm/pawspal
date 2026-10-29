@@ -30,8 +30,8 @@ function Heading({ children }: { children: string }) {
 function PhotoButton({ done, label, doneLabel, busy, onPress }: { done: boolean; label: string; doneLabel: string; busy: boolean; onPress: () => void }) {
   const c = useTheme(true).color;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={done ? doneLabel : label} disabled={busy} onPress={onPress}
-      style={{ minHeight: 56, borderRadius: 16, borderWidth: 2, borderStyle: done ? 'solid' : 'dashed', borderColor: done ? c.primary : c.border,
+    <Pressable accessibilityRole="button" accessibilityLabel={done ? doneLabel : label} accessibilityState={{ busy }} disabled={busy} onPress={onPress}
+      style={{ minHeight: 56, borderRadius: 16, borderWidth: 2, borderStyle: done ? 'solid' : 'dashed', borderColor: done ? c.primary : c.textMuted,
         alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
       <Text style={{ color: done ? c.primary : c.text, fontSize: 16, fontFamily: fontFamily('semibold', isRTL()) }}>{busy ? tr('signup.photo.checking') : done ? doneLabel : label}</Text>
     </Pressable>
@@ -86,7 +86,7 @@ export default function AboutStep() {
   return (
     <StepScreen step={4} title={tr('signup.about.title')} sub={tr('signup.about.sub')}
       footer={<Button navy title={tr('common.continue')} disabled={!ready || busy !== null} onPress={() => { save().catch(() => {}); }} />}>
-      <TextField label={tr('signup.about.name')} value={name} onChangeText={setName} maxLength={40} autoComplete="given-name" textContentType="givenName" />
+      <TextField label={tr('signup.about.name')} value={name} onChangeText={setName} maxLength={40} autoCapitalize="words" autoComplete="given-name" textContentType="givenName" />
 
       <View style={{ gap: 10 }}>
         <Heading>{tr('signup.role.title')}</Heading>
@@ -100,7 +100,7 @@ export default function AboutStep() {
       {needsPet ? (
         <View style={{ gap: 12 }}>
           <Heading>{tr('signup.pet.title')}</Heading>
-          <TextField label={tr('signup.pet.name')} value={petName} onChangeText={setPetName} maxLength={30} />
+          <TextField label={tr('signup.pet.name')} value={petName} onChangeText={setPetName} maxLength={30} autoCapitalize="words" />
           <Heading>{tr('signup.pet.type')}</Heading>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {(['dog', 'cat', 'other'] as const).map((k) => <Chip key={k} label={tr(`pet.${k}`)} selected={petType === k} onPress={() => setPetType(k)} />)}

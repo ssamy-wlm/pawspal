@@ -53,7 +53,7 @@ export default function RulesStep() {
             <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={tr('signup.rules.accept', { doc: tr(d.label) })}
               onPress={() => setTicked((s) => ({ ...s, [d.doc]: !on }))}
               style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-              <View style={{ width: 32, height: 32, borderRadius: 10, borderWidth: 2, borderColor: on ? c.primary : c.border, backgroundColor: on ? c.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 32, height: 32, borderRadius: 10, borderWidth: 2, borderColor: on ? c.primary : c.textMuted, backgroundColor: on ? c.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                 {on ? <Icon name="check" color={c.onPrimary} size={18} /> : null}
               </View>
               <Text style={{ flex: 1, color: c.text, fontSize: 16, fontFamily: fontFamily('medium', rtl) }}>{tr('signup.rules.accept', { doc: tr(d.label) })}</Text>

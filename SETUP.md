@@ -93,6 +93,9 @@ Sign-up works today with **Supabase test phone numbers**, so no SMS company is n
 2. When you choose a real provider (an Egyptian SMS company, WhatsApp, or Twilio later), tell Claude Code which one. It is added as one small file. Then in Supabase: Authentication → Hooks → **Send SMS** → choose HTTPS, enter the URL of the `send-sms` function, copy the secret it shows into the `SEND_SMS_HOOK_SECRET` secret, and set `SMS_PROVIDERS` and the provider's own keys. The hook is the only place the code is sent from.
 3. ID and selfie checks use the setting `IDENTITY_PROVIDER`. Leave it empty on the live project until you choose a provider; the app then says "not available yet" and nobody can pass the check. For testing set `IDENTITY_PROVIDER=fake` (and, on a live project, also `ALLOW_FAKE_IDENTITY=true`). Never leave `fake` on once real people use the app.
 
+4. On the live project also set the Phone **SMS OTP expiry to 300 seconds**, and do **not** add test phone numbers there except briefly while testing (anyone who knows a test number's code can sign in as it). The test numbers in `supabase/config.toml` are for local use only. Before launch, confirm the database deploy does not apply the `[auth.sms.test_otp]` section to the live project.
+5. Before launch, add attestation (App Check, Play Integrity, App Attest) or a CAPTCHA in front of code requests. Without it, the per-device limit can be bypassed by calling Supabase Auth directly; the per-number limit and Supabase's global hourly SMS cap still apply.
+
 The full list of settings is in `supabase/functions/README.md`.
 
 ## F. Secrets checklist

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TrustScreen } from '../src/components/TrustScreen';
 import { Illustration } from '../src/components/Illustration';
 import { Button } from '../src/components/Button';
@@ -12,6 +13,7 @@ export default function Pending() {
   const { state, signOut, refresh } = useAuth();
   const c = useTheme(true).color;
   const rtl = isRTL();
+  const insets = useSafeAreaInsets();
   const stopped = state?.status === 'suspended' || state?.status === 'removed';
   React.useEffect(() => {
     if (stopped) return;
@@ -20,7 +22,7 @@ export default function Pending() {
   }, [stopped, refresh]);
   return (
     <TrustScreen>
-      <View style={{ flex: 1, padding: 24, justifyContent: 'center', alignItems: 'center', gap: 16 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 24, paddingTop: 24 + insets.top, justifyContent: 'center', alignItems: 'center', gap: 16 }}>
         <Illustration name="pawspalIcon" width={96} />
         <Text accessibilityRole="header" style={{ color: c.text, fontSize: 28, textAlign: 'center', fontFamily: fontFamily('extrabold', rtl) }}>
           {stopped ? tr('pending.stoppedTitle') : tr('pending.title')}
@@ -28,8 +30,8 @@ export default function Pending() {
         <Text style={{ color: c.textMuted, fontSize: 16, lineHeight: 23, textAlign: 'center', fontFamily: fontFamily('regular', rtl) }}>
           {stopped ? tr('pending.suspended') : tr('pending.body')}
         </Text>
-      </View>
-      <View style={{ padding: 24 }}>
+      </ScrollView>
+      <View style={{ padding: 24, paddingBottom: 24 + insets.bottom }}>
         <Button navy variant="secondary" title={tr('pending.signout')} onPress={() => { signOut().catch(() => {}); }} />
       </View>
     </TrustScreen>

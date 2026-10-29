@@ -143,6 +143,7 @@ declare
   v_requests int; v_oldest_request timestamptz;
 begin
   if p_mode not in ('check', 'request', 'send') then raise exception 'bad mode'; end if;
+  perform pg_advisory_xact_lock(hashtext(p_phone_hash));    -- one decision per number at a time
   delete from private.otp_events where created_at < now() - interval '2 days';
 
   -- Wrong codes since the last correct one, in the last 15 minutes.
@@ -358,6 +359,19 @@ begin
 end $$;
 revoke execute on function public.submit_profile() from public, anon;
 grant execute on function public.submit_profile() to authenticated;
+
+-- ---------------------------------------------------------------- the role is fixed once the profile is submitted
+-- The pet and home-photo checks depend on the role, so a person cannot change it after passing them.
+create or replace function public.lock_role_after_submit()
+returns trigger language plpgsql as $$
+begin
+  if new.role is distinct from old.role and old.status <> 'pending_verification' and current_user in ('authenticated', 'anon') then
+    raise exception 'role cannot be changed after the profile is submitted';
+  end if;
+  return new;
+end $$;
+create trigger lock_role_after_submit_before_update before update of role on public.profiles
+  for each row execute function public.lock_role_after_submit();
 
 -- ---------------------------------------------------------------- service-only functions stay service-only
 revoke execute on function public.otp_check_and_log(text, text, boolean, text) from public, anon, authenticated;

@@ -162,7 +162,7 @@
   "signup.about.title": "عنك",
   "signup.about.sub": "عرّفنا بنفسك وبما تحتاجه.",
   "signup.about.name": "الاسم الأول",
-  "signup.role.title": "أريد أن",
+  "signup.role.title": "ما الذي جاء بك؟",
   "signup.role.both": "الاثنان معًا",
   "signup.pet.title": "حيوانك الأليف",
   "signup.pet.name": "اسم الحيوان",
@@ -206,5 +206,7 @@
   "err.generic": "حدث خطأ ما. حاول مرة أخرى.",
   "trust.noIdPhoto": "لا نحتفظ بصورة هويتك",
   "trust.noIdPhotoSub": "تُحفظ نتيجة التحقق فقط.",
-  "pending.stoppedTitle": "هذا الحساب غير نشط"
+  "pending.stoppedTitle": "هذا الحساب غير نشط",
+  "signup.camera.settings": "افتح الإعدادات",
+  "signup.selfie.preview": "صورتك الشخصية"
 }

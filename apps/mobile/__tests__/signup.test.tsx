@@ -154,7 +154,7 @@ describe('selfie step', () => {
 
   it('explains how to allow the camera when it is refused', async () => {
     const cam = jest.requireMock('expo-camera') as { useCameraPermissions: jest.Mock };
-    cam.useCameraPermissions.mockReturnValueOnce([{ granted: false }, jest.fn()]);
+    cam.useCameraPermissions.mockReturnValueOnce([{ granted: false, canAskAgain: true }, jest.fn()]);
     await renderIn(<SelfieStep />);
     expect(screen.getByText('Allow camera')).toBeTruthy();
   });

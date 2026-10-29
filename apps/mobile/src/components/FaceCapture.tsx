@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Linking, Text, View } from 'react-native';
 import Svg, { Ellipse } from 'react-native-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Button } from './Button';
@@ -18,7 +18,8 @@ export function FaceCapture({ onCaptured, onError }: { onCaptured: (uri: string)
     return (
       <View style={{ gap: 16 }}>
         <Text style={{ color: t.color.text, fontSize: 16, lineHeight: 23, fontFamily: fontFamily('regular', isRTL()) }}>{tr('signup.camera.denied')}</Text>
-        <Button navy title={tr('signup.camera.allow')} onPress={() => { ask().catch(() => {}); }} />
+        <Button navy title={permission.canAskAgain ? tr('signup.camera.allow') : tr('signup.camera.settings')}
+          onPress={() => { (permission.canAskAgain ? ask() : Linking.openSettings()).catch(() => {}); }} />
       </View>
     );
   }

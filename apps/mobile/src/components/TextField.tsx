@@ -12,11 +12,12 @@ export function TextField({ label, hint, ...input }: { label: string; hint?: str
       <Text style={{ color: c.text, fontSize: 15, fontFamily: fontFamily('semibold', rtl) }}>{label}</Text>
       <TextInput
         accessibilityLabel={label}
+        accessibilityHint={hint}
         placeholderTextColor={c.textMuted}
         {...input}
         style={[{
-          minHeight: 56, borderRadius: 16, borderWidth: 2, borderColor: c.border, backgroundColor: c.surface, color: c.text,
-          paddingHorizontal: 16, fontSize: 17, fontFamily: fontFamily('regular', rtl), textAlign: rtl ? 'right' : 'left',
+          minHeight: 56, borderRadius: 16, borderWidth: 2, borderColor: c.textMuted, backgroundColor: c.surface, color: c.text,
+          paddingHorizontal: 16, fontSize: 17, fontFamily: fontFamily('regular', rtl),
         }, input.style]}
       />
       {hint ? <Text style={{ color: c.textMuted, fontSize: 13, fontFamily: fontFamily('regular', rtl) }}>{hint}</Text> : null}

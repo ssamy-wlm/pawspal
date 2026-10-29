@@ -36,7 +36,7 @@ export default function SelfieStep() {
         </>) : undefined}>
       {uri ? (
         <View style={{ aspectRatio: 3 / 4, borderRadius: 24, overflow: 'hidden' }}>
-          <Image source={{ uri }} accessibilityLabel={tr('signup.selfie.title')} style={{ flex: 1 }} />
+          <Image source={{ uri }} accessible accessibilityLabel={tr('signup.selfie.preview')} style={{ flex: 1 }} />
         </View>
       ) : <FaceCapture onCaptured={(u) => { setError(null); setUri(u); }} onError={() => setError(tr('err.generic'))} />}
       <ErrorText>{error}</ErrorText>

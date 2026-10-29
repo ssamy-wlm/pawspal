@@ -1,6 +1,7 @@
 import React from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TrustScreen } from './TrustScreen';
 import { StepHeader } from './StepHeader';
 import { fontFamily, useTheme } from '../theme';
@@ -9,8 +10,9 @@ import { isRTL } from '../i18n';
 function Body({ step, title, sub, onBack, children, footer }: Props) {
   const c = useTheme().color;
   const rtl = isRTL();
+  const insets = useSafeAreaInsets();
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1, paddingTop: insets.top }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <StepHeader step={step} onBack={onBack ?? (router.canGoBack() ? () => router.back() : undefined)} />
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 24, gap: 20 }}>
         <View style={{ gap: 8 }}>
@@ -19,7 +21,7 @@ function Body({ step, title, sub, onBack, children, footer }: Props) {
         </View>
         {children}
       </ScrollView>
-      <View style={{ padding: 24, gap: 12 }}>{footer}</View>
+      <View style={{ padding: 24, paddingBottom: 24 + insets.bottom, gap: 12 }}>{footer}</View>
     </KeyboardAvoidingView>
   );
 }
