@@ -4,7 +4,7 @@ import { acceptedByMe, acceptedByOther, acceptTerms, Booking, cancelBooking, cur
 
 const b = (over: Partial<Booking> = {}): Booking => ({
   id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: '2026-12-01', ends_on: '2026-12-05', stay_location: 'sitter_home', cost_type: 'paid',
-  price_per_night: 250, food_provided: true, status: 'requested', fee_status: 'unpaid', owner_accepted_at: null, sitter_accepted_at: null, swap_group: null, ...over,
+  price_per_night: 250, food_provided: true, status: 'requested', fee_status: 'unpaid', owner_accepted_at: null, sitter_accepted_at: null, swap_group: null, terms_version: 1, ...over,
 });
 afterEach(() => { jest.restoreAllMocks(); setLocaleForTests('en'); });
 
@@ -61,7 +61,8 @@ describe('asking the database', () => {
     const spy = rpc({ data: 'terms_agreed' });
     await proposeTerms('b1', { starts_on: 'a', ends_on: 'b', location: 'sitter_home', cost: 'volunteer', price: null, food: false });
     expect(spy).toHaveBeenCalledWith('propose_terms', { p_booking: 'b1', p_starts: 'a', p_ends: 'b', p_location: 'sitter_home', p_cost: 'volunteer', p_price: null, p_food: false });
-    await expect(acceptTerms('b1')).resolves.toBe('terms_agreed');
+    await expect(acceptTerms('b1', 3)).resolves.toBe('terms_agreed');
+    expect(spy).toHaveBeenLastCalledWith('accept_terms', { p_booking: 'b1', p_version: 3 });
     await cancelBooking('b1');
     expect(spy).toHaveBeenLastCalledWith('cancel_booking', { p_booking: 'b1', p_reason: '' });
   });
@@ -71,6 +72,10 @@ describe('asking the database', () => {
     await expect(requestBooking(stay)).rejects.toThrow('duplicate');
     rpc({ error: { message: 'too many open requests' } });
     await expect(requestBooking(stay)).rejects.toThrow('too_many');
+    rpc({ error: { message: 'the terms changed' } });
+    await expect(acceptTerms('b1', 1)).rejects.toThrow('terms_changed');
+    rpc({ error: { message: 'that pet is already booked for these dates' } });
+    await expect(requestBooking(stay)).rejects.toThrow('pet_booked');
     rpc({ error: { message: 'permission denied' } });
     await expect(requestBooking(stay)).rejects.toThrow('failed');
   });

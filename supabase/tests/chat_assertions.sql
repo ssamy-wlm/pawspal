@@ -37,16 +37,16 @@ select pg_temp.fails_as('authenticated', 'd5d5d5d5-0000-0000-0000-000000000005',
 select pg_temp.fails_as('anon', null, $$select public.request_booking('d2d2d2d2-0000-0000-0000-000000000002', 'd1d1d1d1-1111-0000-0000-000000000001', current_date + 30, current_date + 32, 'sitter_home', 'volunteer', null, false)$$, 'anon requested a stay');
 
 \echo '--- B2 terms: any change clears both acceptances'
-select pg_temp.as_role('authenticated', 'd3d3d3d3-0000-0000-0000-000000000003', format($$select public.accept_terms(%L)$$, (select v from t_ids where k = 'b1')));
+select pg_temp.as_role('authenticated', 'd3d3d3d3-0000-0000-0000-000000000003', format($$select public.accept_terms(%L, (select terms_version from public.bookings where id = %L))$$, (select v from t_ids where k = 'b1'), (select v from t_ids where k = 'b1')));
 select pg_temp.check((select owner_accepted_at is not null and sitter_accepted_at is null and status = 'requested' from public.bookings where id = (select v::uuid from t_ids where k = 'b1')), 'one acceptance should leave it requested');
-select pg_temp.check(pg_temp.as_role('authenticated', 'd4d4d4d4-0000-0000-0000-000000000004', format($$select public.accept_terms(%L)$$, (select v from t_ids where k = 'b1'))) = 'terms_agreed', 'two acceptances did not agree the terms');
+select pg_temp.check(pg_temp.as_role('authenticated', 'd4d4d4d4-0000-0000-0000-000000000004', format($$select public.accept_terms(%L, (select terms_version from public.bookings where id = %L))$$, (select v from t_ids where k = 'b1'), (select v from t_ids where k = 'b1'))) = 'terms_agreed', 'two acceptances did not agree the terms');
 select pg_temp.as_role('authenticated', 'd4d4d4d4-0000-0000-0000-000000000004', format($$select public.propose_terms(%L, current_date + 10, current_date + 15, 'sitter_home', 'paid', 300, true)$$, (select v from t_ids where k = 'b1')));
 select pg_temp.check((select owner_accepted_at is null and sitter_accepted_at is null and status = 'requested' and price_per_night = 300 from public.bookings where id = (select v::uuid from t_ids where k = 'b1')), 'changing the terms did not clear both acceptances');
-select pg_temp.fails_as('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', format($$select public.accept_terms(%L)$$, (select v from t_ids where k = 'b1')), 'a stranger accepted terms');
+select pg_temp.fails_as('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', format($$select public.accept_terms(%L, (select terms_version from public.bookings where id = %L))$$, (select v from t_ids where k = 'b1'), (select v from t_ids where k = 'b1')), 'a stranger accepted terms');
 select pg_temp.fails_as('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', format($$select public.propose_terms(%L, current_date + 10, current_date + 15, 'sitter_home', 'volunteer', null, true)$$, (select v from t_ids where k = 'b1')), 'a stranger changed terms');
 select pg_temp.fails_as('authenticated', 'd3d3d3d3-0000-0000-0000-000000000003', format($$select public.propose_terms(%L, current_date + 10, current_date + 15, 'sitter_home', 'swap', null, true)$$, (select v from t_ids where k = 'b1')), 'a paid booking became a swap');
 select pg_temp.check(pg_temp.count_as('d1d1d1d1-0000-0000-0000-000000000001', $$select count(*) from public.bookings where owner_id = 'd3d3d3d3-0000-0000-0000-000000000003'$$) = 0, 'a stranger read someone else booking');
-select pg_temp.fails_as('anon', null, format($$select public.accept_terms(%L)$$, (select v from t_ids where k = 'b1')), 'anon accepted terms');
+select pg_temp.fails_as('anon', null, format($$select public.accept_terms(%L, (select terms_version from public.bookings where id = %L))$$, (select v from t_ids where k = 'b1'), (select v from t_ids where k = 'b1')), 'anon accepted terms');
 select pg_temp.fails_as('authenticated', 'd3d3d3d3-0000-0000-0000-000000000003', $$select public.confirm_booking_payment(gen_random_uuid())$$, 'a user confirmed a payment');
 select pg_temp.as_role('authenticated', 'd3d3d3d3-0000-0000-0000-000000000003', format($$select public.cancel_booking(%L, 'plans changed')$$, (select v from t_ids where k = 'b1')));
 select pg_temp.check((select status = 'cancelled' from public.bookings where id = (select v::uuid from t_ids where k = 'b1')), 'cancel did nothing');
@@ -58,16 +58,16 @@ select pg_temp.check((select count(*) = 1 from public.bookings where swap_group 
 select pg_temp.check((select count(*) = 1 from public.bookings where swap_group = (select v::uuid from t_ids where k = 'sw') and owner_id = 'd2d2d2d2-0000-0000-0000-000000000002' and sitter_id = 'd1d1d1d1-0000-0000-0000-000000000001' and pet_id = 'd2d2d2d2-1111-0000-0000-000000000002'), 'leg two is wrong');
 select pg_temp.fails_as('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', $$select public.request_swap('d3d3d3d3-0000-0000-0000-000000000003', 'd1d1d1d1-1111-0000-0000-000000000001', 'd3d3d3d3-1111-0000-0000-000000000003', current_date + 20, current_date + 24, current_date + 40, current_date + 44, true)$$, 'a swap with an owner-only account');
 select pg_temp.fails_as('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', $$select public.request_swap('d2d2d2d2-0000-0000-0000-000000000002', 'd2d2d2d2-1111-0000-0000-000000000002', 'd1d1d1d1-1111-0000-0000-000000000001', current_date + 20, current_date + 24, current_date + 40, current_date + 44, true)$$, 'a swap with the pets the wrong way round');
-select pg_temp.as_role('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', format($$select public.accept_terms((select id from public.bookings where swap_group = %L and owner_id = 'd1d1d1d1-0000-0000-0000-000000000001'))$$, (select v from t_ids where k = 'sw')));
+select pg_temp.as_role('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', format($$select public.accept_terms((select id from public.bookings where swap_group = %L and owner_id = 'd1d1d1d1-0000-0000-0000-000000000001'), (select terms_version from public.bookings where swap_group = %L limit 1))$$, (select v from t_ids where k = 'sw'), (select v from t_ids where k = 'sw')));
 select pg_temp.check((select count(*) = 2 and bool_and(status = 'requested') from public.bookings where swap_group = (select v::uuid from t_ids where k = 'sw')), 'one person accepting should leave both legs requested');
 select pg_temp.check((select count(*) filter (where owner_accepted_at is not null or sitter_accepted_at is not null) = 2 from public.bookings where swap_group = (select v::uuid from t_ids where k = 'sw')), 'accepting did not count on both legs');
-select pg_temp.as_role('authenticated', 'd2d2d2d2-0000-0000-0000-000000000002', format($$select public.accept_terms((select id from public.bookings where swap_group = %L and owner_id = 'd2d2d2d2-0000-0000-0000-000000000002'))$$, (select v from t_ids where k = 'sw')));
+select pg_temp.as_role('authenticated', 'd2d2d2d2-0000-0000-0000-000000000002', format($$select public.accept_terms((select id from public.bookings where swap_group = %L and owner_id = 'd2d2d2d2-0000-0000-0000-000000000002'), (select terms_version from public.bookings where swap_group = %L limit 1))$$, (select v from t_ids where k = 'sw'), (select v from t_ids where k = 'sw')));
 select pg_temp.check((select count(*) = 2 and bool_and(status = 'terms_agreed') from public.bookings where swap_group = (select v::uuid from t_ids where k = 'sw')), 'both people accepting should agree both legs');
 select pg_temp.as_role('authenticated', 'd2d2d2d2-0000-0000-0000-000000000002', format($$select public.propose_terms((select id from public.bookings where swap_group = %L and owner_id = 'd2d2d2d2-0000-0000-0000-000000000002'), current_date + 41, current_date + 45, 'sitter_home', 'swap', null, false)$$, (select v from t_ids where k = 'sw')));
 select pg_temp.check((select count(*) = 2 and bool_and(status = 'requested' and owner_accepted_at is null and sitter_accepted_at is null) from public.bookings where swap_group = (select v::uuid from t_ids where k = 'sw')), 'changing one leg did not clear acceptance on both legs');
 select pg_temp.fails_as('authenticated', 'd2d2d2d2-0000-0000-0000-000000000002', format($$select public.propose_terms((select id from public.bookings where swap_group = %L limit 1), current_date + 41, current_date + 45, 'sitter_home', 'paid', 100, false)$$, (select v from t_ids where k = 'sw')), 'a swap turned into a paid booking');
-select pg_temp.as_role('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', format($$select public.accept_terms((select id from public.bookings where swap_group = %L and owner_id = 'd1d1d1d1-0000-0000-0000-000000000001'))$$, (select v from t_ids where k = 'sw')));
-select pg_temp.as_role('authenticated', 'd2d2d2d2-0000-0000-0000-000000000002', format($$select public.accept_terms((select id from public.bookings where swap_group = %L and owner_id = 'd2d2d2d2-0000-0000-0000-000000000002'))$$, (select v from t_ids where k = 'sw')));
+select pg_temp.as_role('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', format($$select public.accept_terms((select id from public.bookings where swap_group = %L and owner_id = 'd1d1d1d1-0000-0000-0000-000000000001'), (select terms_version from public.bookings where swap_group = %L limit 1))$$, (select v from t_ids where k = 'sw'), (select v from t_ids where k = 'sw')));
+select pg_temp.as_role('authenticated', 'd2d2d2d2-0000-0000-0000-000000000002', format($$select public.accept_terms((select id from public.bookings where swap_group = %L and owner_id = 'd2d2d2d2-0000-0000-0000-000000000002'), (select terms_version from public.bookings where swap_group = %L limit 1))$$, (select v from t_ids where k = 'sw'), (select v from t_ids where k = 'sw')));
 select public.confirm_booking_payment((select id from public.bookings where swap_group = (select v::uuid from t_ids where k = 'sw') limit 1));
 select pg_temp.check((select count(*) = 2 and bool_and(status = 'confirmed' and fee_status = 'paid') from public.bookings where swap_group = (select v::uuid from t_ids where k = 'sw')), 'a paid swap was not confirmed as one');
 select pg_temp.check((select bool_and(locked) from public.pets where id in ('d1d1d1d1-1111-0000-0000-000000000001', 'd2d2d2d2-1111-0000-0000-000000000002')), 'a confirmed swap did not lock both pets');
@@ -128,11 +128,61 @@ select pg_temp.fails_as('anon', null, $$select * from public.search_stays(curren
 insert into storage.objects (bucket_id, name, created_at) values
   ('incoming', 'x/old-raw.jpg', now() - interval '3 hours'), ('incoming', 'x/new-raw.jpg', now() - interval '5 minutes'),
   ('pets', 'x/old-unused.jpg', now() - interval '3 days'), ('pets', 'x/new-unused.jpg', now() - interval '1 hour'),
-  ('homes', 'x/old-home.jpg', now() - interval '3 days'), ('faces', 'x/old-face.jpg', now() - interval '3 days');
+  ('homes', 'x/old-home.jpg', now() - interval '3 days'), ('faces', 'x/old-face.jpg', now() - interval '10 days'), ('faces', 'x/waiting-face.jpg', now() - interval '3 days');
 update storage.objects set created_at = now() - interval '3 days' where name = 'd1d1d1d1-0000-0000-0000-000000000001/a.jpg';   -- in use by a pet
 select pg_temp.check((select array_agg(name order by name) from public.list_unused_uploads() where name like 'x/%') = array['x/old-face.jpg', 'x/old-home.jpg', 'x/old-raw.jpg', 'x/old-unused.jpg'], 'the unused-file list is wrong');
 select pg_temp.check(not exists (select 1 from public.list_unused_uploads() where name = 'd1d1d1d1-0000-0000-0000-000000000001/a.jpg'), 'a photo a pet uses was listed as unused');
 select pg_temp.fails_as('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', $$select * from public.list_unused_uploads()$$, 'a user listed unused uploads');
 select pg_temp.fails_as('anon', null, $$select * from public.list_unused_uploads()$$, 'anon listed unused uploads');
+
+\echo '--- R1 review fixes: the server decides when a message was sent'
+select pg_temp.as_role('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', format($$insert into public.messages (conversation_id, sender_id, body, created_at) values (%L, 'd1d1d1d1-0000-0000-0000-000000000001', 'back-dated', '2000-01-01')$$, (select v from t_ids where k = 'cv')));
+select pg_temp.check((select created_at > now() - interval '1 minute' from public.messages where body = 'back-dated'), 'a back-dated message kept its fake time');
+do $$ declare n int := 0; begin
+  begin
+    for i in 1..30 loop
+      insert into public.messages (conversation_id, sender_id, body, created_at) values ((select v::uuid from t_ids where k = 'cv'), 'd1d1d1d1-0000-0000-0000-000000000001', 'again ' || i, '2000-01-01');
+      n := n + 1;
+    end loop;
+  exception when others then null; end;
+  if n >= 30 then raise exception 'ASSERT FAILED: back-dated messages escaped the rate limit'; end if;
+end $$;
+
+\echo '--- R2 masking hides phone numbers but not dates, prices and lists'
+select pg_temp.check(public.mask_contact_text('10/11/2026 12/11/2026') = '10/11/2026 12/11/2026', 'a date range was masked');
+select pg_temp.check(public.mask_contact_text('2026-11-10 2026-11-12') = '2026-11-10 2026-11-12', 'an ISO date range was masked');
+select pg_temp.check(public.mask_contact_text('10,11,12,13,14') = '10,11,12,13,14', 'a list of days was masked');
+select pg_temp.check(public.mask_contact_text('300 350 400 or 1500 2000 2500 EGP') = '300 350 400 or 1500 2000 2500 EGP', 'prices were masked');
+select pg_temp.check(public.mask_contact_text('٣ ليالي من ١٠/١١') = '٣ ليالي من ١٠/١١', 'a message with harmless Arabic digits was changed');
+select pg_temp.check(public.mask_contact_text('0101 234 5678') = '•••' and public.mask_contact_text('+44 7911 123456') = '•••' and public.mask_contact_text('0693 640 123') = '•••', 'a phone number got through');
+select pg_temp.check(public.mask_contact_text('call 0101 234 5678 12/12') !~ '[0-9]{4}', 'a phone number next to a date got through');
+select pg_temp.check(public.mask_contact_text('+20 100 123 4567') = '•••' and public.mask_contact_text('201012345678') = '•••', 'a +20 number got through');
+select pg_temp.as_role('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', format($$insert into public.messages (conversation_id, sender_id, body) values (%L, 'd1d1d1d1-0000-0000-0000-000000000001', '٣ ليالي')$$, (select v from t_ids where k = 'cv')));
+select pg_temp.check((select not masked and body = '٣ ليالي' from public.messages where body = '٣ ليالي'), 'an innocent Arabic message was marked as masked');
+
+\echo '--- R3 terms: acceptance names the version it saw'
+insert into t_ids select 'b2', pg_temp.as_role('authenticated', 'd3d3d3d3-0000-0000-0000-000000000003', $$select public.request_booking('d4d4d4d4-0000-0000-0000-000000000004', 'd3d3d3d3-1111-0000-0000-000000000003', current_date + 70, current_date + 72, 'sitter_home', 'paid', 100, false)$$);
+select pg_temp.as_role('authenticated', 'd4d4d4d4-0000-0000-0000-000000000004', format($$select public.propose_terms(%L, current_date + 70, current_date + 72, 'sitter_home', 'paid', 500, false)$$, (select v from t_ids where k = 'b2')));
+select pg_temp.fails_as('authenticated', 'd3d3d3d3-0000-0000-0000-000000000003', format($$select public.accept_terms(%L, 1)$$, (select v from t_ids where k = 'b2')), 'terms were accepted by version while a newer version existed');
+select pg_temp.check((select terms_version = 2 and owner_accepted_at is null from public.bookings where id = (select v::uuid from t_ids where k = 'b2')), 'the version did not go up or acceptance was not cleared');
+select pg_temp.as_role('authenticated', 'd3d3d3d3-0000-0000-0000-000000000003', format($$select public.accept_terms(%L, 2)$$, (select v from t_ids where k = 'b2')));
+select pg_temp.check((select owner_accepted_at is not null from public.bookings where id = (select v::uuid from t_ids where k = 'b2')), 'accepting the current version did not work');
+
+\echo '--- R4 a blocked or suspended person cannot change or accept terms'
+insert into public.blocks (blocker_id, blocked_id) values ('d4d4d4d4-0000-0000-0000-000000000004', 'd3d3d3d3-0000-0000-0000-000000000003');
+select pg_temp.fails_as('authenticated', 'd3d3d3d3-0000-0000-0000-000000000003', format($$select public.propose_terms(%L, current_date + 70, current_date + 72, 'sitter_home', 'paid', 50, false)$$, (select v from t_ids where k = 'b2')), 'a blocked person changed terms');
+select pg_temp.fails_as('authenticated', 'd4d4d4d4-0000-0000-0000-000000000004', format($$select public.accept_terms(%L, 2)$$, (select v from t_ids where k = 'b2')), 'a person accepted terms for someone they blocked');
+delete from public.blocks where blocker_id = 'd4d4d4d4-0000-0000-0000-000000000004';
+
+\echo '--- R5 a swap stays at each other home, and a pet cannot be booked twice'
+insert into t_ids select 'sw2', pg_temp.as_role('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', $$select public.request_swap('d2d2d2d2-0000-0000-0000-000000000002', 'd1d1d1d1-1111-0000-0000-000000000001', 'd2d2d2d2-1111-0000-0000-000000000002', current_date + 80, current_date + 83, current_date + 90, current_date + 93, false)$$);
+select pg_temp.fails_as('authenticated', 'd2d2d2d2-0000-0000-0000-000000000002', format($$select public.propose_terms((select id from public.bookings where swap_group = %L limit 1), current_date + 80, current_date + 83, 'owner_home', 'swap', null, false)$$, (select v from t_ids where k = 'sw2')), 'a swap leg was moved to the other home');
+insert into public.bookings (owner_id, sitter_id, pet_id, starts_on, ends_on, status, fee_status)
+  values ('d1d1d1d1-0000-0000-0000-000000000001', 'd4d4d4d4-0000-0000-0000-000000000004', 'd1d1d1d1-1111-0000-0000-000000000001', current_date + 81, current_date + 82, 'confirmed', 'paid');
+select pg_temp.fails_as('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', $$select public.request_booking('d2d2d2d2-0000-0000-0000-000000000002', 'd1d1d1d1-1111-0000-0000-000000000001', current_date + 82, current_date + 85, 'sitter_home', 'volunteer', null, false)$$, 'a pet that is confirmed elsewhere was requested for the same dates');
+select pg_temp.fails_as('authenticated', 'd2d2d2d2-0000-0000-0000-000000000002', format($$select public.propose_terms((select id from public.bookings where swap_group = %L and owner_id = 'd1d1d1d1-0000-0000-0000-000000000001'), current_date + 80, current_date + 83, 'sitter_home', 'swap', null, false)$$, (select v from t_ids where k = 'sw2')), 'terms were changed onto dates the pet is already booked');
+select pg_temp.as_role('authenticated', 'd1d1d1d1-0000-0000-0000-000000000001', format($$select public.accept_terms((select id from public.bookings where swap_group = %L limit 1), (select terms_version from public.bookings where swap_group = %L limit 1))$$, (select v from t_ids where k = 'sw2'), (select v from t_ids where k = 'sw2')));
+select pg_temp.as_role('authenticated', 'd2d2d2d2-0000-0000-0000-000000000002', format($$select public.accept_terms((select id from public.bookings where swap_group = %L limit 1), (select terms_version from public.bookings where swap_group = %L limit 1))$$, (select v from t_ids where k = 'sw2'), (select v from t_ids where k = 'sw2')));
+select pg_temp.fails($$select public.confirm_booking_payment((select id from public.bookings where swap_group = (select v::uuid from t_ids where k = 'sw2') limit 1))$$, 'a payment confirmed a booking for a pet that is already booked');
 
 \echo 'chat assertions OK'

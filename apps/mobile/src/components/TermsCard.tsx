@@ -48,7 +48,7 @@ export function TermsCard({ terms, accepted, onAccept, onChange, title }: { term
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <View style={{ flex: 1 }}>
           <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 0, bottom: 0, start: 0, end: 0, borderRadius: 999, borderWidth: 4, borderColor: t.brand.orange }, ring]} />
-          <Pressable accessibilityRole="button" accessibilityLabel={accepted ? tr('terms.accepted') : tr('terms.accept')} accessibilityState={{ selected: accepted }}
+          <Pressable accessibilityRole="button" accessibilityLabel={accepted ? tr('terms.accepted') : tr('terms.accept')} accessibilityState={{ disabled: accepted }}
             disabled={accepted} onPress={onAccept}
             onPressIn={() => press.set(withTiming(0.92, { duration: M.duration.tap }))} onPressOut={() => press.set(withTiming(1, { duration: M.duration.tap }))}>
             <Animated.View style={[{ minHeight: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center',

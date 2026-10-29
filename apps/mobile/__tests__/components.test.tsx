@@ -55,7 +55,7 @@ describe.each(COMBOS)('components in $mode theme, $locale', ({ mode, locale }) =
     const { ThemeProvider } = require('../src/theme');
     await rerender(<ThemeProvider initialMode={mode}><TermsCard terms={terms} accepted onAccept={onAccept} onChange={onChange} /></ThemeProvider>);
     const accepted = screen.getByLabelText(w['terms.accepted']);
-    expect(accepted.props.accessibilityState).toMatchObject({ disabled: true, selected: true });
+    expect(accepted.props.accessibilityState).toMatchObject({ disabled: true });
   });
 
   it('MapCard: the approximate area never offers directions', async () => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Button } from '../../src/components/Button';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { startConversation } from '../../src/lib/chat';
 import { useAuth } from '../../src/lib/auth';
 import { CardArt } from '../../src/components/CardArt';
@@ -38,12 +39,13 @@ function Tag({ label, strong }: { label: string; strong?: boolean }) {
 const PET_LABEL: Record<string, Key> = { dog: 'pet.dogs', cat: 'pet.cats', other: 'pet.others' };
 const OFFER_LABEL: Record<string, Key> = { volunteer: 'offer.volunteer', swap: 'offer.swap', food_provided: 'offer.food_provided', stay_at_my_place: 'offer.stay_at_my_place' };
 
-/** A host's public profile (mockup 03): card art, name, area, stats, about, their pets and home. Booking buttons arrive with chat and bookings. */
+/** A host's public profile (mockup 03): card art, name, area, stats, about, their pets and home, and the Message and Request booking buttons. */
 export default function HostProfile() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const c = useTheme().color;
   const rtl = isRTL();
   const { session, state: auth } = useAuth();
+  const insets = useSafeAreaInsets();
   const [state, setState] = React.useState<'loading' | 'ready' | 'missing'>('loading');
   const [busy, setBusy] = React.useState(false);
   const [p, setP] = React.useState<PublicProfile | null>(null);
@@ -140,7 +142,7 @@ export default function HostProfile() {
       </View>
     </ScrollView>
     {session && id !== session.user.id ? (
-      <View style={{ flexDirection: 'row', gap: 12, padding: 16, paddingBottom: 24, backgroundColor: c.background }}>
+      <View style={{ flexDirection: 'row', gap: 12, padding: 16, paddingBottom: insets.bottom + 16, backgroundColor: c.background }}>
         <View style={{ flex: 1 }}><Button variant="secondary" title={tr('booking.message')} disabled={busy} onPress={() => { open('chat').catch(() => {}); }} /></View>
         {p.role !== 'owner' && auth?.role !== 'sitter' ? <View style={{ flex: 1 }}><Button title={tr('booking.request')} disabled={busy} onPress={() => { open('booking').catch(() => {}); }} /></View> : null}
       </View>

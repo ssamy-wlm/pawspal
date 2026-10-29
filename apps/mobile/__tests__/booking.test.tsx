@@ -29,7 +29,7 @@ const params = useLocalSearchParams as jest.Mock;
 const wrap = (ui: React.ReactElement) => <ToastProvider>{ui}</ToastProvider>;
 const pet = (id: string, name: string, owner: string): prof.Pet => ({ id, owner_id: owner, name, type: 'dog', size: 'small', age_years: 2, vaccinated: true, notes: null, photo_paths: ['x'], locked: false });
 const card = (role: 'owner' | 'sitter' | 'both'): prof.PublicProfile => ({ id: 'them', first_name: 'Hana', role, bio: null, area: null, card_illustration: 'cat-mango', card_background: 'pattern', rating_avg: null, stays_count: 0, home_photo_path: null, home_tags: [] });
-const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: '2026-12-01', ends_on: '2026-12-05', stay_location: 'sitter_home', cost_type: 'paid', price_per_night: 250, food_provided: true, status: 'requested', fee_status: 'unpaid', owner_accepted_at: null, sitter_accepted_at: null, swap_group: null, ...over });
+const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: '2026-12-01', ends_on: '2026-12-05', stay_location: 'sitter_home', cost_type: 'paid', price_per_night: 250, food_provided: true, status: 'requested', fee_status: 'unpaid', owner_accepted_at: null, sitter_accepted_at: null, swap_group: null, terms_version: 1, ...over });
 
 beforeEach(() => {
   jest.clearAllMocks(); mockRole = 'both';
@@ -89,6 +89,15 @@ describe('request a stay', () => {
     await fireEvent.press(screen.getByText('Send request'));
     await waitFor(() => expect(screen.getByText('We could not send that. Try again.')).toBeTruthy());
     expect(router.back).not.toHaveBeenCalled();
+  });
+
+  it('says so when the pet is already booked for those dates', async () => {
+    await renderIn(wrap(<BookingScreen />));
+    await waitFor(() => screen.getByText('Send request'));
+    await fireEvent.press(screen.getByLabelText('pick dates'));
+    k.requestBooking.mockRejectedValueOnce(new Error('pet_booked'));
+    await fireEvent.press(screen.getByText('Send request'));
+    await waitFor(() => expect(screen.getByText('That pet is already booked for these dates.')).toBeTruthy());
   });
 
   it('asks you to add a pet first when you have none', async () => {

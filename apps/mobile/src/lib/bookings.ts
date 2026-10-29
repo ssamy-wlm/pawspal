@@ -10,10 +10,10 @@ export type BookingStatus = 'requested' | 'terms_agreed' | 'confirmed' | 'in_pro
 export interface Booking {
   id: string; owner_id: string; sitter_id: string; pet_id: string; starts_on: string; ends_on: string;
   stay_location: StayLocation; cost_type: CostType; price_per_night: number | null; food_provided: boolean;
-  status: BookingStatus; fee_status: string; owner_accepted_at: string | null; sitter_accepted_at: string | null; swap_group: string | null;
+  status: BookingStatus; fee_status: string; owner_accepted_at: string | null; sitter_accepted_at: string | null; swap_group: string | null; terms_version: number;
 }
 
-const COLUMNS = 'id, owner_id, sitter_id, pet_id, starts_on, ends_on, stay_location, cost_type, price_per_night, food_provided, status, fee_status, owner_accepted_at, sitter_accepted_at, swap_group';
+const COLUMNS = 'id, owner_id, sitter_id, pet_id, starts_on, ends_on, stay_location, cost_type, price_per_night, food_provided, status, fee_status, owner_accepted_at, sitter_accepted_at, swap_group, terms_version';
 
 /** Bookings between me and one other person, newest first. Only the two of us can read them. */
 export async function fetchBookingsBetween(me: string, other: string): Promise<Booking[]> {
@@ -41,7 +41,7 @@ export function currentBookings(all: Booking[]): Booking[] {
 
 const failure = (e: { message: string }): Error => {
   const m = e.message;
-  return new Error(/already a request/i.test(m) ? 'duplicate' : /too many/i.test(m) ? 'too_many' : 'failed');
+  return new Error(/already a request/i.test(m) ? 'duplicate' : /too many/i.test(m) ? 'too_many' : /terms changed/i.test(m) ? 'terms_changed' : /already booked/i.test(m) ? 'pet_booked' : 'failed');
 };
 
 export interface StayInput { sitterId: string; petId: string; starts_on: string; ends_on: string; location: StayLocation; cost: Exclude<CostType, 'swap'>; price: number | null; food: boolean }
@@ -64,8 +64,9 @@ export async function proposeTerms(bookingId: string, v: TermsInput): Promise<vo
   if (error) throw failure(error);
 }
 
-export async function acceptTerms(bookingId: string): Promise<BookingStatus> {
-  const { data, error } = await supabase.rpc('accept_terms', { p_booking: bookingId });
+/** Accepts the terms as they were when you looked at them (`version`). If they changed meanwhile it throws 'terms_changed'. */
+export async function acceptTerms(bookingId: string, version: number): Promise<BookingStatus> {
+  const { data, error } = await supabase.rpc('accept_terms', { p_booking: bookingId, p_version: version });
   if (error) throw failure(error);
   return data as BookingStatus;
 }

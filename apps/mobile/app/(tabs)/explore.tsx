@@ -156,7 +156,7 @@ export default function Explore() {
     <View style={{ gap: 16 }}>
       {items.length === 0 ? <Text style={[muted, { textAlign: 'center' }]}>{tr('explore.empty.swipe')}</Text> : (
         <SwipeDeck items={items} keyOf={(r) => r.availability_id} cardHeight={540}
-          bindControls={(fn) => { swipe.current = fn; }} onSwipe={onSwipe} onPressCard={openHost} renderCard={(r) => <BrowseCard r={r} />} />
+          bindControls={(fn) => { swipe.current = fn; }} onSwipe={onSwipe} onPressCard={openHost} labelOf={(r) => [r.first_name, r.area, priceLabel(r), tr('card.available', { from: formatDay(r.starts_on), to: formatDay(r.ends_on) })].filter(Boolean).join('. ')} renderCard={(r) => <BrowseCard r={r} />} />
       )}
       {items[deckIndex] ? <Button variant="secondary" title={tr('explore.viewProfile')} onPress={() => openHost(items[deckIndex])} /> : null}
       <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 32 }}>

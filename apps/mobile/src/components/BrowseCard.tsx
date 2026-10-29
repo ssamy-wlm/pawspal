@@ -65,8 +65,8 @@ export function BrowseCard({ r, compact }: { r: StayResult; compact?: boolean })
       {badge}
       {compact ? null : (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-          {cardChips(r).map((chip) => (
-            <View key={chip.label} style={{ minHeight: 32, paddingHorizontal: 12, borderRadius: 999, justifyContent: 'center',
+          {cardChips(r).map((chip, i) => (
+            <View key={`${i}-${chip.label}`} style={{ minHeight: 32, paddingHorizontal: 12, borderRadius: 999, justifyContent: 'center',
               backgroundColor: chip.strong ? t.tint.teal : 'transparent', borderWidth: chip.strong ? 0 : 1, borderColor: t.brand.sand }}>
               <Text style={{ color: chip.strong ? t.brand.navy : c.text, fontSize: 13, fontFamily: fontFamily(chip.strong ? 'semibold' : 'regular', rtl) }}>{chip.label}</Text>
             </View>

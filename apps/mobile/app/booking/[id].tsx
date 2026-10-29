@@ -95,7 +95,7 @@ export default function BookingScreen() {
       router.back();
     } catch (e) {
       const m = (e as Error).message;
-      setError(tr(m === 'duplicate' ? 'booking.duplicate' : m === 'too_many' ? 'booking.tooMany' : 'booking.failed'));
+      setError(tr(m === 'duplicate' ? 'booking.duplicate' : m === 'too_many' ? 'booking.tooMany' : m === 'pet_booked' ? 'booking.petBooked' : 'booking.failed'));
     } finally { setBusy(false); }
   };
 

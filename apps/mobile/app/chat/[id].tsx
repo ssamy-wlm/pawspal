@@ -1,5 +1,6 @@
 import React from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { FlatList, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Button } from '../../src/components/Button';
 import { ChatBubble } from '../../src/components/ChatBubble';
@@ -23,6 +24,13 @@ export default function ChatScreen() {
   const me = session?.user.id ?? '';
   const c = useTheme().color;
   const rtl = isRTL();
+  const insets = useSafeAreaInsets();
+  const [typing, setTyping] = React.useState(false);                  // the keyboard is up: give the messages the room
+  React.useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setTyping(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setTyping(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const [state, setState] = React.useState<'loading' | 'ready' | 'failed'>('loading');
   const [other, setOther] = React.useState<Conversation | null>(null);
   const [otherCard, setOtherCard] = React.useState<PublicProfile | null>(null);
@@ -35,6 +43,7 @@ export default function ChatScreen() {
   const [petNames, setPetNames] = React.useState<Record<string, string>>({});
   const [sure, setSure] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const firstLoad = React.useRef<Set<number> | null>(null);    // the messages present when the chat opened do not pop in
 
   const loadBookings = React.useCallback(async (otherId: string) => {
     const all = await fetchBookingsBetween(me, otherId).catch(() => [] as Booking[]);
@@ -54,6 +63,7 @@ export default function ChatScreen() {
       if (!conv) { if (live) setState('failed'); return; }
       const [first, card] = await Promise.all([fetchMessages(id), fetchCard(conv.other_id).catch(() => null)]);
       if (!live) return;
+      firstLoad.current = new Set(first.map((m) => m.id));
       setOther(conv); setOtherCard(card); setMessages(first); setMore(first.length === PAGE_SIZE); setState('ready');
       markRead(id).catch(() => {});
       await loadBookings(conv.other_id);
@@ -85,11 +95,17 @@ export default function ChatScreen() {
   const loadOlder = async () => {
     if (!id || !more || messages.length === 0) return;
     const older = await fetchMessages(id, messages[messages.length - 1].id).catch(() => [] as Message[]);
+    older.forEach((m) => firstLoad.current?.add(m.id));
     setMore(older.length === PAGE_SIZE);
     setMessages((cur) => [...cur, ...older.filter((o) => !cur.some((x) => x.id === o.id))]);
   };
 
-  const accept = async () => { if (legs[0]) { setBusy(true); try { await acceptTerms(legs[0].id); await loadBookings(other!.other_id); } catch { setError(tr('booking.failed')); } finally { setBusy(false); } } };
+  const accept = async (leg: Booking) => {
+    setBusy(true); setError(null);
+    try { await acceptTerms(leg.id, leg.terms_version); await loadBookings(other!.other_id); } catch (e) {
+      if ((e as Error).message === 'terms_changed') { await loadBookings(other!.other_id); setError(tr('booking.termsChanged')); } else setError(tr('booking.failed'));
+    } finally { setBusy(false); }
+  };
   const cancel = async () => {
     if (!sure) { setSure(true); return; }
     if (!legs[0]) return;
@@ -115,7 +131,7 @@ export default function ChatScreen() {
             <TermsCard key={b.id}
               title={legs.length > 1 ? tr(b.owner_id === me ? 'terms.leg.mine' : 'terms.leg.theirs') : undefined}
               terms={termsText(b, petNames[b.pet_id] ?? '')} accepted={mine}
-              onAccept={() => { accept().catch(() => {}); }} onChange={() => router.push(`/booking/${b.id}?other=${other.other_id}` as never)} />
+              onAccept={() => { if (!busy) accept(b).catch(() => {}); }} onChange={() => router.push(`/booking/${b.id}?other=${other.other_id}` as never)} />
           ))}
           <Text accessibilityRole="alert" style={{ color: c.text, fontSize: 15, fontFamily: fontFamily('semibold', rtl) }}>
             {status === 'confirmed' || status === 'in_progress' ? tr('booking.status.confirmed')
@@ -131,9 +147,9 @@ export default function ChatScreen() {
   );
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}>
       <Stack.Screen options={{ title: other.first_name ?? '' }} />
-      <ScrollView style={{ maxHeight: '45%', flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 8 }}>{bookingPanel}</ScrollView>
+      {typing ? null : <ScrollView style={{ maxHeight: '45%', flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 8 }}>{bookingPanel}</ScrollView>}
       <FlatList
         inverted
         style={{ flex: 1 }}
@@ -142,16 +158,17 @@ export default function ChatScreen() {
         keyExtractor={(m) => String(m.id)}
         onEndReached={() => { loadOlder().catch(() => {}); }}
         ListEmptyComponent={<Text style={{ color: c.textMuted, textAlign: 'center', fontFamily: fontFamily('regular', rtl), transform: [{ scaleY: -1 }] }}>{tr('chat.noMessages')}</Text>}
-        renderItem={({ item }) => <ChatBubble text={item.body} mine={item.sender_id === me} masked={item.masked} />}
+        renderItem={({ item }) => <ChatBubble text={item.body} mine={item.sender_id === me} masked={item.masked} animate={!firstLoad.current?.has(item.id)} />}
       />
       {!confirmed ? <Text style={{ color: c.textMuted, fontSize: 12, textAlign: 'center', paddingHorizontal: 16, fontFamily: fontFamily('regular', rtl) }}>{tr('chat.hint')}</Text> : null}
       {error ? <Text accessibilityRole="alert" style={{ color: c.danger, paddingHorizontal: 16, fontFamily: fontFamily('medium', rtl) }}>{error}</Text> : null}
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) }}>
         <View style={{ flex: 1 }}>
           <TextField label={tr('chat.input')} value={text} onChangeText={setText} multiline maxLength={2000} style={{ minHeight: 48, maxHeight: 120, paddingTop: 12 }} />
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel={tr('chat.send')} disabled={sending || text.trim().length === 0} onPress={() => { send().catch(() => {}); }}
-          style={{ minWidth: 56, minHeight: 56, borderRadius: 28, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', opacity: sending || text.trim().length === 0 ? 0.5 : 1, marginBottom: 20 }}>
+          accessibilityState={{ disabled: sending || text.trim().length === 0 }}
+          style={{ minHeight: 56, paddingHorizontal: 20, borderRadius: 999, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center', opacity: sending || text.trim().length === 0 ? 0.5 : 1, marginBottom: 20 }}>
           <Text style={{ color: c.onPrimary, fontSize: 15, fontFamily: fontFamily('semibold', rtl) }}>{tr('chat.send')}</Text>
         </Pressable>
       </View>

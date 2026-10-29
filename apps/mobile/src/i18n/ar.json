@@ -389,5 +389,7 @@
   "terms.cost.paid": "{amount} جنيه لليلة",
   "terms.cost.volunteer": "مجاني",
   "terms.cost.swap": "تبادل",
-  "terms.food": "الطعام متوفر"
+  "terms.food": "الطعام متوفر",
+  "booking.termsChanged": "تغيّرت الشروط للتو. يرجى قراءتها مرة أخرى.",
+  "booking.petBooked": "هذا الحيوان محجوز بالفعل في هذه التواريخ."
 }

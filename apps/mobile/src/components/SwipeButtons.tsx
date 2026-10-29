@@ -16,7 +16,7 @@ export function PassButton({ onPress }: { onPress: () => void }) {
       onPressIn={() => { if (!reduced) s.set(withTiming(0.88, { duration: M.duration.tap, easing: ease.out })); }}
       onPressOut={() => { if (!reduced) s.set(withTiming(1, { duration: M.duration.tap, easing: ease.out })); }}>
       <Animated.View style={[{ width: 68, height: 68, borderRadius: 34, borderWidth: 4, borderColor: t.brand.coral, alignItems: 'center', justifyContent: 'center' }, style]}>
-        <Text style={{ fontSize: 26, color: t.brand.coral }}>✕</Text>
+        <Text allowFontScaling={false} style={{ fontSize: 26, color: t.brand.coral }}>✕</Text>
       </Animated.View>
     </Pressable>
   );
@@ -42,7 +42,7 @@ export function LikeButton({ onPress, children }: { onPress: () => void; childre
     <View>
       <Pressable accessibilityRole="button" accessibilityLabel={tr('swipe.like')} onPress={press}>
         <Animated.View style={[{ width: 84, height: 84, borderRadius: 42, backgroundColor: t.color.primary, alignItems: 'center', justifyContent: 'center' }, style]}>
-          <Text style={{ fontSize: 32, color: t.color.onPrimary }}>♥</Text>
+          <Text allowFontScaling={false} style={{ fontSize: 32, color: t.color.onPrimary }}>♥</Text>
         </Animated.View>
       </Pressable>
       {children}

@@ -7,6 +7,9 @@
 
 -- ---------------------------------------------------------------- swaps are two linked bookings
 alter table public.bookings add column swap_group uuid;
+-- Bumped every time the terms change. Accepting names the version the person saw, so a last-second change by the other
+-- side can never be accepted by mistake.
+alter table public.bookings add column terms_version integer not null default 1;
 create index on public.bookings (swap_group) where swap_group is not null;
 
 -- Everything below runs on one booking or on both legs of a swap.
@@ -17,6 +20,25 @@ returns setof public.bookings language sql stable security definer set search_pa
       or (b.swap_group is not null and b.swap_group = (select x.swap_group from public.bookings x where x.id = p_booking));
 $$;
 revoke execute on function public.booking_legs(uuid) from public, anon, authenticated;
+
+
+-- Locks every leg of a booking, always in the same order, so two people acting at once cannot deadlock.
+create or replace function public.lock_booking_legs(p_booking uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform 1 from public.bookings where id in (select id from public.booking_legs(p_booking)) order by id for update;
+end $$;
+revoke execute on function public.lock_booking_legs(uuid) from public, anon, authenticated;
+
+-- Is this pet free for these dates? A pet in another confirmed (or running) booking is not.
+create or replace function public.pet_is_free(p_pet uuid, p_starts date, p_ends date, p_ignore uuid[] default '{}')
+returns boolean language sql stable security definer set search_path = public as $$
+  select not exists (
+    select 1 from public.bookings x
+     where x.pet_id = p_pet and x.status in ('confirmed', 'in_progress') and not (x.id = any (p_ignore))
+       and daterange(x.starts_on, x.ends_on, '[]') && daterange(p_starts, p_ends, '[]'));
+$$;
+revoke execute on function public.pet_is_free(uuid, date, date, uuid[]) from public, anon, authenticated;
 
 create or replace function public.request_booking(
   p_sitter uuid, p_pet uuid, p_starts date, p_ends date,
@@ -42,6 +64,7 @@ begin
   end if;
   if p_cost = 'paid' and (p_price is null or p_price < 0 or p_price > 100000) then raise exception 'invalid price'; end if;
   perform pg_advisory_xact_lock(hashtext('booking:' || auth.uid()::text));
+  if not public.pet_is_free(p_pet, p_starts, p_ends) then raise exception 'that pet is already booked for these dates'; end if;
   if (select count(*) from public.bookings where (owner_id = auth.uid() or sitter_id = auth.uid()) and status in ('requested', 'terms_agreed')) >= 10 then
     raise exception 'too many open requests';
   end if;
@@ -78,6 +101,9 @@ begin
     raise exception 'invalid dates';
   end if;
   perform pg_advisory_xact_lock(hashtext('booking:' || auth.uid()::text));
+  if not public.pet_is_free(p_my_pet, p_my_starts, p_my_ends) or not public.pet_is_free(p_their_pet, p_their_starts, p_their_ends) then
+    raise exception 'that pet is already booked for these dates';
+  end if;
   if (select count(*) from public.bookings where (owner_id = auth.uid() or sitter_id = auth.uid()) and status in ('requested', 'terms_agreed')) >= 10 then
     raise exception 'too many open requests';
   end if;
@@ -87,36 +113,54 @@ begin
   return v_group;
 end $$;
 
--- Either side may change the terms of one leg while nothing is confirmed. Any change clears BOTH acceptances, on both legs.
+-- Either side may change the terms of one leg while nothing is confirmed. Any change clears BOTH acceptances, on both legs,
+-- and starts a new version of the terms.
 create or replace function public.propose_terms(
   p_booking uuid, p_starts date, p_ends date, p_location public.stay_location,
   p_cost public.cost_type, p_price integer, p_food boolean
 ) returns void language plpgsql security definer set search_path = public as $$
-declare b public.bookings;
+declare b public.bookings; v_other uuid;
 begin
-  select * into b from public.bookings where id = p_booking for update;
+  if auth.uid() is null then raise exception 'not signed in'; end if;
+  perform public.lock_booking_legs(p_booking);
+  select * into b from public.bookings where id = p_booking;
   if b.id is null or auth.uid() not in (b.owner_id, b.sitter_id) then raise exception 'booking cannot be changed'; end if;
-  if b.status not in ('requested', 'terms_agreed') then raise exception 'booking cannot be changed'; end if;
+  if b.status not in ('requested', 'terms_agreed') or b.fee_status <> 'unpaid' then raise exception 'booking cannot be changed'; end if;
+  v_other := case when auth.uid() = b.owner_id then b.sitter_id else b.owner_id end;
+  if not public.is_active(auth.uid()) or not public.is_active(v_other) or public.is_blocked_between(auth.uid(), v_other) then
+    raise exception 'not allowed';
+  end if;
   if p_starts < current_date or p_ends < p_starts or p_ends - p_starts > 60 then raise exception 'invalid dates'; end if;
   if p_cost = 'paid' and (p_price is null or p_price < 0 or p_price > 100000) then raise exception 'invalid price'; end if;
   if (b.swap_group is not null) <> (p_cost = 'swap') then raise exception 'a swap stays a swap, and nothing else becomes one'; end if;
+  if b.swap_group is not null and p_location <> 'sitter_home' then raise exception 'in a swap each pet stays at the other person''s home'; end if;
+  if not public.pet_is_free(b.pet_id, p_starts, p_ends, array[b.id]) then raise exception 'that pet is already booked for these dates'; end if;
   update public.bookings
      set starts_on = p_starts, ends_on = p_ends, stay_location = p_location,
          price_per_night = case when p_cost = 'paid' then p_price else null end,
          cost_type = p_cost, food_provided = coalesce(p_food, false)
    where id = p_booking;
   update public.bookings
-     set owner_accepted_at = null, sitter_accepted_at = null, status = 'requested'
+     set owner_accepted_at = null, sitter_accepted_at = null, status = 'requested', terms_version = terms_version + 1
    where id in (select id from public.booking_legs(p_booking));
 end $$;
 
-create or replace function public.accept_terms(p_booking uuid)
+-- Accepting names the version of the terms the person was looking at. If the terms changed in the meantime, it is refused.
+drop function public.accept_terms(uuid);
+create or replace function public.accept_terms(p_booking uuid, p_version integer)
 returns public.booking_status language plpgsql security definer set search_path = public as $$
-declare b public.bookings; v_status public.booking_status;
+declare b public.bookings; v_status public.booking_status; v_other uuid;
 begin
-  select * into b from public.bookings where id = p_booking for update;
+  if auth.uid() is null then raise exception 'not signed in'; end if;
+  perform public.lock_booking_legs(p_booking);
+  select * into b from public.bookings where id = p_booking;
   if b.id is null or auth.uid() not in (b.owner_id, b.sitter_id) then raise exception 'not found'; end if;
   if b.status not in ('requested', 'terms_agreed') then raise exception 'booking is not open'; end if;
+  v_other := case when auth.uid() = b.owner_id then b.sitter_id else b.owner_id end;
+  if not public.is_active(auth.uid()) or not public.is_active(v_other) or public.is_blocked_between(auth.uid(), v_other) then
+    raise exception 'not allowed';
+  end if;
+  if b.terms_version <> p_version then raise exception 'the terms changed'; end if;
   -- My acceptance counts on every leg I am part of (a swap has two).
   update public.bookings set owner_accepted_at = coalesce(owner_accepted_at, now())
    where id in (select id from public.booking_legs(p_booking)) and owner_id = auth.uid();
@@ -128,10 +172,16 @@ begin
   return v_status;
 end $$;
 
--- Called ONLY by the payment webhook (service role). A swap is confirmed (and paid) as one.
+-- Called ONLY by the payment webhook (service role). A swap is confirmed (and paid) as one. A pet that has meanwhile been
+-- confirmed for the same dates somewhere else blocks it.
 create or replace function public.confirm_booking_payment(p_booking uuid)
 returns void language plpgsql security definer set search_path = public as $$
+declare l record;
 begin
+  perform public.lock_booking_legs(p_booking);
+  for l in select * from public.booking_legs(p_booking) loop
+    if not public.pet_is_free(l.pet_id, l.starts_on, l.ends_on, array[l.id]) then raise exception 'that pet is already booked for these dates'; end if;
+  end loop;
   update public.bookings
      set fee_status = 'paid', status = 'confirmed', confirmed_at = now()
    where id in (select id from public.booking_legs(p_booking)) and status = 'terms_agreed' and fee_status = 'unpaid';
@@ -146,6 +196,7 @@ create or replace function public.cancel_booking(p_booking uuid, p_reason text)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_pets uuid[];
 begin
+  perform public.lock_booking_legs(p_booking);
   select array_agg(pet_id) into v_pets from public.booking_legs(p_booking);
   update public.bookings set status = 'cancelled', cancelled_by = auth.uid()
    where id in (select id from public.booking_legs(p_booking)) and auth.uid() in (owner_id, sitter_id)
@@ -164,12 +215,48 @@ revoke execute on function public.request_swap(uuid, uuid, uuid, date, date, dat
 grant execute on function public.request_swap(uuid, uuid, uuid, date, date, date, date, boolean) to authenticated;
 revoke execute on function public.propose_terms(uuid, date, date, public.stay_location, public.cost_type, integer, boolean) from public, anon;
 grant execute on function public.propose_terms(uuid, date, date, public.stay_location, public.cost_type, integer, boolean) to authenticated;
-revoke execute on function public.accept_terms(uuid) from public, anon;
-grant execute on function public.accept_terms(uuid) to authenticated;
+revoke execute on function public.accept_terms(uuid, integer) from public, anon;
+grant execute on function public.accept_terms(uuid, integer) to authenticated;
 revoke execute on function public.cancel_booking(uuid, text) from public, anon;
 grant execute on function public.cancel_booking(uuid, text) to authenticated;
 revoke execute on function public.start_conversation(uuid) from public, anon;
 grant execute on function public.start_conversation(uuid) to authenticated;
+
+-- ---------------------------------------------------------------- better masking of phone numbers
+-- Only things that look like PHONE NUMBERS are hidden, so dates, prices and lists of numbers in a negotiation survive
+-- ("10/11/2026 12/11/2026", "1500 2000 2500", "10,11,12"). A run of digits counts as a phone number when it starts with a
+-- group of three or more digits and is an Egyptian mobile (01x...), a landline-style number starting with 0, or has a +.
+-- Arabic and Persian digits are read as ordinary digits. A message with no phone number in it is left exactly as written.
+create or replace function public.mask_contact_text(p_text text)
+returns text language plpgsql immutable set search_path = public as $$
+declare
+  v text := p_text;
+  t text;
+  m text;
+  d text;
+  fg text;
+  hit boolean := false;
+begin
+  if v is null then return null; end if;
+  t := translate(v, '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789');
+  for m in select x[1] from regexp_matches(t, '(\+?[0-9](?:[^[:alpha:][:digit:]]{0,2}[0-9]){8,})', 'g') as x loop
+    d := regexp_replace(m, '[^0-9]', '', 'g');
+    fg := (regexp_match(m, '^\+?([0-9]+)'))[1];
+    if left(m, 1) = '+'
+       or (length(fg) >= 3 and (d ~ '^01[0125][0-9]{8}' or d ~ '^201[0125][0-9]{8}$' or d ~ '^0[0-9]{8,11}$')) then
+      t := replace(t, m, '•••');
+      hit := true;
+    end if;
+  end loop;
+  if hit then v := t; end if;
+  v := regexp_replace(v, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '•••', 'g');
+  v := regexp_replace(v, '(https?://[^ ]+|www\.[^ ]+|[A-Za-z0-9-]+\.(com|net|org|me|io|eg|ly|link|app|co|info|xyz|ee|ws|to|gl|be)(/[^ ]*)?)', '•••', 'gi');
+  v := regexp_replace(v, '@[A-Za-z0-9_.]{3,}', '•••', 'g');
+  v := regexp_replace(v,
+    '(insta ?pay|whats ?app|wa\.me|telegram|vodafone ?cash|etisalat ?cash|orange ?cash|we ?pay|paypal|\m(instagram|insta|signal|viber|snapchat|facebook|messenger|tiktok|gmail|yahoo|hotmail|outlook|icloud)\M|انستا ?باي|واتس ?اب|واتساب|واتس|تليجرام|تيليجرام|تلجرام|تيليغرام|فودافون ?كاش|انستجرام|انستغرام|فايبر|سناب|فيسبوك|ماسنجر)',
+    '•••', 'gi');
+  return v;
+end $$;
 
 -- ---------------------------------------------------------------- chat
 -- Chat text is masked with the same, stronger rule as profiles (split numbers, Arabic digits, app names), until the two
@@ -198,6 +285,7 @@ end $$;
 create or replace function public.limit_message_rate()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
+  new.created_at := now();      -- the server decides when a message was sent, never the app
   perform pg_advisory_xact_lock(hashtext('msg:' || new.sender_id::text));
   if (select count(*) from public.messages where sender_id = new.sender_id and created_at > now() - interval '1 minute') >= 20 then
     raise exception 'slow down';
@@ -397,7 +485,7 @@ language sql stable security definer set search_path = public, storage as $$
      and not exists (select 1 from public.profiles p where p.home_photo_path = o.name)
   union all
   select o.bucket_id, o.name from storage.objects o
-   where o.bucket_id = 'faces' and o.created_at < now() - p_older_than
+   where o.bucket_id = 'faces' and o.created_at < now() - p_older_than * 7      -- a selfie waits for identity review, so it gets a week
      and not exists (select 1 from public.profiles p where p.face_photo_path = o.name)
 $$;
 revoke execute on function public.list_unused_uploads(interval) from public, anon, authenticated;

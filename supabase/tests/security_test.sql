@@ -57,9 +57,9 @@ reset role;
 
 \echo '--- T9 both accept terms, webhook confirms payment'
 set role authenticated; set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
-select public.accept_terms(:'booking');
+select public.accept_terms(:'booking', (select terms_version from public.bookings where id = :'booking'));
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
-select public.accept_terms(:'booking');
+select public.accept_terms(:'booking', (select terms_version from public.bookings where id = :'booking'));
 reset role;
 set role service_role; select public.confirm_booking_payment(:'booking'); reset role;
 
@@ -176,9 +176,9 @@ reset role;
 set role authenticated; set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 insert into public.pets (id, owner_id, name, type, size, photo_paths) values ('22222222-0000-0000-0000-000000000002', auth.uid(), 'Pepper','dog','small', array['aaaaaaaa-0000-0000-0000-000000000001/2.jpg']);
 select public.request_booking('bbbbbbbb-0000-0000-0000-000000000002','22222222-0000-0000-0000-000000000002', current_date+1, current_date+2, 'sitter_home','paid', 200, false) as b2 \gset
-select public.accept_terms(:'b2');
+select public.accept_terms(:'b2', (select terms_version from public.bookings where id = :'b2'));
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
-select public.accept_terms(:'b2');
+select public.accept_terms(:'b2', (select terms_version from public.bookings where id = :'b2'));
 reset role;
 set role service_role; select public.confirm_booking_payment(:'b2'); reset role;
 select locked as locked_after_confirm from public.pets where id='22222222-0000-0000-0000-000000000002';

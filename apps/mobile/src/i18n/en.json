@@ -369,5 +369,7 @@
   "terms.cost.paid": "{amount} EGP per night",
   "terms.cost.volunteer": "Free",
   "terms.cost.swap": "Swap",
-  "terms.food": "food provided"
+  "terms.food": "food provided",
+  "booking.termsChanged": "The terms just changed. Please read them again.",
+  "booking.petBooked": "That pet is already booked for these dates."
 }

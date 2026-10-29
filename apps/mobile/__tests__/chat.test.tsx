@@ -28,7 +28,7 @@ const wrap = (ui: React.ReactElement) => <ToastProvider>{ui}</ToastProvider>;
 
 const conv = (over: Partial<chat.Conversation> = {}): chat.Conversation => ({ id: 'c1', other_id: 'them', first_name: 'Hana', card_illustration: 'cat-mango', card_background: 'pattern', last_body: 'See you soon', last_at: '2026-10-01T10:00:00Z', last_mine: false, unread: 2, ...over });
 const msg = (id: number, sender: string, body: string, masked = false): chat.Message => ({ id, conversation_id: 'c1', sender_id: sender, body, masked, created_at: '2026-10-01T10:00:00Z' });
-const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: '2026-12-01', ends_on: '2026-12-05', stay_location: 'sitter_home', cost_type: 'paid', price_per_night: 250, food_provided: false, status: 'requested', fee_status: 'unpaid', owner_accepted_at: null, sitter_accepted_at: null, swap_group: null, ...over });
+const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: '2026-12-01', ends_on: '2026-12-05', stay_location: 'sitter_home', cost_type: 'paid', price_per_night: 250, food_provided: false, status: 'requested', fee_status: 'unpaid', owner_accepted_at: null, sitter_accepted_at: null, swap_group: null, terms_version: 4, ...over });
 const card = (role: 'owner' | 'sitter' | 'both' = 'sitter'): prof.PublicProfile => ({ id: 'them', first_name: 'Hana', role, bio: null, area: null, card_illustration: 'cat-mango', card_background: 'pattern', rating_avg: null, stays_count: 0, home_photo_path: null, home_tags: [] });
 
 let pushMessage: (m: chat.Message) => void = () => {};
@@ -163,8 +163,19 @@ describe('booking in the conversation', () => {
     expect(screen.getByText('Waiting for both of you to accept')).toBeTruthy();
     k.fetchBookingsBetween.mockResolvedValue([booking({ owner_accepted_at: '2026-10-01' })]);
     await fireEvent.press(screen.getByLabelText('Accept terms'));
-    await waitFor(() => expect(k.acceptTerms).toHaveBeenCalledWith('b1'));
+    await waitFor(() => expect(k.acceptTerms).toHaveBeenCalledWith('b1', 4));
     await waitFor(() => expect(screen.getByText('Waiting for Hana to accept')).toBeTruthy());
+  });
+
+  it('tells me when the terms changed while I was looking, and shows the new ones', async () => {
+    k.fetchBookingsBetween.mockResolvedValue([booking()]);
+    k.acceptTerms.mockRejectedValueOnce(new Error('terms_changed'));
+    await renderIn(wrap(<ChatScreen />));
+    await waitFor(() => screen.getByLabelText('Accept terms'));
+    k.fetchBookingsBetween.mockResolvedValue([booking({ price_per_night: 400, terms_version: 5 })]);
+    await fireEvent.press(screen.getByLabelText('Accept terms'));
+    await waitFor(() => expect(screen.getByText('The terms just changed. Please read them again.')).toBeTruthy());
+    expect(screen.getByText('400 EGP per night')).toBeTruthy();
   });
 
   it('opens the terms editor from "Change"', async () => {
