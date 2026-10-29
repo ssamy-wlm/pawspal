@@ -25,3 +25,4 @@ GoogleService-Info.plist
 .next/
 next-env.d.ts
 *.tsbuildinfo
+__pycache__/

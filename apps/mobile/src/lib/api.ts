@@ -16,7 +16,7 @@ const ERROR_KEYS: Record<string, Key> = {
   too_many_attempts: 'err.too_many_attempts', captcha_required: 'err.too_many_attempts', too_soon: 'err.too_soon',
   send_failed: 'err.send_failed', invalid_code: 'err.invalid_code', try_again_later: 'err.try_again_later',
   not_configured: 'err.not_configured', identity_refused: 'err.identity_refused', invalid_image: 'err.invalid_image',
-  network: 'err.network',
+  network: 'err.network', captcha_failed: 'err.captcha_failed', request_new_code: 'err.request_new_code',
 };
 export const errorKey = (e: unknown): Key => (e instanceof ApiError ? ERROR_KEYS[e.code] : undefined) ?? 'err.generic';
 
@@ -58,8 +58,8 @@ async function accessToken(): Promise<string> {
   return data.session.access_token;
 }
 
-export async function requestOtp(phone: string): Promise<{ resend_after_seconds: number }> {
-  return call('request-otp', { phone, device_id: await deviceId() });
+export async function requestOtp(phone: string, captchaToken?: string): Promise<{ resend_after_seconds: number }> {
+  return call('request-otp', { phone, device_id: await deviceId(), ...(captchaToken ? { captcha_token: captchaToken } : {}) });
 }
 
 /** Checks the code and signs the person in on this phone. */

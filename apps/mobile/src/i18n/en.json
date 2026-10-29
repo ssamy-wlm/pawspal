@@ -173,7 +173,7 @@
   "signup.rules.submit": "Send for review",
   "pending.title": "We are checking your profile",
   "pending.body": "A person on our team looks at every new profile. We will let you know as soon as it is done.",
-  "pending.suspended": "This account is not active. If you think this is a mistake, contact us.",
+  "pending.suspended": "This account is not active. If you think this is a mistake, you can ask us to look again.",
   "pending.signout": "Sign out",
   "err.invalid_phone": "That does not look like an Egypt mobile number.",
   "err.phone_limit": "Too many codes for this number. Try again in a while.",
@@ -192,5 +192,15 @@
   "trust.noIdPhotoSub": "Only the result of the check is saved.",
   "pending.stoppedTitle": "This account is not active",
   "signup.camera.settings": "Open settings",
-  "signup.selfie.preview": "Your selfie"
+  "signup.selfie.preview": "Your selfie",
+  "err.captcha_failed": "The check did not work. Try again.",
+  "err.request_new_code": "That code is used up. Ask for a new one.",
+  "appeal.title": "Ask us to look again",
+  "appeal.sub": "Tell us what happened. A person on our team reads every appeal.",
+  "appeal.messageTitle": "What we told you",
+  "appeal.label": "Your message",
+  "appeal.send": "Send appeal",
+  "appeal.sent": "Appeal sent",
+  "appeal.sentBody": "A person on our team will read it. We will let you know what we decide.",
+  "appeal.failed": "We could not send your appeal. Try again."
 }

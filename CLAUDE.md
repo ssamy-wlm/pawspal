@@ -12,6 +12,7 @@ You are building **PawsPal Dahab**, a pet-sitting and pet-swapping app for Dahab
 ## Commands
 - App: `cd apps/mobile && npm start` | `npm run typecheck` | `npm run lint` | `npm test`
 - Shared files: `node scripts/sync-shared.mjs` (runs before every start)
+- Local Supabase: `bash scripts/local-supabase.sh start` (adds the local-only test phone numbers while it starts; never put them in `supabase/config.toml`, CI fails if you do: `python3 scripts/check-config.py`)
 - Database: `supabase db reset` (local), `bash scripts/test-db.sh` (security tests on plain Postgres, also what CI runs), `bash scripts/test-db-supabase.sh` (the same tests on the real local Supabase; run it whenever you change a migration)
 - Slash commands: `/phase N`, `/security-review`, `/design-check`, `/new-migration <name>`
 

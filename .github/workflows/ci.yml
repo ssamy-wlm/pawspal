@@ -44,6 +44,8 @@ jobs:
           base="${{ github.event.before }}"
           if [ "${{ github.event_name }}" = "pull_request" ]; then base="${{ github.event.pull_request.base.sha }}"; fi
           python3 scripts/check-migrations.py "${base:-ROOT}"
+      - name: Live-project safety check (no test phone numbers or local settings in supabase/config.toml)
+        run: python3 scripts/check-config.py && python3 scripts/test_check_config.py
       - name: Migrations and security tests
         run: bash scripts/test-db.sh
   functions:

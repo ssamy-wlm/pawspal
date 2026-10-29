@@ -15,6 +15,12 @@ describe('requestOtp', () => {
     expect(init.headers.authorization).toBeUndefined();
   });
 
+  it('adds the CAPTCHA token only when there is one', async () => {
+    fetchMock.mockResolvedValue(reply(200, { ok: true, resend_after_seconds: 60 }));
+    await requestOtp('0101', 'tok');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).captcha_token).toBe('tok');
+  });
+
   it('throws an ApiError carrying the code the server gave', async () => {
     fetchMock.mockResolvedValueOnce(reply(429, { error: 'phone_limit' }));
     await expect(requestOtp('0101')).rejects.toMatchObject({ code: 'phone_limit', status: 429 });
@@ -66,7 +72,7 @@ describe('uploadPhoto', () => {
 describe('errorKey', () => {
   it('has a plain sentence for every code the functions can return', () => {
     const codes = ['invalid_phone', 'phone_limit', 'device_limit', 'too_many_attempts', 'captcha_required', 'too_soon', 'send_failed',
-      'invalid_code', 'try_again_later', 'not_configured', 'identity_refused', 'invalid_image', 'network'];
+      'invalid_code', 'try_again_later', 'not_configured', 'identity_refused', 'invalid_image', 'network', 'captcha_failed', 'request_new_code'];
     for (const c of codes) expect(errorKey(new ApiError(c, 400))).not.toBe('err.generic');
     expect(errorKey(new ApiError('something_new', 500))).toBe('err.generic');
     expect(errorKey(new Error('x'))).toBe('err.generic');

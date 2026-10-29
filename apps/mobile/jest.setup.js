@@ -51,3 +51,7 @@ jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn(async () => ({ granted: true })),
   getCurrentPositionAsync: jest.fn(async () => ({ coords: { latitude: 28.5, longitude: 34.5 } })),
 }));
+jest.mock('react-native-webview', () => {
+  const { View } = require('react-native');
+  return { WebView: (props) => require('react').createElement(View, { testID: 'webview', ...props }) };
+});

@@ -190,17 +190,30 @@ test('request-otp: after two wrong codes it asks for a CAPTCHA, or makes the per
   assert.deepEqual(await b.json(), { error: 'captcha_required', retry_after_seconds: 600, captcha_required: true });
 });
 
-test('request-otp: a solved CAPTCHA clears the lock before the check', async () => {
-  const { fetchFn, calls } = fakeFetch({ 'challenges.cloudflare.com': () => jsonRes(200, { success: true }), '/auth/v1/otp': () => jsonRes(200, {}) });
-  const { rpc, calls: rc } = fakeRpc();
-  const res = await handleRequestOtp(post({ phone: PHONE, device_id: DEVICE, captcha_token: 'solved' }), { env: otpEnv({ CAPTCHA_PROVIDER: 'turnstile', CAPTCHA_SECRET: 's' }), fetch: fetchFn, rpc });
+test('request-otp: passes the CAPTCHA token to Supabase Auth, which checks it (we must not use it up)', async () => {
+  const { fetchFn, calls } = fakeFetch({ '/auth/v1/otp': () => jsonRes(200, {}) });
+  const res = await handleRequestOtp(post({ phone: PHONE, device_id: DEVICE, captcha_token: 'tok' }), { env: otpEnv(), fetch: fetchFn, rpc: fakeRpc().rpc });
   assert.equal(res.status, 200);
-  assert.deepEqual(rc.map((c) => c.name), ['is_phone_banned', 'otp_record_result', 'otp_check_and_log']);
-  assert.equal(new URLSearchParams(calls[0].init.body as string).get('response'), 'solved');
-  const bad = fakeFetch({ 'challenges.cloudflare.com': () => jsonRes(200, { success: false }), '/auth/v1/otp': () => jsonRes(200, {}) });
-  const rc2 = fakeRpc();
-  await handleRequestOtp(post({ phone: PHONE, device_id: DEVICE, captcha_token: 'wrong' }), { env: otpEnv({ CAPTCHA_PROVIDER: 'turnstile', CAPTCHA_SECRET: 's' }), fetch: bad.fetchFn, rpc: rc2.rpc });
-  assert.ok(!rc2.calls.some((c) => c.name === 'otp_record_result'), 'a wrong CAPTCHA clears nothing');
+  assert.equal(calls.length, 1, 'only Supabase Auth is called, never the CAPTCHA service');
+  assert.deepEqual(JSON.parse(calls[0].init.body as string).gotrue_meta_security, { captcha_token: 'tok' });
+  const none = fakeFetch({ '/auth/v1/otp': () => jsonRes(200, {}) });
+  await handleRequestOtp(post({ phone: PHONE, device_id: DEVICE }), { env: otpEnv(), fetch: none.fetchFn, rpc: fakeRpc().rpc });
+  assert.equal(JSON.parse(none.calls[0].init.body as string).gotrue_meta_security, undefined);
+});
+
+test('request-otp: a refused CAPTCHA tells the app to show it again', async () => {
+  const { fetchFn } = fakeFetch({ '/auth/v1/otp': () => new Response('captcha verification process failed', { status: 400 }) });
+  const res = await handleRequestOtp(post({ phone: PHONE, device_id: DEVICE, captcha_token: 'bad' }), { env: otpEnv(), fetch: fetchFn, rpc: fakeRpc().rpc });
+  assert.equal(res.status, 400);
+  assert.deepEqual(await res.json(), { error: 'captcha_failed', captcha_required: true });
+});
+
+test('request-otp: wrong guesses never block asking for a code', async () => {
+  const { fetchFn } = fakeFetch({ '/auth/v1/otp': () => jsonRes(200, {}) });
+  const { rpc, calls: rc } = fakeRpc();
+  const res = await handleRequestOtp(post({ phone: PHONE, device_id: DEVICE }), { env: otpEnv(), fetch: fetchFn, rpc });
+  assert.equal(res.status, 200);
+  assert.ok(!rc.some((c) => c.name === 'otp_record_result'));
 });
 
 test('request-otp: Supabase Auth answers are passed on honestly', async () => {
@@ -402,4 +415,13 @@ test('verify-identity: signed-in only, valid steps only, and only your own selfi
   assert.equal((await handleVerifyIdentity(withAuth({ step: 'face', face_path: `${UID}/../f.jpg` }), idDeps(rpc))).status, 400);
   assert.equal((await handleVerifyIdentity(withAuth({ step: 'face', face_path: `${UID}/gone.jpg` }), idDeps(rpc))).status, 404);
   assert.equal((await handleVerifyIdentity(new Request('https://f.test/', { method: 'GET' }), idDeps(rpc))).status, 405);
+});
+
+test('verify-otp: a code that has had ten wrong guesses is used up, and the app is told to ask for a new one', async () => {
+  const { fetchFn, calls } = fakeFetch({});
+  const { rpc } = fakeRpc({ otp_check_and_log: () => ({ allowed: false, reason: 'request_new_code', retry_after_seconds: 0, captcha_required: false }) });
+  const res = await handleVerifyOtp(post({ phone: PHONE, token: CODE, device_id: DEVICE }), { env: otpEnv(), fetch: fetchFn, rpc });
+  assert.equal(res.status, 429);
+  assert.equal((await res.json()).error, 'request_new_code');
+  assert.equal(calls.length, 0);
 });

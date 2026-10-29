@@ -27,6 +27,6 @@ Everything is a setting, so a provider can be swapped without changing code. Put
 | `SMS_MESSAGE` | Text with `{{code}}`. Default is Arabic and English. |
 | `SEND_SMS_HOOK_SECRET` | The secret Supabase shows when you enable the Send SMS hook (`v1,whsec_...`). Requests with a wrong signature or an old timestamp are refused. |
 | `IDENTITY_PROVIDER` | `fake` (testing only) or a real provider once chosen. Unset means the ID and selfie steps answer "not available yet". `fake` also needs `ALLOW_FAKE_IDENTITY=true` when `PAWSPAL_ENV=production`, so it cannot be switched on by accident. |
-| `CAPTCHA_PROVIDER`, `CAPTCHA_SECRET` | Optional CAPTCHA after two wrong codes. Without it the person waits 10 minutes. |
+| `CAPTCHA_PROVIDER`, `CAPTCHA_SECRET` | Turnstile CAPTCHA (free). Supabase Auth itself also checks it on every code request (Authentication, Attack Protection), so `request-otp` only passes the app's `captcha_token` along. These two settings are used after two wrong codes. Without them the person waits 10 minutes. |
 
 To add a provider, write one file in `_shared/sms/` or `_shared/identity/`, register it on one line in that folder's `index.ts`, and add tests. Unit tests: `node --experimental-strip-types --test supabase/functions/_shared/*.test.ts`. Type check: `apps/mobile/node_modules/.bin/tsc -p supabase/functions/tsconfig.json`. Both run in CI.

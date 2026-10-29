@@ -3,9 +3,9 @@
 # that scripts/test-db.sh uses. Needs Docker running and `supabase start` done first.
 # Resets the local database first, so it never touches a hosted project.
 set -euo pipefail
-SUPABASE=${SUPABASE:-"npx --yes supabase@2.122.0"}
 LOG=${LOG:-$(mktemp)}
-$SUPABASE db reset --local >/dev/null
+bash scripts/local-supabase.sh db reset --local >/dev/null
+PGPASSWORD=postgres psql -q -h 127.0.0.1 -p 54322 -U postgres -d postgres -c "insert into private.local_switches values ('allow_test_numbers') on conflict do nothing"
 PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
   -f supabase/tests/security_test.sql > "$LOG" 2>&1 || true
 cat "$LOG"

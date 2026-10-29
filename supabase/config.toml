@@ -265,15 +265,11 @@ template = "Your code is {{ .Code }}"
 # Controls the minimum amount of time that must pass before sending another sms otp.
 max_frequency = "60s"
 
-# Use pre-defined map of phone number to OTP for testing.
-# Keys are the phone number with country code and without the + prefix.
-# Local test numbers: no SMS is sent, the code is always the one below. On the hosted project add the same kind of
-# test numbers under Authentication, Providers, Phone, "Test Phone Numbers" (Egyptian numbers only, like these).
+# Test phone numbers (a fixed code, no SMS) are NEVER kept in this file: the live project can receive this file, and
+# anyone who knows a test number's code could sign in as it. Local test numbers live in supabase/local/local-only.toml
+# and are added only while the local stack starts (scripts/local-supabase.sh). scripts/check-config.py fails CI if
+# anything here could reach the live project.
 [auth.sms.test_otp]
-201000000001 = "123456"
-201000000002 = "123456"
-201000000003 = "123456"
-201100000001 = "123456"
 
 # Configure logged in session timeouts.
 # [auth.sessions]
@@ -292,24 +288,11 @@ max_frequency = "60s"
 # enabled = true
 # uri = "pg-functions://<database>/<schema>/<hook_name>"
 
-# The Send SMS hook: Supabase Auth hands every code to our send-sms function, which sends it through whichever
-# provider the SMS_PROVIDERS setting names (an Egyptian SMS company, WhatsApp, Twilio...). Test phone numbers
-# (below) never reach it. The secret comes from your environment (`supabase start` reads SEND_SMS_HOOK_SECRET);
-# it is never written here.
-[auth.hook.send_sms]
-enabled = true
-uri = "http://host.docker.internal:54321/functions/v1/send-sms"
-secrets = "env(SEND_SMS_HOOK_SECRET)"
-
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
-# LOCAL ONLY: the Supabase CLI refuses to turn phone sign-in on unless one built-in provider is switched on. This is
-# a placeholder so the test phone numbers work locally; nothing is ever sent through it (non-test numbers go to the
-# Send SMS hook above, which uses whatever provider you choose). The hosted project does not use this file's
-# provider settings: it is configured in the dashboard.
 [auth.sms.twilio]
-enabled = true
-account_sid = "local-placeholder"
-message_service_sid = "local-placeholder"
+enabled = false
+account_sid = ""
+message_service_sid = ""
 # DO NOT commit your Twilio auth token to git. Use environment variable substitution instead:
 auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 

@@ -14,7 +14,7 @@ Goal: a fake person, a thief or a careless user cannot hurt a pet, steal a locat
 | Pet swapped after booking | Pet details and photos lock on confirmation (trigger); handover photos are taken in-app by both sides with a timestamp | `lock_pet_on_confirm()` |
 | Fake reviews | A review needs a completed booking, the author must be a participant, and there is one review per side per booking | RLS policy plus a unique constraint |
 | Payment fraud | Fees are confirmed only from the payment provider's **signed webhook** (HMAC checked) inside an edge function, never from the app | `paymob-webhook` function |
-| SMS pumping (cost attack) | Egypt (+20) only; App Check / Play Integrity / App Attest; limit 3 codes per number per hour and 10 per device per day; CAPTCHA after 2 failures | Auth settings, `request-otp` function |
+| SMS pumping (cost attack) | Egypt (+20) only; App Check / Play Integrity / App Attest; limit 3 codes per number per hour and 10 per device per day; Turnstile CAPTCHA on every code request (checked by Supabase Auth itself); a code is used up after 10 wrong guesses, and wrong guesses never block asking for a new code | Auth settings, `request-otp` function |
 | Account takeover | Short OTP expiry (5 min); new-device sign-in alert; sign out all devices in Settings | Auth |
 | Harassment | Block (hides both ways, stops messages), report, rate limits on messaging new people (20 per day for new accounts) | `blocks` table, policies |
 | Admin abuse | Admins are listed in `admins`; every admin action runs through `admin_take_action()`, which writes the audit log; the audit log is insert-only | Migration `0001` |

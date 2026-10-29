@@ -17,11 +17,12 @@ import Pending from '../app/pending';
 const mockRefresh = jest.fn();
 const mockSignOut = jest.fn(async () => {});
 let mockState: unknown = null;
-jest.mock('../src/lib/auth', () => ({ useAuth: () => ({ ready: true, session: null, state: mockState, refresh: mockRefresh, signOut: mockSignOut }) }));
+jest.mock('../src/lib/auth', () => ({ useAuth: () => ({ ready: true, session: { user: { id: 'u1' } }, state: mockState, refresh: mockRefresh, signOut: mockSignOut }) }));
 jest.mock('../src/lib/api', () => ({ ...jest.requireActual('../src/lib/api'), requestOtp: jest.fn(), verifyOtp: jest.fn(), uploadPhoto: jest.fn(), verifyFace: jest.fn(), verifyId: jest.fn() }));
 
 const mockCalls: { table: string; op: string; row?: unknown }[] = [];
 const mockRpc = jest.fn();
+let mockTables: Record<string, unknown[]> = {};
 let mockAcceptError: { code: string } | null = null;
 jest.mock('../src/lib/supabase', () => ({
   supabase: {
@@ -30,7 +31,12 @@ jest.mock('../src/lib/supabase', () => ({
     from: (table: string) => ({
       insert: async (row: unknown) => { mockCalls.push({ table, op: 'insert', row }); return { error: table === 'legal_acceptances' ? mockAcceptError : null }; },
       update: (row: unknown) => ({ eq: async () => { mockCalls.push({ table, op: 'update', row }); return { error: null }; } }),
-      select: async () => ({ data: [{ doc: 'terms', current_version: '1' }, { doc: 'privacy', current_version: '1' }, { doc: 'guidelines', current_version: '1' }], error: null }),
+      select: () => {
+        const chain: Record<string, unknown> = {};
+        for (const k of ['eq', 'in', 'order', 'limit']) chain[k] = () => chain;
+        chain.then = (resolve: (v: unknown) => void) => resolve({ data: mockTables[table] ?? [], error: null });
+        return chain;
+      },
     }),
   },
 }));
@@ -38,6 +44,8 @@ jest.mock('../src/lib/supabase', () => ({
 const m = api as jest.Mocked<typeof api>;
 beforeEach(() => {
   jest.clearAllMocks(); mockCalls.length = 0; mockState = null; mockAcceptError = null;
+  mockTables = { legal_documents: [{ doc: 'terms', current_version: '1' }, { doc: 'privacy', current_version: '1' }, { doc: 'guidelines', current_version: '1' }] };
+  delete process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY;
   mockRefresh.mockResolvedValue({ status: 'pending_verification', missing: ['face'] });
   mockRpc.mockResolvedValue({ data: 'pending_review', error: null });
 });
@@ -62,7 +70,7 @@ describe('phone step', () => {
     await fireEvent.changeText(screen.getByLabelText('Mobile number'), '010 1234 5678');
     await fireEvent.press(send);
     await waitFor(() => expect(screen.getByText('Enter your code')).toBeTruthy());
-    expect(m.requestOtp).toHaveBeenCalledWith('010 1234 5678');
+    expect(m.requestOtp).toHaveBeenCalledWith('010 1234 5678', undefined);
     expect(screen.getByText('Send again in 60s')).toBeTruthy();
     expect(screen.queryByText('Send again')).toBeNull();
     await fireEvent.press(screen.getByText('Use another number'));
@@ -103,7 +111,7 @@ describe('phone step', () => {
     await fireEvent.changeText(screen.getByLabelText('Code'), '12 34-56');
     await fireEvent.press(screen.getByText('Verify'));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/signup/selfie'));
-    expect(m.verifyOtp).toHaveBeenCalledWith('01012345678', '123456');
+    expect(m.verifyOtp).toHaveBeenCalledWith('01012345678', '123456', undefined);
   });
 
   it('says so when the code is wrong', async () => {
@@ -304,5 +312,107 @@ describe('pending screen', () => {
     await renderIn(<Pending />);
     expect(screen.getByText('This account is not active')).toBeTruthy();
     expect(screen.queryByText('We are checking your profile')).toBeNull();
+  });
+
+  it('lets a suspended person read our message and send an appeal, once', async () => {
+    mockState = { status: 'suspended' };
+    mockTables.enforcement_actions = [{ id: 'act-1', message: 'You broke rule 4.' }];
+    await renderIn(<Pending />);
+    await waitFor(() => expect(screen.getByText('You broke rule 4.')).toBeTruthy());
+    await fireEvent.press(screen.getByText('Send appeal'));
+    expect(mockCalls.filter((c) => c.table === 'appeals')).toHaveLength(0);          // nothing typed yet
+    await fireEvent.changeText(screen.getByLabelText('Your message'), 'I was away, my friend used the app.');
+    await fireEvent.press(screen.getByText('Send appeal'));
+    await waitFor(() => expect(screen.getByText('Appeal sent')).toBeTruthy());
+    expect(mockCalls.filter((c) => c.table === 'appeals').map((c) => c.row)).toEqual([
+      { action_id: 'act-1', user_id: 'u1', body: 'I was away, my friend used the app.' },
+    ]);
+    expect(screen.queryByText('Send appeal')).toBeNull();
+  });
+
+  it('shows "Appeal sent" straight away when an appeal is already open', async () => {
+    mockState = { status: 'removed' };
+    mockTables.enforcement_actions = [{ id: 'act-1', message: null }];
+    mockTables.appeals = [{ id: 'ap-1' }];
+    await renderIn(<Pending />);
+    await waitFor(() => expect(screen.getByText('Appeal sent')).toBeTruthy());
+    expect(screen.queryByLabelText('Your message')).toBeNull();
+  });
+
+  it('offers no appeal form to someone who is only waiting for review', async () => {
+    mockState = { status: 'pending_review' };
+    mockTables.enforcement_actions = [{ id: 'act-1', message: 'x' }];
+    await renderIn(<Pending />);
+    expect(screen.queryByText('Send appeal')).toBeNull();
+  });
+});
+
+describe('CAPTCHA (Cloudflare Turnstile)', () => {
+  const solve = async (token: string) => {
+    const web = screen.getByTestId('webview');
+    await act(async () => { web.props.onMessage({ nativeEvent: { data: JSON.stringify({ token }) } }); });
+  };
+
+  it('asks for no CAPTCHA while no site key is set', async () => {
+    m.requestOtp.mockResolvedValue({ resend_after_seconds: 60 });
+    await renderIn(<PhoneStep />);
+    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
+    await fireEvent.press(screen.getByText('Send code'));
+    await waitFor(() => expect(m.requestOtp).toHaveBeenCalledWith('01012345678', undefined));
+    expect(screen.queryByTestId('webview')).toBeNull();
+  });
+
+  it('shows the check first, and sends the code only with its token', async () => {
+    process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY = '1x00000000000000000000AA';
+    m.requestOtp.mockResolvedValue({ resend_after_seconds: 60 });
+    await renderIn(<PhoneStep />);
+    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
+    await fireEvent.press(screen.getByText('Send code'));
+    expect(screen.getByTestId('webview')).toBeTruthy();
+    expect(m.requestOtp).not.toHaveBeenCalled();
+    await solve('tok-1');
+    await waitFor(() => expect(m.requestOtp).toHaveBeenCalledWith('01012345678', 'tok-1'));
+    await waitFor(() => expect(screen.getByText('Enter your code')).toBeTruthy());
+    expect(screen.queryByTestId('webview')).toBeNull();
+  });
+
+  it('shows the check again when the server did not accept it', async () => {
+    process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY = '1x00000000000000000000AA';
+    m.requestOtp.mockRejectedValueOnce(new ApiError('captcha_failed', 400, { captcha_required: true }));
+    await renderIn(<PhoneStep />);
+    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
+    await fireEvent.press(screen.getByText('Send code'));
+    await solve('bad');
+    await waitFor(() => expect(screen.getByText('The check did not work. Try again.')).toBeTruthy());
+    expect(screen.getByTestId('webview')).toBeTruthy();
+  });
+
+  it('asks for the check after two wrong codes and retries the code with its token', async () => {
+    process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY = '1x00000000000000000000AA';
+    m.requestOtp.mockResolvedValue({ resend_after_seconds: 60 });
+    m.verifyOtp.mockRejectedValueOnce(new ApiError('too_many_attempts', 429, { captcha_required: true, retry_after_seconds: 600 }));
+    m.verifyOtp.mockResolvedValueOnce(undefined);
+    await renderIn(<PhoneStep />);
+    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
+    await fireEvent.press(screen.getByText('Send code'));
+    await solve('send-token');
+    await waitFor(() => screen.getByLabelText('Code'));
+    await fireEvent.changeText(screen.getByLabelText('Code'), '123456');
+    await fireEvent.press(screen.getByText('Verify'));
+    await solve('verify-token');                     // the check shows after the first, too-many-attempts answer
+    await waitFor(() => expect(m.verifyOtp).toHaveBeenCalledTimes(2));
+    expect(m.verifyOtp).toHaveBeenNthCalledWith(2, '01012345678', '123456', 'verify-token');
+  });
+
+  it('tells the person to ask for a new code when this one is used up', async () => {
+    m.requestOtp.mockResolvedValue({ resend_after_seconds: 60 });
+    m.verifyOtp.mockRejectedValue(new ApiError('request_new_code', 429));
+    await renderIn(<PhoneStep />);
+    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
+    await fireEvent.press(screen.getByText('Send code'));
+    await waitFor(() => screen.getByLabelText('Code'));
+    await fireEvent.changeText(screen.getByLabelText('Code'), '123456');
+    await fireEvent.press(screen.getByText('Verify'));
+    await waitFor(() => expect(screen.getByText('That code is used up. Ask for a new one.')).toBeTruthy());
   });
 });

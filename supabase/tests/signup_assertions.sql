@@ -26,7 +26,7 @@ select pg_temp.check((public.otp_check_and_log('ph1', null, false, 'send') ->> '
 select pg_temp.check((public.otp_check_and_log('ph1', null, false, 'send') ->> 'allowed')::boolean, 'send 2 allowed');
 select pg_temp.check((public.otp_check_and_log('ph1', null, false, 'send') ->> 'allowed')::boolean, 'send 3 allowed');
 select pg_temp.check((public.otp_check_and_log('ph1', null, false, 'send') ->> 'reason') = 'phone_limit', 'send 4 to the same number is refused');
-select pg_temp.check((public.otp_check_and_log('ph1', 'devX', false, 'check') ->> 'reason') = 'phone_limit', 'a plain check also refuses the number');
+select pg_temp.check((public.otp_check_and_log('ph1', 'devX', false, 'check') ->> 'allowed')::boolean, 'checking a code is not blocked by the send limit');
 select pg_temp.check((public.otp_check_and_log('ph1', null, false, 'send') ->> 'retry_after_seconds')::int between 1 and 3600, 'the refusal says how long to wait');
 select pg_temp.check((select count(*) = 3 from private.otp_events where phone_hash = 'ph1' and kind = 'send'), 'a refused send is not counted');
 select pg_temp.check((public.otp_check_and_log('ph2', null, false, 'send') ->> 'allowed')::boolean, 'another number is not affected by the first');
@@ -174,5 +174,33 @@ select pg_temp.check(pg_temp.count_as('a3a3a3a3-0000-0000-0000-000000000003', $$
 
 \echo '--- S11 the role is fixed after submit'
 select pg_temp.fails_as('authenticated', 'a3a3a3a3-0000-0000-0000-000000000003', $$update public.profiles set role = case role when 'owner' then 'sitter'::public.user_role else 'owner'::public.user_role end where id = 'a3a3a3a3-0000-0000-0000-000000000003'$$, 'an active person cannot switch role');
+
+\echo '--- S12 test numbers cannot become accounts, and nobody can lock someone else out'
+delete from private.local_switches;
+select pg_temp.fails($$insert into auth.users (id, phone, phone_confirmed_at) values ('a7a7a7a7-0000-0000-0000-000000000007', '201000000077', now())$$, 'a test number became an account without the switch');
+select pg_temp.fails($$insert into auth.users (id, phone, phone_confirmed_at) values ('a7a7a7a7-0000-0000-0000-000000000008', '201100000001', now())$$, 'a test number became an account without the switch (11x)');
+select pg_temp.check(not exists (select 1 from auth.users where phone in ('201000000077', '201100000001')), 'no test-number account exists');
+insert into auth.users (id, phone, phone_confirmed_at) values ('a7a7a7a7-0000-0000-0000-000000000009', '201000012345', now());   -- a real-looking number is fine
+insert into private.local_switches values ('allow_test_numbers');
+insert into auth.users (id, phone, phone_confirmed_at) values ('a7a7a7a7-0000-0000-0000-00000000000a', '201000000078', now());
+select pg_temp.check(exists (select 1 from auth.users where phone = '201000000078'), 'with the local switch on, a test number works');
+
+select public.otp_record_result('lk1', 'attacker', false);
+select public.otp_record_result('lk1', 'attacker', false);
+select pg_temp.check((public.otp_check_and_log('lk1', 'attacker', false, 'check') ->> 'reason') = 'captcha_required', 'two wrong codes from one device need a CAPTCHA for that device');
+select pg_temp.check((public.otp_check_and_log('lk1', 'victim', false, 'check') ->> 'allowed')::boolean, 'the real owner on another device is not locked');
+select pg_temp.check((public.otp_check_and_log('lk1', 'victim', false, 'request') ->> 'allowed')::boolean, 'the real owner can still ask for a code');
+select pg_temp.check((public.otp_check_and_log('lk1', 'attacker', false, 'request') ->> 'allowed')::boolean, 'asking for a code is never blocked by wrong guesses');
+do $$ begin for i in 1..8 loop perform public.otp_record_result('lk1', 'dev' || i, false); end loop; end $$;
+select pg_temp.check((public.otp_check_and_log('lk1', 'victim', true, 'check') ->> 'reason') = 'request_new_code', 'ten wrong codes use the code up, even with a CAPTCHA');
+select pg_temp.check((public.otp_check_and_log('lk1', 'victim', false, 'send') ->> 'allowed')::boolean, 'a new code can be sent');
+select pg_temp.check((public.otp_check_and_log('lk1', 'victim', false, 'check') ->> 'allowed')::boolean, 'a new code starts the count again');
+
+\echo '--- S13 one open appeal per action'
+insert into public.enforcement_actions (id, user_id, action, admin_id, message)
+  values ('a8a8a8a8-0000-0000-0000-000000000001', 'a3a3a3a3-0000-0000-0000-000000000003', 'suspension', 'dddddddd-0000-0000-0000-000000000004', 'test');
+insert into public.appeals (action_id, user_id, body) values ('a8a8a8a8-0000-0000-0000-000000000001', 'a3a3a3a3-0000-0000-0000-000000000003', 'please look again');
+select pg_temp.fails($$insert into public.appeals (action_id, user_id, body) values ('a8a8a8a8-0000-0000-0000-000000000001', 'a3a3a3a3-0000-0000-0000-000000000003', 'again')$$, 'two open appeals for one action');
+select pg_temp.check(pg_temp.count_as('a3a3a3a3-0000-0000-0000-000000000003', $$select count(*) from public.appeals$$) = 1, 'the person sees their own appeal');
 
 \echo 'signup assertions OK'

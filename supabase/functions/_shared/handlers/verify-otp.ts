@@ -29,6 +29,9 @@ export async function handleVerifyOtp(req: Request, deps: OtpDeps): Promise<Resp
   const check = await deps.rpc('otp_check_and_log', { p_phone_hash: phoneHash, p_device_hash: devHash, p_captcha_ok: captchaOk, p_mode: 'check' });
   const decision = check.error ? null : asDecision(check.data);
   if (!decision) return json(503, { error: 'try_again_later' });
+  if (!decision.allowed && decision.reason === 'request_new_code') {
+    return json(429, { error: 'request_new_code', retry_after_seconds: 0 });   // this code is used up: ask for a new one
+  }
   if (!decision.allowed && decision.reason === 'captcha_required') {
     return json(429, { error: 'too_many_attempts', retry_after_seconds: decision.retry_after_seconds, captcha_required: !!deps.env.get('CAPTCHA_PROVIDER') });
   }

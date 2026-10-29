@@ -27,6 +27,7 @@ export async function handleRequestOtp(req: Request, deps: OtpDeps): Promise<Res
   if (!phone.ok) return json(400, { error: 'invalid_phone' });
   if (!validDeviceId(body.device_id)) return json(400, { error: 'invalid_request' });
 
+  const captchaToken = typeof body.captcha_token === 'string' && body.captcha_token.length > 0 && body.captcha_token.length <= 4096 ? body.captcha_token : null;
   const phoneHash = await sha256Hex(phone.digits);
   const devHash = await deviceHash(body.device_id);
 
@@ -34,17 +35,6 @@ export async function handleRequestOtp(req: Request, deps: OtpDeps): Promise<Res
   const banned = await deps.rpc('is_phone_banned', { p_phone: phone.e164 });
   if (banned.error) return json(503, { error: 'try_again_later' });
   if (banned.data === true) return json(200, { ok: true, resend_after_seconds: RESEND_AFTER_SECONDS });
-
-  // A solved CAPTCHA clears the "two wrong codes" lock.
-  if (body.captcha_token !== undefined) {
-    try {
-      if (await verifyCaptcha(deps.env, deps.fetch, body.captcha_token)) {
-        await deps.rpc('otp_record_result', { p_phone_hash: phoneHash, p_device_hash: devHash, p_ok: true });
-      }
-    } catch (e) {
-      if (!(e instanceof ConfigError)) throw e;
-    }
-  }
 
   const check = await deps.rpc('otp_check_and_log', { p_phone_hash: phoneHash, p_device_hash: devHash, p_captcha_ok: false, p_mode: 'request' });
   const decision = check.error ? null : asDecision(check.data);
@@ -62,12 +52,18 @@ export async function handleRequestOtp(req: Request, deps: OtpDeps): Promise<Res
     res = await deps.fetch(`${base}/auth/v1/otp`, {
       method: 'POST',
       headers: { apikey: anon, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: phone.e164, create_user: true, channel: 'sms' }),
+      // Supabase Auth checks the CAPTCHA itself when it is switched on (Authentication, Attack Protection), so a direct call
+      // to Auth without a token fails too. We only pass the token along; checking it here would use it up.
+      body: JSON.stringify({ phone: phone.e164, create_user: true, channel: 'sms', ...(captchaToken ? { gotrue_meta_security: { captcha_token: captchaToken } } : {}) }),
     });
   } catch {
     return json(502, { error: 'send_failed' });
   }
   if (res.ok) return json(200, { ok: true, resend_after_seconds: RESEND_AFTER_SECONDS });
+  if (res.status === 400 || res.status === 422) {
+    const text = await res.clone().text().catch(() => '');
+    if (/captcha/i.test(text)) return json(400, { error: 'captcha_failed', captcha_required: true });
+  }
   if (res.status === 429) {
     const text = await res.text().catch(() => '');
     const m = text.match(/after (\d+) seconds?/i);

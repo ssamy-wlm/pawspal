@@ -1,0 +1,30 @@
+# Settings that exist ONLY on a developer's own computer. scripts/local-supabase.sh adds them to supabase/config.toml
+# while the local stack starts, then puts the file back. They must never be in supabase/config.toml itself.
+# scripts/check-config.py fails CI if they are.
+
+# Test phone numbers: no SMS is sent, the code is always 123456. Egyptian numbers only.
+[auth.sms.test_otp]
+201000000001 = "123456"
+201000000002 = "123456"
+201000000003 = "123456"
+201100000001 = "123456"
+
+# The Supabase CLI refuses to turn phone sign-in on unless one built-in provider is switched on. This placeholder only
+# satisfies it; nothing is sent through it.
+[auth.sms.twilio]
+enabled = true
+account_sid = "local-placeholder"
+message_service_sid = "local-placeholder"
+
+# Real (non-test) numbers go to our send-sms function, which uses whichever provider SMS_PROVIDERS names.
+[auth.hook.send_sms]
+enabled = true
+uri = "http://host.docker.internal:54321/functions/v1/send-sms"
+secrets = "env(SEND_SMS_HOOK_SECRET)"
+
+# Cloudflare's published TEST secret for Turnstile: it accepts the token XXXX.DUMMY.TOKEN.XXXX. It protects nothing, so it
+# is fine here, and it lets the local stack behave like the live one (a code request needs a CAPTCHA token).
+[auth.captcha]
+enabled = true
+provider = "turnstile"
+secret = "1x0000000000000000000000000000000AA"
