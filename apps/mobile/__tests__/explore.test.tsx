@@ -14,6 +14,8 @@ import Travellers from '../app/travellers';
 import PostDates from '../app/post-dates';
 import { ResultsMap } from '../src/components/ResultsMap';
 import { CardArt, PawHeartPattern } from '../src/components/CardArt';
+import { BrowseCard, cardChips } from '../src/components/BrowseCard';
+import { LikeButton, PassButton } from '../src/components/SwipeButtons';
 import { ToastProvider } from '../src/components/Toast';
 
 let mockRole: 'owner' | 'sitter' | 'both' = 'both';
@@ -274,6 +276,44 @@ describe('animated card backgrounds', () => {
     const json = JSON.stringify(screen.toJSON());
     expect((json.match(/RNSVGEllipse/g) ?? []).length).toBeGreaterThan(2);           // paw pads
     expect((json.match(/RNSVGPath/g) ?? []).length).toBeGreaterThan(2);              // hearts
+  });
+});
+
+describe('browse card chips', () => {
+  it('shows who lives there, the pets welcome, what is offered and what the home has', () => {
+    const labels = cardChips(host(1, { pet_name: 'Rex', pets_accepted: ['dog', 'cat'], offers: ['paid', 'food_provided', 'swap'], home_tags: ['garden', 'pet_first_aid', 'near_beach', 'quiet_home'] })).map((x) => x.label);
+    expect(labels).toEqual(['Rex lives here', 'Dogs', 'Cats', 'Food provided', 'Swap welcome', 'Garden', 'Pet first aid']);
+  });
+  it('says "Pet-friendly home" when no pet lives there, ignores unknown tags, and never shows more than seven', () => {
+    expect(cardChips(host(1, { pet_name: null, offers: ['paid'], pets_accepted: ['dog'], home_tags: ['made_up'] })).map((x) => x.label)).toEqual(['Pet-friendly home', 'Dogs']);
+    expect(cardChips(host(1, { pets_accepted: ['dog', 'cat', 'other'], offers: ['food_provided', 'swap', 'volunteer', 'stay_at_my_place'], home_tags: ['garden'] }))).toHaveLength(7);
+  });
+  it('draws the chips on the full card but not on the list row', async () => {
+    const full = await renderIn(<BrowseCard r={host(1, { pet_name: 'Rex', home_tags: ['garden'] })} />);
+    expect(screen.getByText('Rex lives here')).toBeTruthy();
+    expect(screen.getByText('Garden')).toBeTruthy();
+    await full.unmount();
+    await renderIn(<BrowseCard r={host(1, { pet_name: 'Rex' })} compact />);
+    expect(screen.queryByText('Rex lives here')).toBeNull();
+  });
+});
+
+describe('swipe buttons', () => {
+  it('press the pass and like buttons', async () => {
+    const pass = jest.fn(); const like = jest.fn();
+    await renderIn(<><PassButton onPress={pass} /><LikeButton onPress={like} /></>);
+    await fireEvent(screen.getByLabelText('Pass'), 'pressIn');
+    await fireEvent(screen.getByLabelText('Pass'), 'pressOut');
+    await fireEvent.press(screen.getByLabelText('Pass'));
+    await fireEvent.press(screen.getByLabelText('Like'));
+    expect(pass).toHaveBeenCalledTimes(1);
+    expect(like).toHaveBeenCalledTimes(1);
+  });
+  it('are at least 44 points', async () => {
+    await renderIn(<><PassButton onPress={jest.fn()} /><LikeButton onPress={jest.fn()} /></>);
+    const sizes = JSON.stringify(screen.toJSON());
+    expect(sizes).toContain('"width":68');
+    expect(sizes).toContain('"width":84');
   });
 });
 

@@ -425,3 +425,47 @@ test('verify-otp: a code that has had ten wrong guesses is used up, and the app 
   assert.equal((await res.json()).error, 'request_new_code');
   assert.equal(calls.length, 0);
 });
+
+// ---------------------------------------------------------------- cleanup-photos
+import { handleCleanupPhotos } from './handlers/cleanup-photos.ts';
+
+const CLEANUP_KEY = 'cleanup-secret-with-enough-length-0123456789';
+const cleanupReq = (secret?: string, method = 'POST') => new Request('http://x', { method, headers: secret === undefined ? {} : { 'x-cleanup-secret': secret } });
+
+test('cleanup-photos: refuses everyone without the secret, and does nothing when no secret is set up', async () => {
+  const { rpc, calls } = fakeRpc();
+  const removed: string[] = [];
+  const deps = (env: Record<string, string>) => ({ env: envFrom(env), rpc, removeMany: async (b: string, n: string[]) => { removed.push(b + ':' + n.join(',')); return true; } });
+  assert.equal((await handleCleanupPhotos(cleanupReq(CLEANUP_KEY), deps({}))).status, 503);
+  assert.equal((await handleCleanupPhotos(cleanupReq(CLEANUP_KEY), deps({ CLEANUP_SECRET: 'short' }))).status, 503);
+  assert.equal((await handleCleanupPhotos(cleanupReq(), deps({ CLEANUP_SECRET: CLEANUP_KEY }))).status, 401);
+  assert.equal((await handleCleanupPhotos(cleanupReq('wrong'), deps({ CLEANUP_SECRET: CLEANUP_KEY }))).status, 401);
+  assert.equal((await handleCleanupPhotos(cleanupReq(CLEANUP_KEY, 'GET'), deps({ CLEANUP_SECRET: CLEANUP_KEY }))).status, 405);
+  assert.deepEqual(calls, [], 'the database was not even asked');
+  assert.deepEqual(removed, []);
+});
+
+test('cleanup-photos: deletes the listed files bucket by bucket, in batches, and ignores unknown buckets', async () => {
+  const rows = [
+    ...Array.from({ length: 150 }, (_, i) => ({ bucket_id: 'pets', name: `u/p${i}.jpg` })),
+    { bucket_id: 'incoming', name: 'u/raw.jpg' },
+    { bucket_id: 'handovers', name: 'u/should-never-be-touched.jpg' },
+    { bucket_id: 'homes', name: 5 },
+  ];
+  const { rpc, calls } = fakeRpc({ list_unused_uploads: () => rows });
+  const batches: [string, number][] = [];
+  const res = await handleCleanupPhotos(cleanupReq(CLEANUP_KEY), { env: envFrom({ CLEANUP_SECRET: CLEANUP_KEY }), rpc, removeMany: async (b, n) => { batches.push([b, n.length]); return true; } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { removed: 151, failed: 0 });
+  assert.deepEqual(batches, [['pets', 100], ['pets', 50], ['incoming', 1]]);
+  assert.deepEqual(calls.map((c) => c.name), ['list_unused_uploads']);
+});
+
+test('cleanup-photos: counts failures honestly and stops cleanly when the database fails', async () => {
+  const { rpc } = fakeRpc({ list_unused_uploads: () => [{ bucket_id: 'pets', name: 'a.jpg' }] });
+  const res = await handleCleanupPhotos(cleanupReq(CLEANUP_KEY), { env: envFrom({ CLEANUP_SECRET: CLEANUP_KEY }), rpc, removeMany: async () => false });
+  assert.deepEqual(await res.json(), { removed: 0, failed: 1 });
+  const bad = fakeRpc({ list_unused_uploads: () => new Error('db down') });
+  const res2 = await handleCleanupPhotos(cleanupReq(CLEANUP_KEY), { env: envFrom({ CLEANUP_SECRET: CLEANUP_KEY }), rpc: bad.rpc, removeMany: async () => true });
+  assert.equal(res2.status, 502);
+});

@@ -427,6 +427,9 @@ verify_jwt = false
 [functions.send-sms]
 verify_jwt = false
 
+[functions.cleanup-photos]
+verify_jwt = false      # called by a timer, not by a person; it proves itself with CLEANUP_SECRET
+
 [functions.process-upload]
 verify_jwt = true
 

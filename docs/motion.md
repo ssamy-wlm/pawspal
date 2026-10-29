@@ -9,7 +9,7 @@ Every animation below appears in the PawsPal intro video and the Instagram posts
 | `easeOut` | cubic out, `1 − (1 − t)³` | Default for anything arriving |
 | `easeIn` | cubic in, `t³` | Anything leaving (swipe out, pin falling) |
 | `easeInOut` | cubic in-out | Cross-fades, label swaps |
-| `backOut(k)` | overshoot, `1 + (k+1)(t−1)³ + k(t−1)²` | `k = 1.4` soft (toasts), `1.6` bubble (chat bubbles, terms card), `1.7` pop, `1.9` bouncy |
+| `backOut(k)` | overshoot, `1 + (k+1)(t−1)³ + k(t−1)²` | `k = 1.4` soft (toasts), `1.5` card (browse deck), `1.6` bubble (chat bubbles, terms card), `1.7` pop, `1.9` bouncy |
 | `squash(a)` | scaleX `1+a·sin(πp)`, scaleY `1−a·sin(πp)`, decaying | The landing "boing" on the logo, check and pin |
 | `breathe` | scale `1 ± 0.02` on a 3 s sine | Background circles; never stops |
 

@@ -206,6 +206,32 @@ describe('pet screen', () => {
     expect([...(paths as string[])].sort()).toEqual(['me/new2.jpg', 'me/p1.jpg']);
   });
 
+  it('deletes photos that were added but never saved when you leave the screen', async () => {
+    a.uploadPhoto.mockResolvedValueOnce('me/unsaved.jpg');
+    params.mockReturnValue({ id: 'pet-1' });
+    const view = await renderIn(<PetScreen />);
+    await waitFor(() => screen.getByDisplayValue('Biscuit'));
+    await fireEvent.press(screen.getByText('Add a photo'));
+    await waitFor(() => screen.getByLabelText('Remove photo 2'));
+    expect(p.removePhotoFiles).not.toHaveBeenCalled();
+    await view.unmount();
+    expect(p.removePhotoFiles).toHaveBeenCalledWith('pets', ['me/unsaved.jpg']);
+  });
+
+  it('does not delete anything on leaving after a save', async () => {
+    a.uploadPhoto.mockResolvedValueOnce('me/saved.jpg');
+    params.mockReturnValue({ id: 'pet-1' });
+    const view = await renderIn(<PetScreen />);
+    await waitFor(() => screen.getByDisplayValue('Biscuit'));
+    await fireEvent.press(screen.getByText('Add a photo'));
+    await waitFor(() => screen.getByLabelText('Remove photo 2'));
+    await fireEvent.press(screen.getByText('Save pet'));
+    await waitFor(() => expect(p.savePet).toHaveBeenCalled());
+    p.removePhotoFiles.mockClear();
+    await view.unmount();
+    expect(p.removePhotoFiles).not.toHaveBeenCalled();
+  });
+
   it('deletes every photo file of a pet that is deleted, after the pet itself', async () => {
     p.deletePet.mockResolvedValue(undefined);
     params.mockReturnValue({ id: 'pet-1' });

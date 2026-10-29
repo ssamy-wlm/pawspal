@@ -6,6 +6,7 @@
 | `verify-otp` | 2 | Checks the code with Supabase Auth, counts wrong tries (CAPTCHA or 10 minute wait after two), returns the session | anon key, service role |
 | `send-sms` | 2 | The Supabase **Send SMS hook**: Auth calls it with the code, it sends through the providers named in `SMS_PROVIDERS` (in order, with fallback) | hook secret, provider keys |
 | `process-upload` | 2 | Takes a raw photo from `incoming/<uid>/`, strips all metadata (EXIF, GPS), saves the clean copy under a random name in `faces`, `pets` or `homes`, deletes the raw file | service role |
+| `cleanup-photos` | 5 | Nightly: deletes photo files nobody uses (raw uploads left in `incoming` after an hour; clean photos no pet or profile points to after a day). Called by Supabase Cron with the `x-cleanup-secret` header. Never logs file names | `CLEANUP_SECRET`, service role |
 | `verify-identity` | 2 | Face and ID checks through the provider named in `IDENTITY_PROVIDER`; stores only the result and a hash of the document, never an ID image; calls `record_verification()` (service role only) | provider key, service role |
 | `paymob-webhook` | 6 | Verifies HMAC, calls `confirm_booking_payment()`; handles refunds by Terms section 6 | Paymob HMAC, service role |
 | `create-fee-payment` | 6 | Creates the payment for a `terms_agreed` booking; the price comes from server config, never the app | Paymob key |

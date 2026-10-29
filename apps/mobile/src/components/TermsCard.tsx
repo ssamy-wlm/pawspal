@@ -8,7 +8,7 @@ import { M, ease, useEntrance } from '../motion';
 export interface TermsData { dates: string; pet: string; location: string; cost: string }
 
 /** The proposed-terms card from the chat. Accept and Change; either side changing the terms clears both acceptances. */
-export function TermsCard({ terms, accepted, onAccept, onChange }: { terms: TermsData; accepted: boolean; onAccept: () => void; onChange: () => void }) {
+export function TermsCard({ terms, accepted, onAccept, onChange, title }: { terms: TermsData; accepted: boolean; onAccept: () => void; onChange: () => void; title?: string }) {
   const t = useTheme();
   const c = t.color;
   const rtl = isRTL();
@@ -36,7 +36,7 @@ export function TermsCard({ terms, accepted, onAccept, onChange }: { terms: Term
 
   return (
     <Animated.View style={[{ borderRadius: 24, padding: 20, gap: 14, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }, entrance]}>
-      <Text accessibilityRole="header" style={{ color: c.text, fontSize: 18, fontFamily: fontFamily('bold', rtl) }}>{tr('terms.title')}</Text>
+      <Text accessibilityRole="header" style={{ color: c.text, fontSize: 18, fontFamily: fontFamily('bold', rtl) }}>{title ?? tr('terms.title')}</Text>
       <View style={{ gap: 8 }}>
         {rows.map(([label, value]) => (
           <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>

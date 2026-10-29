@@ -3,7 +3,7 @@ import { useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { M, ease, useReducedMotion } from '../motion';
+import { M, ease, useEntrance, useReducedMotion } from '../motion';
 
 export type SwipeDirection = 'pass' | 'like';
 
@@ -24,6 +24,8 @@ export function SwipeDeck<T>({ items, keyOf, renderCard, onSwipe, bindControls, 
   const { width } = useWindowDimensions();
   const reduced = useReducedMotion();
   const [index, setIndex] = useState(0);
+  // Only the cards on screen when the deck first appears fly in from below; later cards just move up the stack.
+  const [firstKeys] = useState(() => new Set(items.slice(0, 3).map(keyOf)));
   const x = useSharedValue(0);
   const promote = useSharedValue(0);
 
@@ -72,12 +74,14 @@ export function SwipeDeck<T>({ items, keyOf, renderCard, onSwipe, bindControls, 
   const visible = items.slice(index, index + 3);
   return (
     <View style={{ height: cardHeight + 60 }}>
-      {visible.map((item, depth) => <Layer key={keyOf(item)} depth={depth} promote={promote} topStyle={top} pan={gesture} height={cardHeight}>{renderCard(item)}</Layer>).reverse()}
+      {visible.map((item, depth) => <Layer key={keyOf(item)} depth={depth} enter={firstKeys.has(keyOf(item))} promote={promote} topStyle={top} pan={gesture} height={cardHeight}>{renderCard(item)}</Layer>).reverse()}
     </View>
   );
 }
 
-function Layer({ depth, promote, topStyle, pan, height, children }: any) {
+function Layer({ depth, enter, promote, topStyle, pan, height, children }: any) {
+  // docs/motion.md section 3: from 300 px below, backOut(1.5), 600 ms, 120 ms apart (Reduce Motion: a 200 ms fade).
+  const entrance = useEntrance({ delay: depth * 120, rise: 300, k: M.overshoot.card, duration: M.duration.enter, scale: false });
   const style = useAnimatedStyle(() => {
     const level = depth === 0 ? 0 : depth - promote.get();
     const rot = depth === 0 ? 0 : (depth % 2 ? -5 : 5) * Math.min(level, 1);
@@ -85,7 +89,7 @@ function Layer({ depth, promote, topStyle, pan, height, children }: any) {
   });
   const card = (
     <Animated.View importantForAccessibility={depth === 0 ? 'auto' : 'no-hide-descendants'} accessibilityElementsHidden={depth !== 0}
-      style={[{ position: 'absolute', start: 0, end: 0, height, zIndex: 10 - depth }, style, depth === 0 ? topStyle : null]}>
+      style={[{ position: 'absolute', start: 0, end: 0, height, zIndex: 10 - depth }, style, depth === 0 ? topStyle : null, enter ? entrance : null]}>
       {children}
     </Animated.View>
   );

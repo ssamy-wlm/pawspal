@@ -41,6 +41,7 @@ export default function PetScreen() {
   const [photos, setPhotos] = React.useState<string[]>([]);
   const savedPhotos = React.useRef<string[]>([]);     // the photos the pet had when this screen loaded
   const uploaded = React.useRef<string[]>([]);        // photos added on this screen (they are clutter if never saved)
+  const finished = React.useRef(false);               // true once the pet was saved or deleted
   const [vetName, setVetName] = React.useState('');
   const [vetPhone, setVetPhone] = React.useState('');
   const [careNotes, setCareNotes] = React.useState('');
@@ -67,6 +68,11 @@ export default function PetScreen() {
     return () => { live = false; };
   }, [id, isNew, userId]);
 
+  // Leaving the screen without saving: the photos added here are never used, so they are deleted.
+  React.useEffect(() => () => {
+    if (!finished.current && uploaded.current.length > 0) void removePhotoFiles('pets', uploaded.current);   // never throws
+  }, []);
+
   const mine = isNew || pet?.owner_id === userId;
   const locked = !!pet?.locked;
   const editable = mine && !locked;
@@ -91,6 +97,7 @@ export default function PetScreen() {
       const savedId = await savePet(userId, isNew ? null : id!, { name, type, size, age_years: years, vaccinated, notes, photo_paths: photos });
       if (careLoaded || vetName || vetPhone || careNotes) await saveMyPetCare(savedId, { vet_name: vetName, vet_phone: vetPhone, care_notes: careNotes });
       // Photos taken off the pet (or added and then removed again) are deleted from storage once the pet is saved.
+      finished.current = true;
       await removePhotoFiles('pets', [...savedPhotos.current, ...uploaded.current].filter((p) => !photos.includes(p)));
       toast.show(tr('edit.saved'));
       router.back();
@@ -100,7 +107,7 @@ export default function PetScreen() {
   const remove = async () => {
     if (!sure) { setSure(true); return; }
     setBusy(true); setError(null);
-    try { await deletePet(id!); await removePhotoFiles('pets', [...new Set([...savedPhotos.current, ...uploaded.current])]); router.back(); } catch { setError(tr('err.generic')); setSure(false); } finally { setBusy(false); }
+    try { await deletePet(id!); finished.current = true; await removePhotoFiles('pets', [...new Set([...savedPhotos.current, ...uploaded.current])]); router.back(); } catch { setError(tr('err.generic')); setSure(false); } finally { setBusy(false); }
   };
 
   if (state === 'loading') return null;

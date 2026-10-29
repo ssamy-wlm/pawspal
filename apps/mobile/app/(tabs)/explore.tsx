@@ -9,6 +9,7 @@ import { CalendarRange } from '../../src/components/CalendarRange';
 import { BrowseCard, priceLabel } from '../../src/components/BrowseCard';
 import { SwipeDeck, SwipeDirection } from '../../src/components/SwipeDeck';
 import { HeartBurst, HeartBurstHandle } from '../../src/components/HeartBurst';
+import { LikeButton, PassButton } from '../../src/components/SwipeButtons';
 import { ResultsMap } from '../../src/components/ResultsMap';
 import { useToast } from '../../src/components/Toast';
 import { useAuth } from '../../src/lib/auth';
@@ -154,22 +155,13 @@ export default function Explore() {
   const deck = (items: StayResult[]) => (
     <View style={{ gap: 16 }}>
       {items.length === 0 ? <Text style={[muted, { textAlign: 'center' }]}>{tr('explore.empty.swipe')}</Text> : (
-        <SwipeDeck items={items} keyOf={(r) => r.availability_id} cardHeight={480}
+        <SwipeDeck items={items} keyOf={(r) => r.availability_id} cardHeight={540}
           bindControls={(fn) => { swipe.current = fn; }} onSwipe={onSwipe} onPressCard={openHost} renderCard={(r) => <BrowseCard r={r} />} />
       )}
       {items[deckIndex] ? <Button variant="secondary" title={tr('explore.viewProfile')} onPress={() => openHost(items[deckIndex])} /> : null}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 32 }}>
-        <Pressable accessibilityRole="button" accessibilityLabel={tr('swipe.pass')} onPress={() => swipe.current?.('pass')}
-          style={{ width: 68, height: 68, borderRadius: 34, borderWidth: 4, borderColor: t.brand.coral, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontSize: 26, color: t.brand.coral }}>✕</Text>
-        </Pressable>
-        <View>
-          <Pressable accessibilityRole="button" accessibilityLabel={tr('swipe.like')} onPress={() => swipe.current?.('like')}
-            style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 32, color: c.onPrimary }}>♥</Text>
-          </Pressable>
-          <HeartBurst ref={burst} />
-        </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 32 }}>
+        <PassButton onPress={() => swipe.current?.('pass')} />
+        <LikeButton onPress={() => swipe.current?.('like')}><HeartBurst ref={burst} /></LikeButton>
       </View>
     </View>
   );

@@ -105,6 +105,18 @@ Running the local stack: `bash scripts/local-supabase.sh start` (never plain `su
 
 The full list of settings is in `supabase/functions/README.md`.
 
+## E6. Photo clean-up (every night)
+
+Photos that were uploaded but never saved (a pet photo you added and then left the screen, a sign-up photo that was never used) are removed by a small function, `cleanup-photos`, that runs once a night.
+
+1. Supabase → **Edge Functions** → **Secrets**: add `CLEANUP_SECRET` with a long random value (at least 24 characters; a password generator is fine).
+2. Supabase → **Integrations** → **Cron** (turn the Cron integration on if it asks) → **Create job**: name `cleanup-photos`, schedule `0 3 * * *` (3 am every day), type **Supabase Edge Function**, choose `cleanup-photos`, method `POST`, and add the header `x-cleanup-secret` with the same value as `CLEANUP_SECRET`.
+3. Nothing else. A raw upload still in `incoming` after an hour, and a clean photo that no pet or profile uses after a day, are deleted. It never touches a photo that a pet or profile points to, and it only looks in the four photo folders. If the secret is not set, the function refuses to run.
+
+## E7. Chat
+
+Chat is live (Supabase Realtime). Nothing to set up: new messages and booking changes reach both people at once. Phone numbers, emails, links and app names in messages are hidden until the two people have a confirmed, paid booking together.
+
 ## F. Secrets checklist
 
 | Secret | Where it lives | Never |
@@ -112,6 +124,7 @@ The full list of settings is in `supabase/functions/README.md`.
 | Supabase URL and anon key | `apps/mobile/.env.local` (public values) | n/a |
 | Supabase service_role key | Supabase → Edge Functions → Secrets | In the app or Git |
 | SMS / WhatsApp provider key (whichever company you choose) | Supabase → Edge Functions → Secrets | In the app or Git |
+| Photo clean-up secret (`CLEANUP_SECRET`) | Supabase → Edge Functions → Secrets, and the Cron job header | In the app or Git |
 | Send SMS hook secret | Supabase → Edge Functions → Secrets (`SEND_SMS_HOOK_SECRET`) | In the app or Git |
 | Paymob API key and HMAC secret | Supabase Edge Function secrets | In the app or Git |
 | KYC API key | Supabase Edge Function secrets | In the app or Git |

@@ -1,6 +1,9 @@
 import React from 'react';
 import { Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { Button } from '../../src/components/Button';
+import { startConversation } from '../../src/lib/chat';
+import { useAuth } from '../../src/lib/auth';
 import { CardArt } from '../../src/components/CardArt';
 import { EmptyState } from '../../src/components/EmptyState';
 import { Heading } from '../../src/components/Heading';
@@ -40,7 +43,9 @@ export default function HostProfile() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const c = useTheme().color;
   const rtl = isRTL();
+  const { session, state: auth } = useAuth();
   const [state, setState] = React.useState<'loading' | 'ready' | 'missing'>('loading');
+  const [busy, setBusy] = React.useState(false);
   const [p, setP] = React.useState<PublicProfile | null>(null);
   const [pets, setPets] = React.useState<Pet[]>([]);
   const [posts, setPosts] = React.useState<Availability[]>([]);
@@ -60,10 +65,20 @@ export default function HostProfile() {
     return () => { live = false; };
   }, [id]);
 
+  const open = async (then: 'chat' | 'booking') => {
+    if (!id || busy) return;
+    setBusy(true);
+    try {
+      const cid = await startConversation(id);
+      router.push((then === 'chat' ? `/chat/${cid}` : `/booking/new?other=${id}`) as never);
+    } catch { /* the buttons stay; the person can try again */ } finally { setBusy(false); }
+  };
+
   if (state === 'loading') return null;
   if (state === 'missing' || !p) return <EmptyState message={tr('host.notFound')} />;
   return (
-    <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ paddingBottom: 40 }}>
+    <View style={{ flex: 1, backgroundColor: c.background }}>
+    <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
       <CardArt illustration={p.card_illustration} background={p.card_background} height={240} label={tr(`art.${p.card_illustration}`)} />
       <View style={{ padding: 24, gap: 14 }}>
         <View style={{ alignItems: 'center', gap: 2 }}>
@@ -124,5 +139,12 @@ export default function HostProfile() {
         ) : null}
       </View>
     </ScrollView>
+    {session && id !== session.user.id ? (
+      <View style={{ flexDirection: 'row', gap: 12, padding: 16, paddingBottom: 24, backgroundColor: c.background }}>
+        <View style={{ flex: 1 }}><Button variant="secondary" title={tr('booking.message')} disabled={busy} onPress={() => { open('chat').catch(() => {}); }} /></View>
+        {p.role !== 'owner' && auth?.role !== 'sitter' ? <View style={{ flex: 1 }}><Button title={tr('booking.request')} disabled={busy} onPress={() => { open('booking').catch(() => {}); }} /></View> : null}
+      </View>
+    ) : null}
+    </View>
   );
 }
