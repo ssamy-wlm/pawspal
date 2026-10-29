@@ -8,6 +8,8 @@ insert into auth.users (id, phone, phone_confirmed_at) values
  ('dddddddd-0000-0000-0000-000000000004','+201000000004',now());
 update public.profiles set first_name = split_part(id::text,'-',1), status='active', face_verified=true, id_verified=true, is_adult=true;
 insert into public.admins values ('dddddddd-0000-0000-0000-000000000004');
+-- Processed pet photos (as process-upload would leave them): a pet may only point at real files in its owner's folder.
+insert into storage.objects (bucket_id, name) values ('pets', 'aaaaaaaa-0000-0000-0000-000000000001/1.jpg'), ('pets', 'aaaaaaaa-0000-0000-0000-000000000001/2.jpg');
 
 \echo '--- T1 user tries to self-activate / verify (expect ERROR)'
 set role authenticated; set request.jwt.claim.sub = 'cccccccc-0000-0000-0000-000000000003';
@@ -29,7 +31,7 @@ reset role;
 
 \echo '--- T4 owner adds pet, requests booking, opens chat'
 set role authenticated; set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
-insert into public.pets (id, owner_id, name, type, size, photo_paths) values ('11111111-0000-0000-0000-000000000001', auth.uid(), 'Luna','cat','small', array['a/1.jpg']);
+insert into public.pets (id, owner_id, name, type, size, photo_paths) values ('11111111-0000-0000-0000-000000000001', auth.uid(), 'Luna','cat','small', array['aaaaaaaa-0000-0000-0000-000000000001/1.jpg']);
 select public.request_booking('bbbbbbbb-0000-0000-0000-000000000002','11111111-0000-0000-0000-000000000001', current_date, current_date, 'sitter_home','volunteer', null, true) as booking \gset
 select public.start_conversation('bbbbbbbb-0000-0000-0000-000000000002') as conv \gset
 insert into public.messages (conversation_id, sender_id, body) values
@@ -172,7 +174,7 @@ reset role;
 
 \echo '--- T23 cancelling a confirmed booking unlocks the pet'
 set role authenticated; set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
-insert into public.pets (id, owner_id, name, type, size, photo_paths) values ('22222222-0000-0000-0000-000000000002', auth.uid(), 'Pepper','dog','small', array['a/2.jpg']);
+insert into public.pets (id, owner_id, name, type, size, photo_paths) values ('22222222-0000-0000-0000-000000000002', auth.uid(), 'Pepper','dog','small', array['aaaaaaaa-0000-0000-0000-000000000001/2.jpg']);
 select public.request_booking('bbbbbbbb-0000-0000-0000-000000000002','22222222-0000-0000-0000-000000000002', current_date+1, current_date+2, 'sitter_home','paid', 200, false) as b2 \gset
 select public.accept_terms(:'b2');
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';

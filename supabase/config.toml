@@ -267,8 +267,13 @@ max_frequency = "60s"
 
 # Use pre-defined map of phone number to OTP for testing.
 # Keys are the phone number with country code and without the + prefix.
-# [auth.sms.test_otp]
-# 14152127777 = "123456"
+# Local test numbers: no SMS is sent, the code is always the one below. On the hosted project add the same kind of
+# test numbers under Authentication, Providers, Phone, "Test Phone Numbers" (Egyptian numbers only, like these).
+[auth.sms.test_otp]
+201000000001 = "123456"
+201000000002 = "123456"
+201000000003 = "123456"
+201100000001 = "123456"
 
 # Configure logged in session timeouts.
 # [auth.sessions]
@@ -287,11 +292,24 @@ max_frequency = "60s"
 # enabled = true
 # uri = "pg-functions://<database>/<schema>/<hook_name>"
 
+# The Send SMS hook: Supabase Auth hands every code to our send-sms function, which sends it through whichever
+# provider the SMS_PROVIDERS setting names (an Egyptian SMS company, WhatsApp, Twilio...). Test phone numbers
+# (below) never reach it. The secret comes from your environment (`supabase start` reads SEND_SMS_HOOK_SECRET);
+# it is never written here.
+[auth.hook.send_sms]
+enabled = true
+uri = "http://host.docker.internal:54321/functions/v1/send-sms"
+secrets = "env(SEND_SMS_HOOK_SECRET)"
+
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
+# LOCAL ONLY: the Supabase CLI refuses to turn phone sign-in on unless one built-in provider is switched on. This is
+# a placeholder so the test phone numbers work locally; nothing is ever sent through it (non-test numbers go to the
+# Send SMS hook above, which uses whatever provider you choose). The hosted project does not use this file's
+# provider settings: it is configured in the dashboard.
 [auth.sms.twilio]
-enabled = false
-account_sid = ""
-message_service_sid = ""
+enabled = true
+account_sid = "local-placeholder"
+message_service_sid = "local-placeholder"
 # DO NOT commit your Twilio auth token to git. Use environment variable substitution instead:
 auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 
@@ -414,3 +432,20 @@ enabled = true
 # formatted with uppercase keywords, indent 2, max width 180, trailing commas,
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
+
+# Edge Functions. The sign-in functions are called before anyone has a session, so they cannot require one:
+# request-otp and verify-otp limit and log every call themselves; send-sms checks Supabase's signature instead.
+[functions.request-otp]
+verify_jwt = false
+
+[functions.verify-otp]
+verify_jwt = false
+
+[functions.send-sms]
+verify_jwt = false
+
+[functions.process-upload]
+verify_jwt = true
+
+[functions.verify-identity]
+verify_jwt = true

@@ -8,6 +8,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { fontFamily, ThemeProvider, useTheme } from '../src/theme';
 import { initI18n, isRTL, t as tr } from '../src/i18n';
 import { ToastProvider } from '../src/components/Toast';
+import { AuthProvider } from '../src/lib/auth';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -24,6 +25,8 @@ function Nav() {
         contentStyle: { backgroundColor: t.color.background },
       }}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="signup" options={{ headerShown: false }} />
+        <Stack.Screen name="pending" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: tr('settings.title') }} />
         <Stack.Screen name="legal/[doc]" options={{ title: '' }} />
@@ -49,7 +52,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider>
         <ToastProvider>
-          <Nav />
+          <AuthProvider>
+            <Nav />
+          </AuthProvider>
         </ToastProvider>
       </ThemeProvider>
     </GestureHandlerRootView>

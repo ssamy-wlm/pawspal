@@ -46,6 +46,18 @@ jobs:
           python3 scripts/check-migrations.py "${base:-ROOT}"
       - name: Migrations and security tests
         run: bash scripts/test-db.sh
+  functions:
+    name: edge functions (type check, unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install the TypeScript checker used by the app
+        run: npm ci
+        working-directory: apps/mobile
+      - run: apps/mobile/node_modules/.bin/tsc -p supabase/functions/tsconfig.json
+      - run: node --experimental-strip-types --test supabase/functions/_shared/*.test.ts
   admin:
     name: admin site (build, typecheck, smoke test, audit)
     runs-on: ubuntu-latest

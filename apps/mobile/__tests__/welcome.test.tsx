@@ -42,9 +42,17 @@ describe('Welcome screen', () => {
     }
   });
 
-  it('opens Explore from "I need a sitter"', async () => {
+  it('starts sign-up with the chosen role, never straight into Explore', async () => {
     await renderWelcome();
     await fireEvent.press(screen.getByLabelText(/I need a sitter/));
-    expect(router.push).toHaveBeenCalledWith('/(tabs)/explore');
+    expect(router.push).toHaveBeenCalledWith('/signup/phone?role=owner');
+    await fireEvent.press(screen.getByLabelText(/I want to sit/));
+    expect(router.push).toHaveBeenCalledWith('/signup/phone?role=sitter');
+  });
+
+  it('has a Log in button that opens the phone step', async () => {
+    await renderWelcome();
+    await fireEvent.press(screen.getByText('Already have an account? Log in'));
+    expect(router.push).toHaveBeenCalledWith('/signup/phone');
   });
 });

@@ -70,11 +70,11 @@ export default function Welcome() {
       </View>
 
       <View style={{ paddingHorizontal: 24, paddingBottom: 32, gap: 14 }}>
-        {/* TODO(phase 2): route both options into the sign-up flow with the chosen role. */}
-        <Option primary title={tr('welcome.needSitter')} sub={tr('welcome.needSitterSub')} delay={1300} onPress={() => router.push('/(tabs)/explore')} />
-        <Option title={tr('welcome.wantSit')} sub={tr('welcome.wantSitSub')} delay={1450} onPress={() => router.push('/(tabs)/explore')} />
-        {/* TODO(phase 2): "Log in" becomes a button into the sign-in flow. */}
-        <Text style={{ textAlign: 'center', color: c.textMuted, fontFamily: fontFamily('regular', rtl), marginTop: 6 }}>{tr('welcome.login')}</Text>
+        <Option primary title={tr('welcome.needSitter')} sub={tr('welcome.needSitterSub')} delay={1300} onPress={() => router.push('/signup/phone?role=owner')} />
+        <Option title={tr('welcome.wantSit')} sub={tr('welcome.wantSitSub')} delay={1450} onPress={() => router.push('/signup/phone?role=sitter')} />
+        <Pressable accessibilityRole="button" onPress={() => router.push('/signup/phone')} style={{ minHeight: 44, justifyContent: 'center', marginTop: 6 }}>
+          <Text style={{ textAlign: 'center', color: c.textMuted, fontFamily: fontFamily('regular', rtl) }}>{tr('welcome.login')}</Text>
+        </Pressable>
         <Text style={{ textAlign: 'center', color: c.textMuted, fontSize: 12, fontFamily: fontFamily('regular', rtl) }}>{tr('welcome.legal')}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 4 }}>
           {LEGAL.map(({ slug, label }) => (

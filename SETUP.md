@@ -85,13 +85,24 @@ The admin dashboard (`apps/admin`, built in phase 8; for now a one-page placehol
 
 Dependabot opens update PRs every week. The `dependabot-automerge` workflow merges each one that passes CI, so you do nothing. Packages that Expo manages are never offered, because they must move together (`npx expo install --fix`). Updates to GitHub Actions files are the one exception: GitHub does not let the built-in token merge changes to `.github/workflows`, so those PRs wait for Claude Code to merge them.
 
+## E5. Phone sign-up (phase 2)
+
+Sign-up works today with **Supabase test phone numbers**, so no SMS company is needed yet. Nothing is sent; the code is fixed.
+
+1. Supabase dashboard → Authentication → Providers → Phone: turn **Phone** on, and add test numbers under **Test Phone Numbers** (Egyptian numbers only, for example `201000000001=123456`). Local development already has four in `supabase/config.toml`.
+2. When you choose a real provider (an Egyptian SMS company, WhatsApp, or Twilio later), tell Claude Code which one. It is added as one small file. Then in Supabase: Authentication → Hooks → **Send SMS** → choose HTTPS, enter the URL of the `send-sms` function, copy the secret it shows into the `SEND_SMS_HOOK_SECRET` secret, and set `SMS_PROVIDERS` and the provider's own keys. The hook is the only place the code is sent from.
+3. ID and selfie checks use the setting `IDENTITY_PROVIDER`. Leave it empty on the live project until you choose a provider; the app then says "not available yet" and nobody can pass the check. For testing set `IDENTITY_PROVIDER=fake` (and, on a live project, also `ALLOW_FAKE_IDENTITY=true`). Never leave `fake` on once real people use the app.
+
+The full list of settings is in `supabase/functions/README.md`.
+
 ## F. Secrets checklist
 
 | Secret | Where it lives | Never |
 |---|---|---|
 | Supabase URL and anon key | `apps/mobile/.env.local` (public values) | n/a |
 | Supabase service_role key | Supabase → Edge Functions → Secrets | In the app or Git |
-| Twilio auth token | Supabase Auth settings | In the app or Git |
+| SMS / WhatsApp provider key (whichever company you choose) | Supabase → Edge Functions → Secrets | In the app or Git |
+| Send SMS hook secret | Supabase → Edge Functions → Secrets (`SEND_SMS_HOOK_SECRET`) | In the app or Git |
 | Paymob API key and HMAC secret | Supabase Edge Function secrets | In the app or Git |
 | KYC API key | Supabase Edge Function secrets | In the app or Git |
 | Google Maps keys | App config, **restricted** to your app IDs | Unrestricted |

@@ -12,3 +12,5 @@ psql -d "$DB" -f supabase/tests/security_test.sql > "$LOG" 2>&1 || true
 cat "$LOG"
 python3 scripts/check-db-log.py "$LOG"
 psql -q -v ON_ERROR_STOP=1 -d "$DB" -f supabase/tests/assertions.sql
+psql -q -v ON_ERROR_STOP=1 -d "$DB" -f supabase/tests/signup_assertions.sql
+python3 scripts/check-legal-versions.py "psql -d $DB"

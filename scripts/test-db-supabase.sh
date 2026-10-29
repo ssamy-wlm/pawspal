@@ -11,3 +11,5 @@ PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
 cat "$LOG"
 python3 scripts/check-db-log.py "$LOG"
 PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/assertions.sql
+PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/signup_assertions.sql
+python3 scripts/check-legal-versions.py "env PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres"
