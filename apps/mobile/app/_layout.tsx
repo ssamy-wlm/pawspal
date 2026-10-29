@@ -7,6 +7,7 @@ import { Cairo_400Regular, Cairo_600SemiBold, Cairo_700Bold } from '@expo-google
 import * as SplashScreen from 'expo-splash-screen';
 import { fontFamily, ThemeProvider, useTheme } from '../src/theme';
 import { initI18n, isRTL, t as tr } from '../src/i18n';
+import { initHaptics } from '../src/lib/haptics';
 import { ToastProvider } from '../src/components/Toast';
 import { AuthProvider } from '../src/lib/auth';
 
@@ -38,6 +39,7 @@ function Nav() {
         <Stack.Screen name="post-dates" options={{ title: tr('post.title') }} />
         <Stack.Screen name="chat/[id]" options={{ title: '' }} />
         <Stack.Screen name="booking/[id]" options={{ title: '' }} />
+        <Stack.Screen name="booking/done/[id]" options={{ title: '' }} />
         <Stack.Screen name="legal/[doc]" options={{ title: '' }} />
         <Stack.Screen name="showcase" options={{ title: tr('dev.title') }} />
       </Stack>
@@ -53,7 +55,7 @@ export default function RootLayout() {
     Cairo_400: Cairo_400Regular, Cairo_600: Cairo_600SemiBold, Cairo_700: Cairo_700Bold,
   });
   const [i18nReady, setI18nReady] = React.useState(false);
-  React.useEffect(() => { initI18n().finally(() => setI18nReady(true)); }, []);
+  React.useEffect(() => { initI18n().finally(() => setI18nReady(true)); initHaptics().catch(() => {}); }, []);
   const ready = fontsLoaded && i18nReady;
   React.useEffect(() => { if (ready) SplashScreen.hideAsync().catch(() => {}); }, [ready]);
   if (!ready) return null;

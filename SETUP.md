@@ -113,6 +113,26 @@ Photos that were uploaded but never saved (a pet photo you added and then left t
 2. Supabase → **Integrations** → **Cron** (turn the Cron integration on if it asks) → **Create job**: name `cleanup-photos`, schedule `0 3 * * *` (3 am every day), type **Supabase Edge Function**, choose `cleanup-photos`, method `POST`, and add the header `x-cleanup-secret` with the same value as `CLEANUP_SECRET`.
 3. Nothing else. A raw upload still in `incoming` after an hour, and a clean photo that no pet or profile uses after a day, are deleted. It never touches a photo that a pet or profile points to, and it only looks in the four photo folders. If the secret is not set, the function refuses to run.
 
+## E8. Payments (Paymob, test mode first)
+
+The booking fee is paid through Paymob. It works in **test mode** with a Paymob test account, so nobody is charged for real until you switch to live keys. Until these settings exist, the app says "Payment is not available yet" and nothing can be paid.
+
+1. **Account.** Sign up at Paymob (Egypt) and open the dashboard. In the dashboard find **Developers → Getting Integration Credentials**. You need five things: the **Secret key** and **Public key** (test ones start `egy_sk_test_` and `egy_pk_test_`), the **Integration ID** of a test card integration (and a wallet one if you want wallets), and the **HMAC secret**.
+2. **Settings.** Supabase → **Edge Functions** → **Secrets**, add:
+   - `PAYMENT_PROVIDER` = `paymob`
+   - `PAYMOB_SECRET_KEY`, `PAYMOB_PUBLIC_KEY`, `PAYMOB_HMAC_SECRET`
+   - `PAYMOB_INTEGRATION_IDS` = the integration id(s), separated by commas
+   - `PAYMOB_NOTIFICATION_URL` = `https://<your project ref>.supabase.co/functions/v1/paymob-webhook`
+3. **Tell Paymob where to report.** In the Paymob dashboard, set the **Transaction processed callback** to that same address. Every payment result reaches the app only this way, and a callback without a valid signature is refused.
+4. **Try it.** Make a booking with two test accounts, accept the terms on both, tap **Pay the booking fee**, and pay with one of Paymob's test cards (listed in their **Test credentials** page). The chat should jump to **Booking confirmed** by itself.
+5. **Going live later.** Replace the three keys and the integration id(s) with the live ones. Nothing else changes.
+
+**The fee.** It is **75 EGP**. To change it: Supabase → **Table Editor** → `app_settings` → the row `booking_fee_egp` → change `value` and save (whole pounds, 1 to 10000). The refund charge kept when an owner cancels early (Terms of Service section 6, "[X] EGP") is the row `refund_processing_charge_egp`; it is 0 until your lawyer confirms the number.
+
+**Refunds.** When a booking is cancelled the database works out what comes back (Terms of Service section 6): the other person cancels, everything; the owner cancels more than 48 hours before the start, the fee minus the charge; within 48 hours, nothing. Refunds wait as "refund due" and are sent by the `process-refunds` function. Add a Supabase secret `REFUND_SECRET` (24+ random characters) and a **Cron** job (Integrations → Cron) that calls the `process-refunds` function every hour with the header `x-refund-secret`. No-shows and removals are decided by a person in the admin app (phase 8).
+
+**Things I could not check without a Paymob account** (please confirm when you open it): the exact refund request Paymob expects (a refund that Paymob does not confirm stays "refund due" and is tried again, then waits for a person), whether Paymob insists on a real phone number on each checkout (we send a placeholder so we do not pass phone numbers on), and that the callback arrives with the fields listed in their documentation. Who pays the fee: **the person who sent the request** (the owner, or whoever proposed a swap), one fee per booking.
+
 ## E7. Chat
 
 Chat is live (Supabase Realtime). Nothing to set up: new messages and booking changes reach both people at once. Phone numbers, emails, links and app names in messages are hidden until the two people have a confirmed, paid booking together.
@@ -125,6 +145,8 @@ Chat is live (Supabase Realtime). Nothing to set up: new messages and booking ch
 | Supabase service_role key | Supabase → Edge Functions → Secrets | In the app or Git |
 | SMS / WhatsApp provider key (whichever company you choose) | Supabase → Edge Functions → Secrets | In the app or Git |
 | Photo clean-up secret (`CLEANUP_SECRET`) | Supabase → Edge Functions → Secrets, and the Cron job header | In the app or Git |
+| Paymob keys and HMAC secret | Supabase → Edge Functions → Secrets | In the app or Git |
+| Refund job secret (`REFUND_SECRET`) | Supabase → Edge Functions → Secrets, and the Cron job header | In the app or Git |
 | Send SMS hook secret | Supabase → Edge Functions → Secrets (`SEND_SMS_HOOK_SECRET`) | In the app or Git |
 | Paymob API key and HMAC secret | Supabase Edge Function secrets | In the app or Git |
 | KYC API key | Supabase Edge Function secrets | In the app or Git |

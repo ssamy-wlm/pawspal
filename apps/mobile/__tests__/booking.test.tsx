@@ -29,7 +29,7 @@ const params = useLocalSearchParams as jest.Mock;
 const wrap = (ui: React.ReactElement) => <ToastProvider>{ui}</ToastProvider>;
 const pet = (id: string, name: string, owner: string): prof.Pet => ({ id, owner_id: owner, name, type: 'dog', size: 'small', age_years: 2, vaccinated: true, notes: null, photo_paths: ['x'], locked: false });
 const card = (role: 'owner' | 'sitter' | 'both'): prof.PublicProfile => ({ id: 'them', first_name: 'Hana', role, bio: null, area: null, card_illustration: 'cat-mango', card_background: 'pattern', rating_avg: null, stays_count: 0, home_photo_path: null, home_tags: [] });
-const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: '2026-12-01', ends_on: '2026-12-05', stay_location: 'sitter_home', cost_type: 'paid', price_per_night: 250, food_provided: true, status: 'requested', fee_status: 'unpaid', owner_accepted_at: null, sitter_accepted_at: null, swap_group: null, terms_version: 1, ...over });
+const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: '2026-12-01', ends_on: '2026-12-05', stay_location: 'sitter_home', cost_type: 'paid', price_per_night: 250, food_provided: true, status: 'requested', fee_status: 'unpaid', owner_accepted_at: null, sitter_accepted_at: null, swap_group: null, terms_version: 1, opened_by: 'me', ...over });
 
 beforeEach(() => {
   jest.clearAllMocks(); mockRole = 'both';

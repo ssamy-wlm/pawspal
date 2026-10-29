@@ -1,6 +1,7 @@
 // Booking requests, terms and swaps. Every rule (who may request, who may change, what clears acceptance, what a swap
 // is) lives in the database; this file asks and turns the answers into sentences.
 import { supabase } from './supabase';
+import { ApiError, createFeePayment } from './api';
 import { formatDay, Key, t as tr } from '../i18n';
 
 export type StayLocation = 'sitter_home' | 'owner_home';
@@ -10,10 +11,10 @@ export type BookingStatus = 'requested' | 'terms_agreed' | 'confirmed' | 'in_pro
 export interface Booking {
   id: string; owner_id: string; sitter_id: string; pet_id: string; starts_on: string; ends_on: string;
   stay_location: StayLocation; cost_type: CostType; price_per_night: number | null; food_provided: boolean;
-  status: BookingStatus; fee_status: string; owner_accepted_at: string | null; sitter_accepted_at: string | null; swap_group: string | null; terms_version: number;
+  status: BookingStatus; fee_status: string; owner_accepted_at: string | null; sitter_accepted_at: string | null; swap_group: string | null; terms_version: number; opened_by: string | null;
 }
 
-const COLUMNS = 'id, owner_id, sitter_id, pet_id, starts_on, ends_on, stay_location, cost_type, price_per_night, food_provided, status, fee_status, owner_accepted_at, sitter_accepted_at, swap_group, terms_version';
+const COLUMNS = 'id, owner_id, sitter_id, pet_id, starts_on, ends_on, stay_location, cost_type, price_per_night, food_provided, status, fee_status, owner_accepted_at, sitter_accepted_at, swap_group, terms_version, opened_by';
 
 /** Bookings between me and one other person, newest first. Only the two of us can read them. */
 export async function fetchBookingsBetween(me: string, other: string): Promise<Booking[]> {
@@ -93,4 +94,52 @@ export function termsText(b: Booking, petName: string): { dates: string; pet: st
     location: tr(`terms.loc.${b.stay_location}` as Key),
     cost: b.food_provided ? `${cost}, ${tr('terms.food')}` : cost,
   };
+}
+
+/** Who pays the booking fee: whoever sent the request. */
+export const feePayerOf = (legs: Booking[]): string | null => (legs[0] ? legs[0].opened_by ?? legs[0].owner_id : null);
+
+/** The booking fee in pounds, from the server's setting. Null when it cannot be read. */
+export async function fetchBookingFee(): Promise<number | null> {
+  const { data, error } = await supabase.from('app_settings').select('value').eq('key', 'booking_fee_egp').maybeSingle();
+  if (error || !data) return null;
+  const n = Number((data as { value: string }).value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export type PayFailure = 'not_available' | 'not_payable' | 'pet_booked' | 'too_many' | 'network' | 'failed';
+
+/**
+ * Starts paying the booking fee and opens the payment page in the phone's browser. The booking turns confirmed by itself
+ * (Paymob tells our server, the server tells the app) so there is nothing to confirm here. Throws a PayFailure code.
+ */
+export async function payBookingFee(bookingId: string, open: (url: string) => Promise<unknown>): Promise<number> {
+  try {
+    const r = await createFeePayment(bookingId);
+    await open(r.url);
+    return r.amount_egp;
+  } catch (e) {
+    if (e instanceof ApiError) {
+      const code: PayFailure = e.code === 'not_configured' ? 'not_available' : e.code === 'not_payable' ? 'not_payable' : e.code === 'pet_booked' ? 'pet_booked'
+        : e.code === 'too_many_attempts' ? 'too_many' : e.code === 'network' ? 'network' : 'failed';
+      throw new Error(code);
+    }
+    throw new Error('failed');
+  }
+}
+
+export interface RefundPreview { refund_cents: number; amount_cents: number; is_payer: boolean }
+export async function fetchRefundPreview(bookingId: string): Promise<RefundPreview | null> {
+  const { data, error } = await supabase.rpc('refund_preview', { p_booking: bookingId });
+  const row = (data as RefundPreview[] | null)?.[0];
+  return error || !row ? null : row;
+}
+
+export interface BookingLocation { lat: number; lng: number; address: string | null }
+/** The exact place of a confirmed, paid booking. Only the two people in it can get this; the server says no to anyone else. Null when the host chose not to share a pin. */
+export async function fetchBookingLocation(bookingId: string): Promise<BookingLocation | null> {
+  const { data, error } = await supabase.rpc('get_booking_location', { p_booking: bookingId });
+  const row = (data as BookingLocation[] | null)?.[0];
+  if (error || !row) return null;
+  return row;
 }

@@ -430,6 +430,15 @@ verify_jwt = false
 [functions.cleanup-photos]
 verify_jwt = false      # called by a timer, not by a person; it proves itself with CLEANUP_SECRET
 
+[functions.create-fee-payment]
+verify_jwt = true
+
+[functions.paymob-webhook]
+verify_jwt = false      # Paymob calls this, not a person; every call is checked with Paymob's HMAC signature
+
+[functions.process-refunds]
+verify_jwt = false      # called by a timer; it proves itself with REFUND_SECRET
+
 [functions.process-upload]
 verify_jwt = true
 

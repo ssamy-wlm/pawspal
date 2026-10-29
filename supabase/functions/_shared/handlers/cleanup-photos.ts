@@ -3,7 +3,7 @@
 // secret, asks the database which files are unused, and deletes them through the Storage API.
 // It never logs file names.
 import type { Env } from '../config.ts';
-import { sha256Hex, timingSafeEqual } from '../crypto.ts';
+import { checkSecret } from '../secret.ts';
 import { json, type Rpc } from '../http.ts';
 
 export interface CleanupDeps {
@@ -18,13 +18,9 @@ const BUCKETS = new Set(['incoming', 'pets', 'homes', 'faces']);
 
 export async function handleCleanupPhotos(req: Request, deps: CleanupDeps): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
-  const secret = deps.env.get('CLEANUP_SECRET');
-  if (!secret || secret.length < 24) return json(503, { error: 'not_configured' });         // no secret set up, nobody gets in
-  const given = req.headers.get('x-cleanup-secret') ?? '';
-  const enc = new TextEncoder();
-  // Compare hashes of both, so the comparison takes the same time whatever the guess.
-  const ok = timingSafeEqual(enc.encode(await sha256Hex(given)), enc.encode(await sha256Hex(secret)));
-  if (!ok) return json(401, { error: 'unauthorized' });
+  const who = await checkSecret(deps.env, 'CLEANUP_SECRET', req, 'x-cleanup-secret');
+  if (who === 'not_configured') return json(503, { error: 'not_configured' });         // no secret set up, nobody gets in
+  if (who === 'unauthorized') return json(401, { error: 'unauthorized' });
 
   const listed = await deps.rpc('list_unused_uploads', { p_older_than: '1 day' });
   if (listed.error) return json(502, { error: 'try_again_later' });

@@ -8,8 +8,9 @@
 | `process-upload` | 2 | Takes a raw photo from `incoming/<uid>/`, strips all metadata (EXIF, GPS), saves the clean copy under a random name in `faces`, `pets` or `homes`, deletes the raw file | service role |
 | `cleanup-photos` | 5 | Nightly: deletes photo files nobody uses (raw uploads left in `incoming` after an hour; clean photos no pet or profile points to after a day). Called by Supabase Cron with the `x-cleanup-secret` header. Never logs file names | `CLEANUP_SECRET`, service role |
 | `verify-identity` | 2 | Face and ID checks through the provider named in `IDENTITY_PROVIDER`; stores only the result and a hash of the document, never an ID image; calls `record_verification()` (service role only) | provider key, service role |
-| `paymob-webhook` | 6 | Verifies HMAC, calls `confirm_booking_payment()`; handles refunds by Terms section 6 | Paymob HMAC, service role |
-| `create-fee-payment` | 6 | Creates the payment for a `terms_agreed` booking; the price comes from server config, never the app | Paymob key |
+| `paymob-webhook` | 6 | Verifies Paymob's HMAC signature, checks the amount and the order id, then calls `complete_fee_payment` (which confirms the booking). A forged callback is refused with 401 | Paymob HMAC secret, service role |
+| `create-fee-payment` | 6 | Starts a payment for a `terms_agreed` booking: the database makes the payment row with the fee from `app_settings`, Paymob makes the checkout page. The app never sends an amount | Paymob secret key, service role |
+| `process-refunds` | 6 | Hourly: asks Paymob to refund the payments the database marked "refund due" (Terms section 6). Secret protected | `REFUND_SECRET`, Paymob secret key, service role |
 | `handover-photo-url` | 7 | Gives the booking partner a short signed URL for the other side's handover photo | service role |
 | `emergency` | 7 | Notifies the owner and opens a high-priority report | service role |
 | `export-my-data`, `delete-my-account` | 9 | Privacy rights from the policy (section 8) | service role |

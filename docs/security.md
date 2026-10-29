@@ -40,7 +40,7 @@ Goal: a fake person, a thief or a careless user cannot hurt a pet, steal a locat
 - [ ] Supabase: email sign-up disabled; phone only; OTP expiry 300 s; rate limits set
 - [ ] Storage buckets private; signed URL expiry 1 hour or less
 - [ ] Google Maps keys restricted to app IDs and to the Maps and Places APIs only; budget alert set
-- [ ] Paymob webhook HMAC verified, and tested with a forged request (must be rejected)
+- [x] Paymob webhook HMAC verified, and tested with a forged request (must be rejected): `supabase/functions/_shared/payments.test.ts`
 - [ ] Test with a modified client: try to read another user's exact location, set your own status to active, review without a booking, and send a phone number in chat. All must fail
 - [ ] Penetration test or an independent review of the RLS policies
 - [ ] Backups and point-in-time recovery on (paid Supabase plan)

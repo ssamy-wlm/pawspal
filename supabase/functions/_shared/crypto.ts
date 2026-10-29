@@ -27,6 +27,11 @@ export async function hmacSha256(key: Uint8Array, data: string): Promise<Uint8Ar
   return new Uint8Array(await crypto.subtle.sign('HMAC', k, enc.encode(data)));
 }
 
+export async function hmacSha512(key: Uint8Array, data: string): Promise<Uint8Array> {
+  const k = await crypto.subtle.importKey('raw', key as Uint8Array<ArrayBuffer>, { name: 'HMAC', hash: 'SHA-512' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', k, enc.encode(data)));
+}
+
 /** Compare without stopping at the first difference. */
 export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;

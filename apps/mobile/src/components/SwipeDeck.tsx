@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import { tap as buzz } from '../lib/haptics';
 import { M, ease, useEntrance, useReducedMotion } from '../motion';
 
 export type SwipeDirection = 'pass' | 'like';
@@ -34,7 +34,7 @@ export function SwipeDeck<T>({ items, keyOf, renderCard, onSwipe, bindControls, 
 
   const done = useCallback((dir: SwipeDirection) => {
     const item = items[index];
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    buzz();                                      // the buzz is skipped when haptics are off in Settings
     setIndex((i) => i + 1);                      // the card on top is reset once the new top card is on screen (see below)
     if (item) onSwipe(item, dir);
   }, [index, items, onSwipe]);

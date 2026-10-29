@@ -96,6 +96,11 @@ export async function verifyFace(facePath: string): Promise<boolean> {
   return r.ok;
 }
 
+/** Asks the server for a checkout page for the booking fee. The amount is the server's; the app never sends one. */
+export async function createFeePayment(bookingId: string): Promise<{ url: string; payment_id: string; amount_egp: number }> {
+  return call('create-fee-payment', { booking_id: bookingId }, await accessToken());
+}
+
 export async function verifyId(): Promise<{ ok: boolean; adult: boolean }> {
   const r = await call<{ ok: boolean; adult?: boolean }>('verify-identity', { step: 'id', device_id: await deviceId() }, await accessToken());
   return { ok: r.ok, adult: r.adult !== false };

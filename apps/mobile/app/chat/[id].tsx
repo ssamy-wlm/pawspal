@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { FlatList, Keyboard, Linking, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Button } from '../../src/components/Button';
@@ -8,7 +8,7 @@ import { EmptyState } from '../../src/components/EmptyState';
 import { TermsCard } from '../../src/components/TermsCard';
 import { TextField } from '../../src/components/TextField';
 import { useAuth } from '../../src/lib/auth';
-import { acceptedByMe, acceptedByOther, acceptTerms, Booking, cancelBooking, currentBookings, fetchBookingsBetween, termsText } from '../../src/lib/bookings';
+import { acceptedByMe, acceptedByOther, acceptTerms, Booking, cancelBooking, currentBookings, feePayerOf, fetchBookingFee, fetchBookingsBetween, fetchRefundPreview, payBookingFee, RefundPreview, termsText } from '../../src/lib/bookings';
 import { Conversation, fetchConversations, fetchMessages, listenToActivity, listenToMessages, markRead, Message, PAGE_SIZE, sendMessage } from '../../src/lib/chat';
 import { fetchCard, fetchPet, PublicProfile } from '../../src/lib/profile';
 import { fontFamily, useTheme } from '../../src/theme';
@@ -43,6 +43,9 @@ export default function ChatScreen() {
   const [petNames, setPetNames] = React.useState<Record<string, string>>({});
   const [sure, setSure] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [fee, setFee] = React.useState<number | null>(null);
+  const [paying, setPaying] = React.useState(false);                  // the payment page is open in the browser
+  const [preview, setPreview] = React.useState<RefundPreview | null>(null);
   const firstLoad = React.useRef<Set<number> | null>(null);    // the messages present when the chat opened do not pop in
 
   const loadBookings = React.useCallback(async (otherId: string) => {
@@ -80,6 +83,30 @@ export default function ChatScreen() {
     const stopActivity = listenToActivity(() => { loadBookings(other.other_id).catch(() => {}); });
     return () => { stopMessages(); stopActivity(); };
   }, [id, other, me, loadBookings]);
+
+  React.useEffect(() => { fetchBookingFee().then(setFee, () => {}); }, []);
+  const status0 = legs[0]?.status;
+  const firstLeg = legs[0]?.id;
+  React.useEffect(() => {
+    if (status0 !== 'confirmed' || !firstLeg) return;
+    let live = true;
+    fetchRefundPreview(firstLeg).then((p) => { if (live) setPreview(p); }, () => {});
+    return () => { live = false; };
+  }, [status0, firstLeg]);
+  // Paying in the browser: when the server has confirmed the booking, take the person to the confirmed screen.
+  React.useEffect(() => {
+    if (paying && status0 === 'confirmed' && firstLeg) router.replace(`/booking/done/${firstLeg}` as never);
+  }, [paying, status0, firstLeg]);
+
+  const pay = async () => {
+    if (!firstLeg) return;
+    setBusy(true); setError(null);
+    try { await payBookingFee(firstLeg, (url) => Linking.openURL(url)); setPaying(true); } catch (e) {
+      const code = (e as Error).message;
+      setError(tr(code === 'not_available' ? 'pay.notAvailable' : code === 'not_payable' ? 'pay.notPayable' : code === 'pet_booked' ? 'booking.petBooked' : code === 'too_many' ? 'pay.tooMany' : code === 'network' ? 'pay.network' : 'pay.failed'));
+      if (code === 'not_payable') await loadBookings(other!.other_id);
+    } finally { setBusy(false); }
+  };
 
   const send = async () => {
     const body = text.trim();
@@ -138,7 +165,24 @@ export default function ChatScreen() {
               : status === 'terms_agreed' ? tr('booking.status.agreed')
               : mine && !theirs ? tr('booking.status.waiting', { name: other.first_name ?? '' }) : tr('booking.status.requested')}
           </Text>
-          {!confirmed ? <Button variant="secondary" disabled={busy} title={sure ? tr('booking.cancelSure') : tr('booking.cancel')} onPress={() => { cancel().catch(() => {}); }} /> : null}
+          {status === 'terms_agreed' ? (
+            feePayerOf(legs) === me ? (
+              <View style={{ gap: 8 }}>
+                {fee != null ? <Text style={{ color: c.text, fontSize: 16, fontFamily: fontFamily('bold', rtl) }}>{tr('pay.fee', { amount: fee })}</Text> : null}
+                <Button disabled={busy || paying} title={tr('pay.button')} onPress={() => { pay().catch(() => {}); }} />
+                {paying ? <Text accessibilityRole="alert" style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('regular', rtl) }}>{tr('pay.waiting')}</Text> : null}
+              </View>
+            ) : <Text style={{ color: c.textMuted, fontSize: 15, fontFamily: fontFamily('regular', rtl) }}>{tr('pay.waitingOther', { name: other.first_name ?? '' })}</Text>
+          ) : null}
+          {confirmed ? <Button title={tr('booking.viewConfirmed')} onPress={() => router.push(`/booking/done/${legs[0].id}` as never)} /> : null}
+          {confirmed && preview && status0 === 'confirmed' ? (
+            <Text style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('regular', rtl) }}>
+              {!preview.is_payer ? tr('refund.other', { name: other.first_name ?? '' })
+                : preview.refund_cents <= 0 ? tr('refund.none')
+                : tr(preview.refund_cents >= preview.amount_cents ? 'refund.full' : 'refund.part', { amount: preview.refund_cents / 100 })}
+            </Text>
+          ) : null}
+          <Button variant="secondary" disabled={busy} title={sure ? tr('booking.cancelSure') : tr(confirmed ? 'booking.cancelBooking' : 'booking.cancel')} onPress={() => { cancel().catch(() => {}); }} />
         </>
       ) : !canRequest ? null : (
         <Button variant="secondary" title={tr('booking.request')} onPress={() => router.push(`/booking/new?other=${other.other_id}` as never)} />
