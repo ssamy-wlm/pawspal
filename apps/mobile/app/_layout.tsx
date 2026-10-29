@@ -29,6 +29,10 @@ function Nav() {
         <Stack.Screen name="pending" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: tr('settings.title') }} />
+        <Stack.Screen name="profile/edit" options={{ title: tr('edit.title') }} />
+        <Stack.Screen name="pets/index" options={{ title: tr('pets.title') }} />
+        <Stack.Screen name="pets/[id]" options={{ title: '' }} />
+        <Stack.Screen name="host/[id]" options={{ title: '' }} />
         <Stack.Screen name="legal/[doc]" options={{ title: '' }} />
         <Stack.Screen name="showcase" options={{ title: tr('dev.title') }} />
       </Stack>

@@ -30,6 +30,7 @@ jest.mock('expo-router', () => {
     Stack: Object.assign(({ children }: { children?: React.ReactNode }) => children ?? null, { Screen: () => null }),
     Tabs: Object.assign(({ children }: { children: React.ReactNode }) => <View>{children}</View>, { Screen }),
     useLocalSearchParams: () => ({ doc: 'privacyPolicy' }),
+    useFocusEffect: (cb: () => void) => require('react').useEffect(cb, [cb]),
   };
 });
 
@@ -58,7 +59,8 @@ describe.each(COMBOS)('every screen in $mode theme, $locale', ({ mode, locale })
     await r(<><CalendarTab /><ChatTab /><ProfileTab /></>);
     expect(screen.getByText(words['calendar.empty'])).toBeTruthy();
     expect(screen.getByText(words['chat.empty'])).toBeTruthy();
-    expect(screen.getByText(words['profile.soon'])).toBeTruthy();
+    expect(screen.getByLabelText(words['profile.edit'])).toBeTruthy();
+    expect(screen.getByLabelText(words['profile.pets'])).toBeTruthy();
     expect(screen.getByLabelText(words['profile.settings'])).toBeTruthy();
     expect(screen.getByLabelText(words['legal.terms'])).toBeTruthy();
   });

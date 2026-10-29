@@ -1,25 +1,10 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { Illustration } from './Illustration';
-import { fontFamily, lightTheme, navyTheme, Theme, useTheme } from '../theme';
+import { fontFamily, useTheme } from '../theme';
+import { ART, cardBackground } from './CardArt';
 import { formatDay, isRTL, t as tr, tn } from '../i18n';
 import type { StayResult } from '../lib/search';
-import type { SvgName } from '../illustrations';
-
-const ART: Record<StayResult['card_illustration'], SvgName> = {
-  'dog-biscuit': 'dogBiscuit', 'cat-mango': 'catMango', 'cat-midnight': 'catMidnight', 'husky-storm': 'huskyStorm',
-};
-
-/** The sitter's chosen card background. It looks the same in every app theme, like the printed card in the posts. */
-function cardBackground(kind: string, t: Theme) {
-  switch (kind) {
-    case 'circles_orange': return { fill: t.tint.orange, circle: lightTheme.color.surface, circleOpacity: 0.55 };
-    case 'circles_sand': return { fill: t.brand.sand, circle: lightTheme.color.surface, circleOpacity: 0.55 };
-    case 'pattern': return { fill: lightTheme.color.surface, circle: t.tint.orange, circleOpacity: 0.5 };
-    case 'navy': return { fill: t.brand.navy, circle: navyTheme.color.surface!, circleOpacity: 1 };
-    default: return { fill: t.tint.teal, circle: lightTheme.color.surface, circleOpacity: 0.55 };
-  }
-}
 
 export const priceLabel = (r: StayResult) =>
   r.offers.includes('paid') && r.price_per_night != null

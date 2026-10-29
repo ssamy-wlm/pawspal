@@ -25,6 +25,7 @@ jest.mock('expo-router', () => {
     Link: ({ children }) => children,
     Stack: Object.assign(({ children }) => children ?? null, { Screen }),
     useLocalSearchParams: jest.fn(() => ({ doc: 'termsOfService' })),
+    useFocusEffect: (cb) => React.useEffect(cb, [cb]),
     __Text: Text, __React: React,
   };
 });
