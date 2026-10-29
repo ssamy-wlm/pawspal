@@ -29,6 +29,7 @@ begin
   if not exists (select 1 from public.profiles where id = new.user_id and role in ('sitter', 'both')) then
     raise exception 'only hosts can post availability';
   end if;
+  perform pg_advisory_xact_lock(hashtext('post:' || new.user_id::text));      -- parallel posts cannot both slip under the limit
   if tg_op = 'INSERT' and (select count(*) from public.availability where user_id = new.user_id and ends_on >= current_date) >= 10 then
     raise exception 'too many open posts';
   end if;
@@ -68,6 +69,10 @@ returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if not exists (select 1 from public.profiles where id = new.user_id and role in ('owner', 'both')) then
     raise exception 'only pet owners can post travel dates';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('post:' || new.user_id::text));
+  if tg_op = 'UPDATE' and new.starts_on < current_date and new.starts_on is distinct from old.starts_on then
+    raise exception 'dates cannot be moved into the past';
   end if;
   if tg_op = 'INSERT' and (select count(*) from public.travel_posts where user_id = new.user_id and ends_on >= current_date) >= 5 then
     raise exception 'too many open posts';
@@ -120,6 +125,7 @@ revoke update on public.shortlist from anon, authenticated;
 create or replace function public.limit_shortlist()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
+  perform pg_advisory_xact_lock(hashtext('shortlist:' || new.user_id::text));
   if (select count(*) from public.shortlist where user_id = new.user_id) >= 100 then
     raise exception 'shortlist is full';
   end if;
@@ -143,3 +149,8 @@ language sql stable set search_path = public as $$
 $$;
 revoke execute on function public.my_shortlist() from public, anon;
 grant execute on function public.my_shortlist() to authenticated;
+
+-- Trigger functions are never called directly; keep them out of the API anyway.
+revoke execute on function public.check_availability_post() from public, anon, authenticated;
+revoke execute on function public.check_travel_post() from public, anon, authenticated;
+revoke execute on function public.limit_shortlist() from public, anon, authenticated;

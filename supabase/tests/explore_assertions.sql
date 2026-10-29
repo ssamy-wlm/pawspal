@@ -75,4 +75,24 @@ select pg_temp.check(pg_temp.count_as('c1c1c1c1-0000-0000-0000-000000000001', $$
 select pg_temp.fails_as('anon', null, $$select * from public.my_shortlist()$$, 'anon read a shortlist');
 select pg_temp.fails_as('authenticated', 'c1c1c1c1-0000-0000-0000-000000000001', $$update public.shortlist set host_id = 'c5c5c5c5-0000-0000-0000-000000000005'$$, 'a shortlist row was changed');
 
+\echo '--- E5 more edges'
+insert into public.blocks (blocker_id, blocked_id) values ('c5c5c5c5-0000-0000-0000-000000000005', 'c1c1c1c1-0000-0000-0000-000000000001');
+select pg_temp.fails_as('authenticated', 'c1c1c1c1-0000-0000-0000-000000000001', $$insert into public.shortlist (user_id, host_id) values ('c1c1c1c1-0000-0000-0000-000000000001', 'c5c5c5c5-0000-0000-0000-000000000005')$$, 'saved someone who blocked you');
+select pg_temp.check(pg_temp.count_as('c5c5c5c5-0000-0000-0000-000000000005', $$select count(*) from public.travel_posts where user_id = 'c1c1c1c1-0000-0000-0000-000000000001'$$) = 0, 'a blocked owner travel posts were still readable');
+delete from public.blocks where blocker_id = 'c5c5c5c5-0000-0000-0000-000000000005';
+update public.profiles set status = 'suspended' where id = 'c1c1c1c1-0000-0000-0000-000000000001';
+select pg_temp.check(pg_temp.count_as('c5c5c5c5-0000-0000-0000-000000000005', $$select count(*) from public.travel_posts where user_id = 'c1c1c1c1-0000-0000-0000-000000000001'$$) = 0, 'a suspended owner travel posts were still readable');
+update public.profiles set status = 'active' where id = 'c1c1c1c1-0000-0000-0000-000000000001';
+select pg_temp.as_role('authenticated', 'c1c1c1c1-0000-0000-0000-000000000001', $$update public.travel_posts set note = 'text me on whatsapp 0101 234 5678' where user_id = 'c1c1c1c1-0000-0000-0000-000000000001' and pet_type = 'dog'$$);
+select pg_temp.check((select count(*) = 0 from public.travel_posts where note ~* 'whatsapp|[0-9]{4}'), 'a travel note update skipped the masking');
+select pg_temp.fails_as('authenticated', 'c1c1c1c1-0000-0000-0000-000000000001', $$update public.travel_posts set starts_on = current_date - 3 where user_id = 'c1c1c1c1-0000-0000-0000-000000000001'$$, 'a travel post was moved into the past');
+do $$ begin
+  for i in 1..100 loop
+    insert into auth.users (id, phone, phone_confirmed_at) values (gen_random_uuid(), '2012772' || lpad(i::text, 5, '0'), now());
+  end loop;
+  update public.profiles set status = 'active', first_name = 'Bulk' where first_name is null and status = 'pending_verification';
+  insert into public.shortlist (user_id, host_id) select 'c5c5c5c5-0000-0000-0000-000000000005', id from public.profiles where first_name = 'Bulk' limit 100;
+end $$;
+select pg_temp.fails($$insert into public.shortlist (user_id, host_id) values ('c5c5c5c5-0000-0000-0000-000000000005', 'c2c2c2c2-0000-0000-0000-000000000002')$$, 'the 101st shortlist entry was accepted');
+
 \echo 'explore assertions OK'
