@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
 import { fontFamily, useTheme } from '../../src/theme';
 import { formatDay, isRTL, Key, t as tr, tn } from '../../src/i18n';
 import { Chip } from '../../src/components/Chip';
@@ -8,6 +9,10 @@ import { CalendarRange } from '../../src/components/CalendarRange';
 import { BrowseCard } from '../../src/components/BrowseCard';
 import { SwipeDeck, SwipeDirection } from '../../src/components/SwipeDeck';
 import { HeartBurst, HeartBurstHandle } from '../../src/components/HeartBurst';
+import { ResultsMap } from '../../src/components/ResultsMap';
+import { useToast } from '../../src/components/Toast';
+import { useAuth } from '../../src/lib/auth';
+import { saveToShortlist } from '../../src/lib/explore';
 import { browseRandom, nights, Offer, PetType, searchStays, SearchFilters, StayResult } from '../../src/lib/search';
 
 type Mode = 'search' | 'swipe' | 'both';
@@ -30,6 +35,25 @@ const OFFERS: { key: Offer; label: Key }[] = [
   { key: 'volunteer', label: 'offer.volunteer' },
 ];
 const PETS: PetType[] = ['dog', 'cat', 'other'];
+
+// Rows have a fixed height so a long list can be measured without drawing it (smooth scrolling with 100 results).
+export const ROW_HEIGHT = 124;
+const ROW_GAP = 12;
+const NOTE_HEIGHT = 40;
+type Row = { kind: 'note' } | { kind: 'host'; r: StayResult };
+export const rowLayout = (rows: Row[], index: number) => {
+  let offset = 0;
+  for (let i = 0; i < index; i++) offset += (rows[i]?.kind === 'note' ? NOTE_HEIGHT : ROW_HEIGHT) + ROW_GAP;
+  return { length: rows[index]?.kind === 'note' ? NOTE_HEIGHT : ROW_HEIGHT, offset, index };
+};
+
+const HostRow = React.memo(function HostRow({ r, onOpen }: { r: StayResult; onOpen: (r: StayResult) => void }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={r.first_name ?? ''} onPress={() => onOpen(r)} style={{ height: ROW_HEIGHT }}>
+      <BrowseCard r={r} compact />
+    </Pressable>
+  );
+});
 const petLabel = (p: PetType): Key => (p === 'dog' ? 'pet.dog' : p === 'cat' ? 'pet.cat' : 'pet.other');
 const petPlural = (p: PetType): Key => (p === 'dog' ? 'pet.dogs' : p === 'cat' ? 'pet.cats' : 'pet.others');
 
@@ -54,8 +78,12 @@ export default function Explore() {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [maxKm, setMaxKm] = useState(10);
   const [results, setResults] = useState<StayResult[] | null>(null);
+  const [view, setView] = useState<'list' | 'map'>('list');
+  const [deckIndex, setDeckIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { session, state } = useAuth();
+  const toast = useToast();
   const burst = useRef<HeartBurstHandle>(null);
   const swipe = useRef<((d: SwipeDirection) => void) | null>(null);
 
@@ -68,7 +96,7 @@ export default function Explore() {
   }, [start, end, petType, budget, customMin, customMax, offers, maxKm]);
 
   const run = useCallback(async (m: Mode, pt: PetType = petType) => {
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setDeckIndex(0);
     try {
       setResults(m === 'swipe' ? await browseRandom(pt) : filters ? await searchStays(filters) : []);
     } catch {
@@ -76,12 +104,35 @@ export default function Explore() {
     } finally { setLoading(false); }
   }, [filters, petType]);
 
-  const exact = results?.filter((r) => r.match_label !== 'Close match') ?? [];
-  const close = results?.filter((r) => r.match_label === 'Close match') ?? [];
+  const exact = useMemo(() => results?.filter((r) => r.match_label !== 'Close match') ?? [], [results]);
+  const close = useMemo(() => results?.filter((r) => r.match_label === 'Close match') ?? [], [results]);
+  const rows = useMemo<Row[]>(() => [
+    ...exact.map((r): Row => ({ kind: 'host', r })),
+    ...(close.length > 0 ? [{ kind: 'note' } as Row] : []),
+    ...close.map((r): Row => ({ kind: 'host', r })),
+  ], [exact, close]);
 
-  const onSwipe = (_r: StayResult, dir: SwipeDirection) => {
-    if (dir === 'like') { burst.current?.burst(); /* TODO(phase 5): save to shortlist / open request flow */ }
+  const openHost = useCallback((r: StayResult) => { router.push(`/host/${r.user_id}` as never); }, []);
+
+  const onSwipe = (r: StayResult, dir: SwipeDirection) => {
+    setDeckIndex((i) => i + 1);
+    if (dir !== 'like') return;
+    burst.current?.burst();
+    if (!session) return;
+    saveToShortlist(session.user.id, r.user_id).then(
+      () => toast.show(tr('shortlist.saved')),
+      (e: Error) => toast.show(tr(e.message === 'full' ? 'shortlist.full' : 'shortlist.failed'), 'error'),
+    );
   };
+
+  const role = state?.role ?? 'both';
+  const actions = () => (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      <Chip label={tr('explore.shortlist')} onPress={() => router.push('/shortlist' as never)} />
+      <Chip label={tr('explore.post')} onPress={() => router.push('/post-dates' as never)} />
+      {role !== 'owner' ? <Chip label={tr('explore.travellers')} onPress={() => router.push('/travellers' as never)} /> : null}
+    </View>
+  );
 
   const heading = { color: c.text, fontFamily: fontFamily('bold', rtl) } as const;
   const muted = { color: c.textMuted, fontFamily: fontFamily('regular', rtl) } as const;
@@ -102,8 +153,9 @@ export default function Explore() {
     <View style={{ gap: 16 }}>
       {items.length === 0 ? <Text style={[muted, { textAlign: 'center' }]}>{tr('explore.empty.swipe')}</Text> : (
         <SwipeDeck items={items} keyOf={(r) => r.availability_id} cardHeight={480}
-          bindControls={(fn) => { swipe.current = fn; }} onSwipe={onSwipe} renderCard={(r) => <BrowseCard r={r} />} />
+          bindControls={(fn) => { swipe.current = fn; }} onSwipe={onSwipe} onPressCard={openHost} renderCard={(r) => <BrowseCard r={r} />} />
       )}
+      {items[deckIndex] ? <Button variant="secondary" title={tr('explore.viewProfile')} onPress={() => openHost(items[deckIndex])} /> : null}
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 32 }}>
         <Pressable accessibilityRole="button" accessibilityLabel={tr('swipe.pass')} onPress={() => swipe.current?.('pass')}
           style={{ width: 68, height: 68, borderRadius: 34, borderWidth: 4, borderColor: t.brand.coral, alignItems: 'center', justifyContent: 'center' }}>
@@ -125,6 +177,7 @@ export default function Explore() {
     return (
       <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ padding: 20, gap: 18 }}>
         {segment()}
+        {actions()}
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {PETS.map((p) => (
             <Chip key={p} label={tr(petPlural(p))} selected={petType === p} onPress={() => { setPetType(p); run('swipe', p); }} />
@@ -150,22 +203,37 @@ export default function Explore() {
         </Pressable>
         {mode === 'both' ? (
           <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}>{deck(results)}</ScrollView>
+        ) : view === 'map' ? (
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 12 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Chip label={tr('explore.view.list')} selected={false} onPress={() => setView('list')} />
+              <Chip label={tr('explore.view.map')} selected onPress={() => setView('map')} />
+            </View>
+            <ResultsMap results={[...exact, ...close]} onOpen={openHost} />
+          </ScrollView>
         ) : (
           <FlatList
-            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 12 }}
-            data={[...exact, ...close]}
-            keyExtractor={(r) => r.availability_id}
-            ListHeaderComponent={<Text style={[heading, { fontSize: 18, marginBottom: 4 }]}>
-              {tn('count.exactMatch', exact.length)}{close.length ? ` · ${tn('count.closeMatch', close.length)}` : ''}
-            </Text>}
-            ListEmptyComponent={<Text style={muted}>{tr('explore.results.empty')}</Text>}
-            renderItem={({ item, index }) => (
-              <View>
-                {index === exact.length && close.length > 0 && <Text style={[muted, { marginVertical: 8 }]}>{tr('explore.results.closeNote')}</Text>}
-                {/* TODO(phase 4): tap opens the host profile screen (mockup 03). */}
-                <BrowseCard r={item} compact />
+            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+            data={rows}
+            keyExtractor={(row, i) => (row.kind === 'note' ? 'note' : row.r.availability_id) + i}
+            getItemLayout={(data, i) => rowLayout((data ?? []) as Row[], i)}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            windowSize={7}
+            removeClippedSubviews
+            ListHeaderComponent={<View style={{ gap: 8, marginBottom: 12 }}>
+              <Text style={[heading, { fontSize: 18 }]}>
+                {tn('count.exactMatch', exact.length)}{close.length ? ` · ${tn('count.closeMatch', close.length)}` : ''}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Chip label={tr('explore.view.list')} selected onPress={() => setView('list')} />
+                <Chip label={tr('explore.view.map')} selected={false} onPress={() => setView('map')} />
               </View>
-            )}
+            </View>}
+            ListEmptyComponent={<Text style={muted}>{tr('explore.results.empty')}</Text>}
+            renderItem={({ item }) => item.kind === 'note'
+              ? <Text style={[muted, { height: NOTE_HEIGHT, textAlignVertical: 'center' }]}>{tr('explore.results.closeNote')}</Text>
+              : <View style={{ marginBottom: ROW_GAP }}><HostRow r={item.r} onOpen={openHost} /></View>}
           />
         )}
       </View>
@@ -177,6 +245,7 @@ export default function Explore() {
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ padding: 20, gap: 22, paddingBottom: 48 }}>
       {segment()}
+      {actions()}
       <Text style={{ fontFamily: fontFamily('extrabold', rtl), fontSize: 28, color: c.text }}>{tr('explore.whenAway')}</Text>
       <View style={{ padding: 16, borderRadius: 24, backgroundColor: c.surface }}>
         <CalendarRange start={start} end={end} onChange={(s, e) => { setStart(s); setEnd(e); }} />

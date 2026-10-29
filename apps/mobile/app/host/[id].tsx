@@ -6,8 +6,9 @@ import { EmptyState } from '../../src/components/EmptyState';
 import { Heading } from '../../src/components/Heading';
 import { PetPhoto } from '../../src/components/PetPhoto';
 import { fetchCard, fetchPets, Pet, PublicProfile, useSignedUrl } from '../../src/lib/profile';
+import { Availability, fetchAvailability } from '../../src/lib/explore';
 import { fontFamily, useTheme } from '../../src/theme';
-import { isRTL, t as tr } from '../../src/i18n';
+import { formatDay, isRTL, Key, t as tr } from '../../src/i18n';
 
 function Stat({ value, label }: { value: string; label: string }) {
   const t = useTheme();
@@ -20,6 +21,20 @@ function Stat({ value, label }: { value: string; label: string }) {
   );
 }
 
+/** A small read-only label, like the chips on mockup 03. Not a button. */
+function Tag({ label, strong }: { label: string; strong?: boolean }) {
+  const t = useTheme();
+  return (
+    <View style={{ minHeight: 40, paddingHorizontal: 16, borderRadius: 999, justifyContent: 'center', backgroundColor: strong ? t.color.primary : t.color.surface,
+      borderWidth: strong ? 0 : 2, borderColor: t.brand.sand }}>
+      <Text style={{ color: strong ? t.color.onPrimary : t.color.text, fontSize: 14, fontFamily: fontFamily(strong ? 'semibold' : 'medium', isRTL()) }}>{label}</Text>
+    </View>
+  );
+}
+
+const PET_LABEL: Record<string, Key> = { dog: 'pet.dogs', cat: 'pet.cats', other: 'pet.others' };
+const OFFER_LABEL: Record<string, Key> = { volunteer: 'offer.volunteer', swap: 'offer.swap', food_provided: 'offer.food_provided', stay_at_my_place: 'offer.stay_at_my_place' };
+
 /** A host's public profile (mockup 03): card art, name, area, stats, about, their pets and home. Booking buttons arrive with chat and bookings. */
 export default function HostProfile() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -28,6 +43,7 @@ export default function HostProfile() {
   const [state, setState] = React.useState<'loading' | 'ready' | 'missing'>('loading');
   const [p, setP] = React.useState<PublicProfile | null>(null);
   const [pets, setPets] = React.useState<Pet[]>([]);
+  const [posts, setPosts] = React.useState<Availability[]>([]);
   const homeUrl = useSignedUrl('homes', p?.home_photo_path);
 
   React.useEffect(() => {
@@ -38,8 +54,8 @@ export default function HostProfile() {
       if (!live) return;
       if (!card) { setState('missing'); return; }
       setP(card); setState('ready');
-      const list = await fetchPets(id).catch(() => [] as Pet[]);
-      if (live) setPets(list);
+      const [list, avail] = await Promise.all([fetchPets(id).catch(() => [] as Pet[]), fetchAvailability(id).catch(() => [] as Availability[])]);
+      if (live) { setPets(list); setPosts(avail); }
     })().catch(() => { if (live) setState('missing'); });
     return () => { live = false; };
   }, [id]);
@@ -58,8 +74,31 @@ export default function HostProfile() {
           <Stat value={p.rating_avg != null ? p.rating_avg.toFixed(1) : tr('host.noRating')} label={tr('host.ratingLabel')} />
           <Stat value={String(p.stays_count)} label={tr('host.staysLabel')} />
         </View>
+        {(() => {
+          const accepts = [...new Set(posts.flatMap((a) => a.pets_accepted))];
+          const tags = [...accepts.map((k) => tr(PET_LABEL[k])), ...p.home_tags.map((k) => tr(`tag.${k}`))];
+          return tags.length > 0 ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }} accessible accessibilityLabel={tags.join(', ')}>
+              {tags.map((x) => <Tag key={x} label={x} />)}
+            </View>
+          ) : null;
+        })()}
         <Heading>{tr('host.about')}</Heading>
         <Text style={{ color: p.bio ? c.text : c.textMuted, fontSize: 16, lineHeight: 23, fontFamily: fontFamily('regular', rtl) }}>{p.bio || tr('host.noBio')}</Text>
+        {posts.length > 0 ? (
+          <>
+            <Heading>{tr('host.available')}</Heading>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {posts.map((a) => <Tag key={a.id} strong label={`${formatDay(a.starts_on)} – ${formatDay(a.ends_on)}`} />)}
+            </View>
+            <Heading>{tr('host.terms')}</Heading>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {[...new Set(posts.flatMap((a) => a.offers))].map((o) => o === 'paid'
+                ? (posts[0].price_per_night != null ? <Tag key={o} strong label={`${tr('price.egp', { amount: posts[0].price_per_night })} ${tr(posts[0].negotiable ? 'card.perNightNegotiable' : 'card.perNight')}`} /> : null)
+                : <Tag key={o} label={tr(OFFER_LABEL[o])} />)}
+            </View>
+          </>
+        ) : null}
         {pets.length > 0 ? (
           <>
             <Heading>{tr('host.pets')}</Heading>

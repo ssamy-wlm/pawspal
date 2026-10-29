@@ -15,14 +15,17 @@ jest.mock('../src/lib/auth', () => ({ useAuth: () => ({ ready: true, session: { 
 jest.mock('../src/lib/api', () => ({ ...jest.requireActual('../src/lib/api'), uploadPhoto: jest.fn() }));
 jest.mock('../src/lib/profile', () => ({
   fetchMyProfile: jest.fn(), fetchCard: jest.fn(), saveMyProfile: jest.fn(), fetchPets: jest.fn(), fetchPet: jest.fn(), savePet: jest.fn(),
-  deletePet: jest.fn(), fetchMyPetCare: jest.fn(), saveMyPetCare: jest.fn(), useSignedUrl: jest.fn(() => 'https://signed.example/photo.jpg'),
+  deletePet: jest.fn(), fetchMyPetCare: jest.fn(), saveMyPetCare: jest.fn(), removePhotoFiles: jest.fn(), HOME_TAGS: ['garden','fenced_yard','pet_first_aid','experienced','has_own_pets','quiet_home','near_beach','air_conditioning','works_from_home','medication_ok'], MAX_HOME_TAGS: 8, useSignedUrl: jest.fn(() => 'https://signed.example/photo.jpg'),
 }));
+jest.mock('../src/lib/explore', () => ({ fetchAvailability: jest.fn() }));
+import * as exploreLib from '../src/lib/explore';
+const ex = exploreLib as jest.Mocked<typeof exploreLib>;
 const p = prof as jest.Mocked<typeof prof>;
 const a = api as jest.Mocked<typeof api>;
 const params = useLocalSearchParams as jest.Mock;
 
 const me: prof.PublicProfile = { id: 'me', first_name: 'Mona', role: 'both', bio: 'Dive instructor with a garden.', area: 'Masbat',
-  card_illustration: 'cat-mango', card_background: 'circles_orange', rating_avg: 4.9, stays_count: 32, home_photo_path: 'me/home.jpg' };
+  card_illustration: 'cat-mango', card_background: 'circles_orange', rating_avg: 4.9, stays_count: 32, home_photo_path: 'me/home.jpg', home_tags: ['garden', 'pet_first_aid'] };
 const pet: prof.Pet = { id: 'pet-1', owner_id: 'me', name: 'Biscuit', type: 'dog', size: 'medium', age_years: 3, vaccinated: true, notes: 'Loves walks', photo_paths: ['me/p1.jpg'], locked: false };
 
 beforeEach(() => {
@@ -30,6 +33,7 @@ beforeEach(() => {
   p.fetchMyProfile.mockResolvedValue(me); p.fetchCard.mockResolvedValue({ ...me, id: 'host-1' });
   p.fetchPets.mockResolvedValue([pet]); p.fetchPet.mockResolvedValue(pet);
   p.fetchMyPetCare.mockResolvedValue({ vet_name: 'Dr Samir', vet_phone: '0620000000', care_notes: 'Storms' });
+  ex.fetchAvailability.mockResolvedValue([]);
   p.savePet.mockResolvedValue('pet-1'); p.saveMyProfile.mockResolvedValue(undefined); p.saveMyPetCare.mockResolvedValue(undefined);
 });
 afterEach(() => setLocaleForTests('en'));
@@ -54,8 +58,29 @@ describe('edit profile', () => {
     await fireEvent.press(screen.getByText('Navy'));
     await fireEvent.changeText(screen.getByLabelText('About you'), 'New text');
     await fireEvent.press(screen.getByText('Save'));
-    await waitFor(() => expect(p.saveMyProfile).toHaveBeenCalledWith('me', { first_name: 'Mona', bio: 'New text', area: 'Masbat', card_illustration: 'husky-storm', card_background: 'navy' }));
+    await waitFor(() => expect(p.saveMyProfile).toHaveBeenCalledWith('me', { first_name: 'Mona', bio: 'New text', area: 'Masbat', card_illustration: 'husky-storm', card_background: 'navy', home_tags: ['garden', 'pet_first_aid'] }));
     expect(router.back).toHaveBeenCalled();
+  });
+
+  it('picks home tags, at most eight', async () => {
+    p.fetchMyProfile.mockResolvedValue({ ...me, home_tags: [] });
+    await renderIn(<EditProfile />);
+    await waitFor(() => screen.getByText('About your home'));
+    for (const k of ['Garden', 'Fenced yard', 'Pet first aid', 'Experienced', 'Has own pets', 'Quiet home', 'Near the beach', 'Air conditioning', 'Works from home', 'Can give medication']) {
+      await fireEvent.press(screen.getByText(k));
+    }
+    await fireEvent.press(screen.getByText('Save'));
+    await waitFor(() => expect(p.saveMyProfile).toHaveBeenCalled());
+    const tags = (p.saveMyProfile.mock.calls[0][1] as { home_tags: string[] }).home_tags;
+    expect(tags).toHaveLength(8);
+    expect(tags).not.toContain('works_from_home');                                      // the ninth and tenth were refused
+  });
+
+  it('does not offer home tags to someone who only needs a sitter', async () => {
+    p.fetchMyProfile.mockResolvedValue({ ...me, role: 'owner' });
+    await renderIn(<EditProfile />);
+    await waitFor(() => screen.getByLabelText('First name'));
+    expect(screen.queryByText('About your home')).toBeNull();
   });
 
   it('cannot save without a name', async () => {
@@ -151,6 +176,48 @@ describe('pet screen', () => {
     await waitFor(() => expect(p.savePet).toHaveBeenCalledWith('me', 'pet-1', expect.objectContaining({ age_years: 4 })));
   });
 
+  it('deletes the photo files that were taken off the pet, and ones added then dropped, once the pet is saved', async () => {
+    p.fetchPet.mockResolvedValue({ ...pet, photo_paths: ['me/p1.jpg', 'me/p2.jpg'] });
+    a.uploadPhoto.mockResolvedValueOnce('me/new1.jpg').mockResolvedValueOnce('me/new2.jpg');
+    params.mockReturnValue({ id: 'pet-1' });
+    await renderIn(<PetScreen />);
+    await waitFor(() => screen.getByDisplayValue('Biscuit'));
+    await fireEvent.press(screen.getByText('Add a photo'));
+    await waitFor(() => screen.getByLabelText('Remove photo 3'));
+    await fireEvent.press(screen.getByText('Add a photo'));
+    await waitFor(() => screen.getByLabelText('Remove photo 4'));
+    await fireEvent.press(screen.getByLabelText('Remove photo 4'));                      // added, then dropped
+    await fireEvent.press(screen.getByLabelText('Remove photo 1'));                      // an old photo taken off
+    await fireEvent.press(screen.getByText('Save pet'));
+    await waitFor(() => expect(p.removePhotoFiles).toHaveBeenCalled());
+    expect(p.savePet).toHaveBeenCalledWith('me', 'pet-1', expect.objectContaining({ photo_paths: ['me/p2.jpg', 'me/new1.jpg'] }));
+    const [bucket, paths] = p.removePhotoFiles.mock.calls[0];
+    expect(bucket).toBe('pets');
+    expect([...(paths as string[])].sort()).toEqual(['me/new2.jpg', 'me/p1.jpg']);
+  });
+
+  it('deletes every photo file of a pet that is deleted, after the pet itself', async () => {
+    p.deletePet.mockResolvedValue(undefined);
+    params.mockReturnValue({ id: 'pet-1' });
+    await renderIn(<PetScreen />);
+    await waitFor(() => screen.getByDisplayValue('Biscuit'));
+    await fireEvent.press(screen.getByText('Delete pet'));
+    await fireEvent.press(screen.getByText('Tap again to delete'));
+    await waitFor(() => expect(p.removePhotoFiles).toHaveBeenCalledWith('pets', ['me/p1.jpg']));
+    expect(p.deletePet.mock.invocationCallOrder[0]).toBeLessThan(p.removePhotoFiles.mock.invocationCallOrder[0]);
+  });
+
+  it('keeps the files when the pet could not be deleted', async () => {
+    p.deletePet.mockRejectedValue(new Error('locked'));
+    params.mockReturnValue({ id: 'pet-1' });
+    await renderIn(<PetScreen />);
+    await waitFor(() => screen.getByDisplayValue('Biscuit'));
+    await fireEvent.press(screen.getByText('Delete pet'));
+    await fireEvent.press(screen.getByText('Tap again to delete'));
+    await waitFor(() => expect(screen.getByText('Something went wrong. Try again.')).toBeTruthy());
+    expect(p.removePhotoFiles).not.toHaveBeenCalled();
+  });
+
   it('keeps at least one photo on a pet', async () => {
     params.mockReturnValue({ id: 'pet-1' });
     await renderIn(<PetScreen />);
@@ -200,6 +267,23 @@ describe('host profile', () => {
     expect(screen.getByText('Dive instructor with a garden.')).toBeTruthy();
     await waitFor(() => expect(screen.getByLabelText(/^Biscuit/)).toBeTruthy());
     expect(screen.getByLabelText('Home')).toBeTruthy();
+  });
+
+  it('shows tag chips (pets accepted and home tags), available dates and terms', async () => {
+    ex.fetchAvailability.mockResolvedValue([
+      { id: 'av1', starts_on: '2026-12-01', ends_on: '2026-12-09', pets_accepted: ['dog', 'cat'], offers: ['paid', 'swap', 'food_provided'], price_per_night: 250, negotiable: true },
+    ]);
+    params.mockReturnValue({ id: 'host-1' });
+    await renderIn(<HostProfile />);
+    await waitFor(() => expect(screen.getByText('Dogs')).toBeTruthy());
+    for (const tag of ['Cats', 'Garden', 'Pet first aid']) expect(screen.getByText(tag)).toBeTruthy();
+    expect(screen.queryByText('Fenced yard')).toBeNull();
+    expect(screen.getByText('Available')).toBeTruthy();
+    expect(screen.getByText('Dec 1 – Dec 9')).toBeTruthy();
+    expect(screen.getByText('Terms')).toBeTruthy();
+    expect(screen.getByText('250 EGP per night, negotiable')).toBeTruthy();
+    expect(screen.getByText('Swap welcome')).toBeTruthy();
+    expect(screen.getByText('Food provided')).toBeTruthy();
   });
 
   it('shows "New" for a host with no rating and a note when there is no description', async () => {

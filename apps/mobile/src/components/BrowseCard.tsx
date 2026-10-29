@@ -1,8 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
-import { Illustration } from './Illustration';
 import { fontFamily, useTheme } from '../theme';
-import { ART, cardBackground } from './CardArt';
+import { CardArt } from './CardArt';
 import { formatDay, isRTL, t as tr, tn } from '../i18n';
 import type { StayResult } from '../lib/search';
 
@@ -16,18 +15,9 @@ export function BrowseCard({ r, compact }: { r: StayResult; compact?: boolean })
   const t = useTheme();
   const c = t.color;
   const rtl = isRTL();
-  const bg = cardBackground(r.card_background, t);
   const isNew = !r.stays_count;
   const exact = r.match_label === 'Exact match';
-  const art = (
-    <View style={{ backgroundColor: bg.fill, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-      ...(compact ? { width: 96, height: 96, borderRadius: 20 } : { height: 300 }) }}>
-      {!compact && <View style={{ position: 'absolute', end: -60, top: -60, width: 200, height: 200, borderRadius: 100,
-        backgroundColor: bg.circle, opacity: bg.circleOpacity }} />}
-      {/* Real pet photos replace the illustration once uploaded (phase 2). */}
-      <Illustration name={ART[r.card_illustration] ?? 'dogBiscuit'} width={compact ? 80 : 240} height={compact ? 68 : 204} />
-    </View>
-  );
+  const art = <CardArt illustration={r.card_illustration} background={r.card_background} height={300} compact={compact} label={tr(`art.${r.card_illustration}`)} />;
   const badge = r.match_label && (
     <View style={{ alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999,
       backgroundColor: exact ? c.primary : t.tint.orange }}>

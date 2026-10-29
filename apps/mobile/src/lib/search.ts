@@ -20,6 +20,7 @@ export interface StayResult {
   card_illustration: 'dog-biscuit' | 'cat-mango' | 'cat-midnight' | 'husky-storm';
   card_background: string; face_photo_path: string | null;
   rating_avg: number | null; stays_count: number;
+  approx_lat?: number | null; approx_lng?: number | null;     // an approximate area, never a home
   starts_on: string; ends_on: string; price_per_night: number | null; negotiable?: boolean;
   offers: Offer[]; pets_accepted: PetType[];
   covers_dates?: boolean; in_budget?: boolean; distance_km?: number | null;

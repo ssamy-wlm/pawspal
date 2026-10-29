@@ -11,8 +11,12 @@ export type PetSize = 'small' | 'medium' | 'large';
 export interface PublicProfile {
   id: string; first_name: string | null; role: Role; bio: string | null; area: string | null;
   card_illustration: CardIllustration; card_background: CardBackground;
-  rating_avg: number | null; stays_count: number; home_photo_path: string | null;
+  rating_avg: number | null; stays_count: number; home_photo_path: string | null; home_tags: HomeTag[];
 }
+
+export const HOME_TAGS = ['garden', 'fenced_yard', 'pet_first_aid', 'experienced', 'has_own_pets', 'quiet_home', 'near_beach', 'air_conditioning', 'works_from_home', 'medication_ok'] as const;
+export type HomeTag = (typeof HOME_TAGS)[number];
+export const MAX_HOME_TAGS = 8;
 
 export interface Pet {
   id: string; owner_id: string; name: string; type: PetType; size: PetSize; age_years: number | null;
@@ -21,7 +25,7 @@ export interface Pet {
 
 export interface PetCare { vet_name: string; vet_phone: string; care_notes: string }
 
-const CARD_COLUMNS = 'id, first_name, role, bio, area, card_illustration, card_background, rating_avg, stays_count, home_photo_path';
+const CARD_COLUMNS = 'id, first_name, role, bio, area, card_illustration, card_background, rating_avg, stays_count, home_photo_path, home_tags';
 
 /** Your own profile. */
 export async function fetchMyProfile(userId: string): Promise<PublicProfile | null> {
@@ -37,10 +41,10 @@ export async function fetchCard(id: string): Promise<PublicProfile | null> {
   return (data as PublicProfile | null) ?? null;
 }
 
-export async function saveMyProfile(userId: string, v: { first_name: string; bio: string; area: string; card_illustration: CardIllustration; card_background: CardBackground }) {
+export async function saveMyProfile(userId: string, v: { first_name: string; bio: string; area: string; card_illustration: CardIllustration; card_background: CardBackground; home_tags: HomeTag[] }) {
   const { error } = await supabase.from('profiles').update({
     first_name: v.first_name.trim(), bio: v.bio.trim() || null, area: v.area.trim() || null,
-    card_illustration: v.card_illustration, card_background: v.card_background,
+    card_illustration: v.card_illustration, card_background: v.card_background, home_tags: v.home_tags,
   }).eq('id', userId);
   if (error) throw error;
 }
@@ -103,4 +107,13 @@ export function useSignedUrl(bucket: 'pets' | 'homes', path: string | null | und
     return () => { live = false; };
   }, [bucket, path]);
   return path ? url : null;
+}
+
+/**
+ * Deletes photo files nobody uses any more (a removed photo, a deleted pet). Best effort and silent: the database says no
+ * to a file that a pet in a confirmed booking still uses, and a file that could not be deleted is only clutter.
+ */
+export async function removePhotoFiles(bucket: 'pets' | 'homes', paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  try { await supabase.storage.from(bucket).remove(paths); } catch { /* clutter at worst */ }
 }

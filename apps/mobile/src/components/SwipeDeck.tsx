@@ -14,11 +14,13 @@ interface Props<T> {
   onSwipe: (item: T, dir: SwipeDirection) => void;
   /** Lets buttons trigger a swipe: called once with a function you can store and call later. */
   bindControls?: (swipe: (dir: SwipeDirection) => void) => void;
+  /** A tap on the top card (not a swipe). */
+  onPressCard?: (item: T) => void;
   cardHeight?: number;
 }
 
 /** Browse stack. Motion matches the "Swipe a sitter" scene of the intro video (docs/motion.md section 3). */
-export function SwipeDeck<T>({ items, keyOf, renderCard, onSwipe, bindControls, cardHeight = 560 }: Props<T>) {
+export function SwipeDeck<T>({ items, keyOf, renderCard, onSwipe, bindControls, onPressCard, cardHeight = 560 }: Props<T>) {
   const { width } = useWindowDimensions();
   const reduced = useReducedMotion();
   const [index, setIndex] = useState(0);
@@ -55,6 +57,10 @@ export function SwipeDeck<T>({ items, keyOf, renderCard, onSwipe, bindControls, 
       else x.set(withSpring(0, { damping: 15, stiffness: 180 }));
     });
 
+  const press = useCallback(() => { const item = items[index]; if (item) onPressCard?.(item); }, [items, index, onPressCard]);
+  const tap = Gesture.Tap().maxDistance(10).onEnd((_e, ok) => { if (ok) runOnJS(press)(); });
+  const gesture = Gesture.Exclusive(pan, tap);
+
   const top = useAnimatedStyle(() => {
     const dx = x.get();
     return {
@@ -66,7 +72,7 @@ export function SwipeDeck<T>({ items, keyOf, renderCard, onSwipe, bindControls, 
   const visible = items.slice(index, index + 3);
   return (
     <View style={{ height: cardHeight + 60 }}>
-      {visible.map((item, depth) => <Layer key={keyOf(item)} depth={depth} promote={promote} topStyle={top} pan={pan} height={cardHeight}>{renderCard(item)}</Layer>).reverse()}
+      {visible.map((item, depth) => <Layer key={keyOf(item)} depth={depth} promote={promote} topStyle={top} pan={gesture} height={cardHeight}>{renderCard(item)}</Layer>).reverse()}
     </View>
   );
 }

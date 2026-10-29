@@ -3,7 +3,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withDelay, withRepeat, with
 import { M, ease, pop, useReducedFadeIn, useReducedMotion } from '../motion';
 
 /** Decorative background circle that pops in and slowly "breathes", as in the posts and video. */
-export function Blob({ x, y, size, color, delay = 0 }: { x: number; y: number; size: number; color: string; delay?: number }) {
+export function Blob({ x, y, size, color, delay = 0, anchor = 'start' }: { x: number; y: number; size: number; color: string; delay?: number; anchor?: 'start' | 'end' }) {
   const reduced = useReducedMotion();
   const fade = useReducedFadeIn();
   const enter = useSharedValue(reduced ? 1 : 0);
@@ -19,7 +19,7 @@ export function Blob({ x, y, size, color, delay = 0 }: { x: number; y: number; s
       pointerEvents="none"
       accessible={false}
       importantForAccessibility="no-hide-descendants"
-      style={[{ position: 'absolute', start: x, top: y, width: size, height: size, borderRadius: size / 2, backgroundColor: color }, style, fade]}
+      style={[{ position: 'absolute', [anchor]: x, top: y, width: size, height: size, borderRadius: size / 2, backgroundColor: color }, style, fade]}
     />
   );
 }

@@ -12,7 +12,7 @@ import { TextField } from '../../src/components/TextField';
 import { useToast } from '../../src/components/Toast';
 import { errorKey, uploadPhoto } from '../../src/lib/api';
 import { useAuth } from '../../src/lib/auth';
-import { deletePet, fetchMyPetCare, fetchPet, Pet, PetSize, PetType, saveMyPetCare, savePet } from '../../src/lib/profile';
+import { deletePet, fetchMyPetCare, fetchPet, Pet, PetSize, PetType, removePhotoFiles, saveMyPetCare, savePet } from '../../src/lib/profile';
 import { fontFamily, useTheme } from '../../src/theme';
 import { isRTL, t as tr, tn } from '../../src/i18n';
 
@@ -39,6 +39,8 @@ export default function PetScreen() {
   const [vaccinated, setVaccinated] = React.useState(false);
   const [notes, setNotes] = React.useState('');
   const [photos, setPhotos] = React.useState<string[]>([]);
+  const savedPhotos = React.useRef<string[]>([]);     // the photos the pet had when this screen loaded
+  const uploaded = React.useRef<string[]>([]);        // photos added on this screen (they are clutter if never saved)
   const [vetName, setVetName] = React.useState('');
   const [vetPhone, setVetPhone] = React.useState('');
   const [careNotes, setCareNotes] = React.useState('');
@@ -55,7 +57,7 @@ export default function PetScreen() {
       if (!live) return;
       if (!p) { setState('missing'); return; }
       setPet(p); setName(p.name); setType(p.type); setSize(p.size); setAge(p.age_years != null ? String(p.age_years) : '');
-      setVaccinated(p.vaccinated); setNotes(p.notes ?? ''); setPhotos(p.photo_paths);
+      setVaccinated(p.vaccinated); setNotes(p.notes ?? ''); setPhotos(p.photo_paths); savedPhotos.current = p.photo_paths;
       if (p.owner_id === userId) {
         const care = await fetchMyPetCare(p.id).catch(() => null);
         if (live && care) { setVetName(care.vet_name); setVetPhone(care.vet_phone); setCareNotes(care.care_notes); setCareLoaded(true); }
@@ -77,6 +79,7 @@ export default function PetScreen() {
       if (!uri) return;
       setBusy(true);
       const path = await uploadPhoto('pet', uri);
+      uploaded.current.push(path);
       setPhotos((p) => [...p, path]);
     } catch (e) { setError(tr(errorKey(e))); } finally { setBusy(false); }
   };
@@ -87,6 +90,8 @@ export default function PetScreen() {
       const years = age.trim() === '' ? null : Math.max(0, Math.min(40, parseInt(age, 10) || 0));
       const savedId = await savePet(userId, isNew ? null : id!, { name, type, size, age_years: years, vaccinated, notes, photo_paths: photos });
       if (careLoaded || vetName || vetPhone || careNotes) await saveMyPetCare(savedId, { vet_name: vetName, vet_phone: vetPhone, care_notes: careNotes });
+      // Photos taken off the pet (or added and then removed again) are deleted from storage once the pet is saved.
+      await removePhotoFiles('pets', [...savedPhotos.current, ...uploaded.current].filter((p) => !photos.includes(p)));
       toast.show(tr('edit.saved'));
       router.back();
     } catch { setError(tr('err.generic')); } finally { setBusy(false); }
@@ -95,7 +100,7 @@ export default function PetScreen() {
   const remove = async () => {
     if (!sure) { setSure(true); return; }
     setBusy(true); setError(null);
-    try { await deletePet(id!); router.back(); } catch { setError(tr('err.generic')); setSure(false); } finally { setBusy(false); }
+    try { await deletePet(id!); await removePhotoFiles('pets', [...new Set([...savedPhotos.current, ...uploaded.current])]); router.back(); } catch { setError(tr('err.generic')); setSure(false); } finally { setBusy(false); }
   };
 
   if (state === 'loading') return null;

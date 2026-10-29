@@ -33,6 +33,9 @@ function Nav() {
         <Stack.Screen name="pets/index" options={{ title: tr('pets.title') }} />
         <Stack.Screen name="pets/[id]" options={{ title: '' }} />
         <Stack.Screen name="host/[id]" options={{ title: '' }} />
+        <Stack.Screen name="shortlist" options={{ title: tr('shortlist.title') }} />
+        <Stack.Screen name="travellers" options={{ title: tr('travellers.title') }} />
+        <Stack.Screen name="post-dates" options={{ title: tr('post.title') }} />
         <Stack.Screen name="legal/[doc]" options={{ title: '' }} />
         <Stack.Screen name="showcase" options={{ title: tr('dev.title') }} />
       </Stack>

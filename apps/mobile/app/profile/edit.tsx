@@ -10,7 +10,7 @@ import { TextField } from '../../src/components/TextField';
 import { useToast } from '../../src/components/Toast';
 import { ErrorText } from '../../src/components/StepScreen';
 import { useAuth } from '../../src/lib/auth';
-import { fetchMyProfile, PublicProfile, saveMyProfile } from '../../src/lib/profile';
+import { fetchMyProfile, HOME_TAGS, HomeTag, MAX_HOME_TAGS, PublicProfile, saveMyProfile } from '../../src/lib/profile';
 import { fontFamily, useTheme } from '../../src/theme';
 import { isRTL, Key, t as tr } from '../../src/i18n';
 
@@ -29,6 +29,7 @@ export default function EditProfile() {
   const [area, setArea] = React.useState('');
   const [art, setArt] = React.useState<CardIllustration>('dog-biscuit');
   const [bg, setBg] = React.useState<CardBackground>('circles_teal');
+  const [tags, setTags] = React.useState<HomeTag[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -39,7 +40,7 @@ export default function EditProfile() {
       if (!live) return;
       if (!p) { setLoaded('failed'); return; }
       setRole(p.role); setName(p.first_name ?? ''); setBio(p.bio ?? ''); setArea(p.area ?? '');
-      setArt(p.card_illustration); setBg(p.card_background); setLoaded('ready');
+      setArt(p.card_illustration); setBg(p.card_background); setTags(p.home_tags ?? []); setLoaded('ready');
     }, () => { if (live) setLoaded('failed'); });
     return () => { live = false; };
   }, [userId]);
@@ -48,7 +49,7 @@ export default function EditProfile() {
     if (!userId) return;
     setBusy(true); setError(null);
     try {
-      await saveMyProfile(userId, { first_name: name, bio, area, card_illustration: art, card_background: bg });
+      await saveMyProfile(userId, { first_name: name, bio, area, card_illustration: art, card_background: bg, home_tags: tags });
       toast.show(tr('edit.saved'));
       router.back();
     } catch { setError(tr('err.generic')); } finally { setBusy(false); }
@@ -71,6 +72,18 @@ export default function EditProfile() {
           {BACKGROUNDS.map((k) => <Chip key={k} label={tr(`bg.${k}`)} selected={bg === k} onPress={() => setBg(k)} />)}
         </View>
 
+        {role !== 'owner' ? (
+          <>
+            <Heading>{tr('edit.tags')}</Heading>
+            <Text style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('regular', isRTL()) }}>{tr('edit.tagsHint')}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {HOME_TAGS.map((k) => (
+                <Chip key={k} label={tr(`tag.${k}`)} selected={tags.includes(k)}
+                  onPress={() => setTags((cur) => cur.includes(k) ? cur.filter((x) => x !== k) : cur.length < MAX_HOME_TAGS ? [...cur, k] : cur)} />
+              ))}
+            </View>
+          </>
+        ) : null}
         <TextField label={tr('edit.name')} value={name} onChangeText={setName} maxLength={40} autoCapitalize="words" />
         <TextField label={tr('edit.bio')} hint={tr('edit.bioHint')} value={bio} onChangeText={setBio} maxLength={600} multiline
           style={{ minHeight: 120, textAlignVertical: 'top', paddingTop: 14 }} />
