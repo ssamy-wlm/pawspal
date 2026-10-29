@@ -91,6 +91,7 @@ export function paymobProvider(env: Env): PaymentProvider {
         paymentId: ref.toLowerCase(), orderRef: String(orderId), txnId: String(txn), amountCents: amount, currency: String(dig(o, 'currency') ?? ''),
         success: dig(o, 'success') === true, pending: dig(o, 'pending') === true,
         refunded: dig(o, 'is_refunded') === true, voided: dig(o, 'is_voided') === true,
+        hasParent: dig(o, 'has_parent_transaction') === true, authOnly: dig(o, 'is_auth') === true && dig(o, 'is_capture') !== true,
       };
     },
 

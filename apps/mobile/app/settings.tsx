@@ -42,7 +42,7 @@ export default function Settings() {
       </View>
       <View style={{ gap: 12 }}>
         {title('settings.haptics')}
-        <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <Chip label={tr('settings.hapticsOn')} selected={haptics} onPress={() => { setHapticsEnabled(true).catch(() => {}); }} />
           <Chip label={tr('settings.hapticsOff')} selected={!haptics} onPress={() => { setHapticsEnabled(false).catch(() => {}); }} />
         </View>

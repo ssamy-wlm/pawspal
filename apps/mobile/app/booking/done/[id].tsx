@@ -1,6 +1,9 @@
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useToast } from '../../../src/components/Toast';
+import { success as celebrate } from '../../../src/lib/haptics';
 import { Button } from '../../../src/components/Button';
 import { CardArt } from '../../../src/components/CardArt';
 import { CheckStamp } from '../../../src/components/CheckStamp';
@@ -26,6 +29,8 @@ export default function BookingDone() {
   const t = useTheme();
   const c = t.color;
   const rtl = isRTL();
+  const insets = useSafeAreaInsets();
+  const toast = useToast();
   const [state, setState] = React.useState<'loading' | 'ready' | 'failed'>('loading');
   const [booking, setBooking] = React.useState<Booking | null>(null);
   const [pet, setPet] = React.useState<Pet | null>(null);
@@ -49,6 +54,8 @@ export default function BookingDone() {
     return () => { live = false; };
   }, [id, me]);
 
+  React.useEffect(() => { if (state === 'ready') celebrate(); }, [state]);     // one success buzz when the confirmation appears
+
   if (state === 'loading') return null;
   if (state === 'failed' || !booking) return <EmptyState message={tr('confirmed.failed')} />;
 
@@ -56,11 +63,11 @@ export default function BookingDone() {
   const terms = termsText(booking, pet?.name ?? '');
   const messageOther = async () => {
     if (!other) return;
-    try { router.push(`/chat/${await startConversation(booking.owner_id === me ? booking.sitter_id : booking.owner_id)}` as never); } catch { /* the button stays */ }
+    try { router.push(`/chat/${await startConversation(booking.owner_id === me ? booking.sitter_id : booking.owner_id)}` as never); } catch { toast.show(tr('chat.loadFailed'), 'error'); }
   };
 
   return (
-    <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ padding: 24, gap: 16, alignItems: 'stretch' }}>
+    <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ padding: 24, paddingBottom: 24 + insets.bottom, gap: 16, alignItems: 'stretch' }}>
       <Stack.Screen options={{ title: '' }} />
       <View style={{ alignItems: 'center', gap: 8 }}>
         <CheckStamp size={140} />

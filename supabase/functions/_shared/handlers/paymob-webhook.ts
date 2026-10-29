@@ -28,15 +28,16 @@ export async function handlePaymentWebhook(req: Request, deps: WebhookDeps): Pro
   if (event === null) return json(200, { ok: true, ignored: true });           // a signed callback of a kind we do not act on
 
   // Refunds and voids are reported back to us too; they are not payments.
-  if (event.refunded || event.voided) return json(200, { ok: true, ignored: true });
-  if (event.pending) return json(200, { ok: true, pending: true });
+  if (event.refunded || event.voided || event.hasParent) return json(200, { ok: true, ignored: true });
+  if (event.pending || event.authOnly) return json(200, { ok: true, pending: true });         // money held but not taken yet
 
   if (!event.success) {
-    await deps.rpc('fail_fee_payment', { p_payment: event.paymentId });
+    await deps.rpc('fail_fee_payment', { p_payment: event.paymentId, p_ref: event.orderRef });
     return json(200, { ok: true, status: 'failed' });
   }
   const done = await deps.rpc('complete_fee_payment', { p_payment: event.paymentId, p_txn_id: event.txnId, p_amount_cents: event.amountCents, p_currency: event.currency, p_provider_ref: event.orderRef });
   if (done.error) return json(/unknown payment/i.test(done.error.message) ? 404 : 502, { error: 'try_again_later' });
-  if (done.data === 'amount_mismatch' || done.data === 'reference_mismatch') return json(400, { error: done.data });
+  // A wrong amount is recorded for refund (nothing more to retry); a reference that is not ours changes nothing.
+  if (done.data === 'reference_mismatch') return json(400, { error: done.data });
   return json(200, { ok: true, status: done.data });
 }

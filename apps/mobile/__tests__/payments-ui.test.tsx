@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linking } from 'react-native';
+import { AppState, Linking } from 'react-native';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -10,7 +10,7 @@ import * as chat from '../src/lib/chat';
 import * as bk from '../src/lib/bookings';
 import * as prof from '../src/lib/profile';
 import { supabase } from '../src/lib/supabase';
-import { hapticsEnabled, initHaptics, setHapticsEnabled, tap } from '../src/lib/haptics';
+import { hapticsEnabled, initHaptics, setHapticsEnabled, success, tap } from '../src/lib/haptics';
 import ChatScreen from '../app/chat/[id]';
 import BookingDone from '../app/booking/done/[id]';
 import Settings from '../app/settings';
@@ -22,7 +22,7 @@ jest.mock('../src/lib/chat', () => ({ fetchConversations: jest.fn(), startConver
 jest.mock('../src/lib/bookings', () => ({ ...jest.requireActual('../src/lib/bookings'), fetchBookingsBetween: jest.fn(), fetchBooking: jest.fn(), fetchBookingFee: jest.fn(), fetchRefundPreview: jest.fn(), fetchBookingLocation: jest.fn(), cancelBooking: jest.fn(), acceptTerms: jest.fn() }));
 jest.mock('../src/lib/profile', () => ({ ...jest.requireActual('../src/lib/profile'), fetchCard: jest.fn(), fetchPet: jest.fn(), fetchPets: jest.fn(), useSignedUrl: jest.fn(() => null) }));
 jest.mock('../src/lib/explore', () => ({ fetchAvailability: jest.fn(async () => []) }));
-jest.mock('expo-haptics', () => ({ impactAsync: jest.fn(async () => {}), ImpactFeedbackStyle: { Light: 'light' } }));
+jest.mock('expo-haptics', () => ({ impactAsync: jest.fn(async () => {}), notificationAsync: jest.fn(async () => {}), ImpactFeedbackStyle: { Light: 'light' }, NotificationFeedbackType: { Success: 'success' } }));
 
 const a = api as jest.Mocked<typeof api>;
 const c = chat as jest.Mocked<typeof chat>;
@@ -81,6 +81,21 @@ describe('paying the booking fee', () => {
     expect(router.push).toHaveBeenCalledWith('/booking/done/b1');
   });
 
+  it('lets me try again when I come back from the browser and the fee is still unpaid', async () => {
+    a.createFeePayment.mockResolvedValue({ url: 'https://pay', payment_id: 'pay1', amount_egp: 75 });
+    let onState: (s: string) => void = () => {};
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((_e: string, cb: (s: string) => void) => { onState = cb; return { remove: jest.fn() }; }) as never);
+    await renderIn(wrap(<ChatScreen />));
+    await waitFor(() => screen.getByText('Pay the booking fee'));
+    await fireEvent.press(screen.getByText('Pay the booking fee'));
+    await waitFor(() => screen.getByText('Finish paying in your browser. This page updates by itself.'));
+    await act(async () => { onState('active'); });
+    await waitFor(() => expect(screen.getByText('The payment did not go through. You can try again.')).toBeTruthy());
+    expect(screen.queryByText('Finish paying in your browser. This page updates by itself.')).toBeNull();
+    await fireEvent.press(screen.getByText('Pay the booking fee'));
+    await waitFor(() => expect(a.createFeePayment).toHaveBeenCalledTimes(2));
+  });
+
   it('the other person sees who we are waiting for, and no pay button', async () => {
     k.fetchBookingsBetween.mockResolvedValue([booking({ opened_by: 'them', owner_id: 'them', sitter_id: 'me' })]);
     await renderIn(wrap(<ChatScreen />));
@@ -112,7 +127,7 @@ describe('cancelling a confirmed booking shows what comes back', () => {
     [{ refund_cents: 7500, amount_cents: 7500, is_payer: true }, 'If you cancel now, the full booking fee of 75 EGP is refunded.'],
     [{ refund_cents: 6500, amount_cents: 7500, is_payer: true }, 'If you cancel now, 65 EGP of the booking fee is refunded.'],
     [{ refund_cents: 0, amount_cents: 7500, is_payer: true }, 'If you cancel now, the booking fee is not refunded.'],
-    [{ refund_cents: 7500, amount_cents: 7500, is_payer: false }, 'If you cancel, the booking fee goes back to Mona.'],
+    [{ refund_cents: 7500, amount_cents: 7500, is_payer: false }, 'If you cancel, Mona gets their booking fee back.'],
   ])('%j', async (preview, text) => {
     confirmed(); k.fetchRefundPreview.mockResolvedValue(preview);
     await renderIn(wrap(<ChatScreen />));
@@ -139,6 +154,21 @@ describe('booking confirmed screen', () => {
   it.each(COMBOS)('renders in $mode / $locale', async ({ mode, locale }) => {
     await renderIn(wrap(<BookingDone />), { mode, locale });
     await waitFor(() => expect(screen.toJSON()).not.toBeNull());
+  });
+  it('buzzes once when the confirmation appears', async () => {
+    await initHaptics();
+    await setHapticsEnabled(true);
+    (Haptics.notificationAsync as jest.Mock).mockClear();
+    await renderIn(wrap(<BookingDone />));
+    await waitFor(() => expect(screen.getByText('Booking confirmed!')).toBeTruthy());
+    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
+  });
+  it('tells me if opening the chat fails', async () => {
+    c.startConversation.mockRejectedValueOnce(new Error('x'));
+    await renderIn(wrap(<BookingDone />));
+    await waitFor(() => screen.getByText('Message Mona'));
+    await fireEvent.press(screen.getByText('Message Mona'));
+    await waitFor(() => expect(screen.getByText('We could not load this chat. Try again.')).toBeTruthy());
   });
   it('shows the dates, who stays with whom, the exact pin and directions', async () => {
     await renderIn(wrap(<BookingDone />));
@@ -216,15 +246,19 @@ describe('haptics setting', () => {
     expect(Haptics.impactAsync).toHaveBeenCalledTimes(1);
     await initHaptics();                                                                    // a fresh start reads the saved choice
     expect(hapticsEnabled()).toBe(false);
+    success();
+    expect(Haptics.notificationAsync).not.toHaveBeenCalled();                                // off means off, for every kind of buzz
     await setHapticsEnabled(true);
     tap();
     expect(Haptics.impactAsync).toHaveBeenCalledTimes(2);
+    success();
+    expect(Haptics.notificationAsync).toHaveBeenCalledWith('success');
   });
   it('is a switch in Settings', async () => {
     await initHaptics();
     await renderIn(<Settings />);
     expect(screen.getByText('Vibration')).toBeTruthy();
-    expect(screen.getByText('A small buzz when you swipe a card.')).toBeTruthy();
+    expect(screen.getByText('A small buzz when you swipe a card, and when a booking is confirmed.')).toBeTruthy();
     await fireEvent.press(screen.getByText('Off'));
     await waitFor(() => expect(hapticsEnabled()).toBe(false));
     expect(screen.getAllByRole('button').find((b) => b.props.accessibilityState?.selected && b.props.children)).toBeTruthy();

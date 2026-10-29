@@ -395,7 +395,7 @@
   "settings.haptics": "الاهتزاز",
   "settings.hapticsOn": "تشغيل",
   "settings.hapticsOff": "إيقاف",
-  "settings.hapticsNote": "اهتزاز خفيف عند سحب البطاقة.",
+  "settings.hapticsNote": "اهتزاز خفيف عند سحب البطاقة وعند تأكيد الحجز.",
   "pay.fee": "رسوم الحجز: {amount} جنيه",
   "pay.button": "ادفع رسوم الحجز",
   "pay.waiting": "أكمل الدفع في المتصفح. تتحدث هذه الصفحة تلقائيًا.",
@@ -410,8 +410,7 @@
   "refund.full": "إذا ألغيت الآن، تُرد رسوم الحجز كاملة ({amount} جنيه).",
   "refund.part": "إذا ألغيت الآن، يُرد {amount} جنيه من رسوم الحجز.",
   "refund.none": "إذا ألغيت الآن، لا تُرد رسوم الحجز.",
-  "refund.other": "إذا ألغيت، تعود رسوم الحجز إلى {name}.",
-  "refund.note": "تعود المبالغ المستردة إلى وسيلة الدفع الأصلية.",
+  "refund.other": "إذا ألغيت، يسترد {name} رسوم الحجز.",
   "confirmed.title": "تم تأكيد الحجز!",
   "confirmed.dates": "من {from} إلى {to} · {nights}",
   "confirmed.stays": "{pet} يقيم عند {host}",
@@ -419,5 +418,8 @@
   "confirmed.message": "راسل {name}",
   "confirmed.handover": "يوم التسليم",
   "confirmed.handoverBody": "التقطا صورة لـ{pet} معًا.",
-  "confirmed.failed": "تعذر فتح هذا الحجز. حاول مرة أخرى."
+  "confirmed.failed": "تعذر فتح هذا الحجز. حاول مرة أخرى.",
+  "pay.notFinished": "لم تتم عملية الدفع. يمكنك المحاولة مرة أخرى.",
+  "booking.cancelFailed": "تعذر الإلغاء. حاول مرة أخرى.",
+  "refund.unknown": "سنحسب المبلغ المسترد عند الإلغاء وفق شروط الخدمة."
 }

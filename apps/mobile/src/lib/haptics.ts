@@ -26,6 +26,12 @@ export function tap(): void {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 }
 
+/** The longer, happier buzz for "Booking confirmed", unless haptics are off. */
+export function success(): void {
+  if (!enabled) return;
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+}
+
 /** For screens that show the setting. */
 export function onHapticsChange(listener: () => void): () => void {
   listeners.add(listener);

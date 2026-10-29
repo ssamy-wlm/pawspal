@@ -27,6 +27,10 @@ export interface PaymentEvent {
   pending: boolean;
   refunded: boolean;
   voided: boolean;
+  /** A refund or void of an earlier transaction, not a payment. */
+  hasParent: boolean;
+  /** Money only held (not yet captured). */
+  authOnly: boolean;
 }
 
 export interface PaymentProvider {

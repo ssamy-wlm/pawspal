@@ -375,7 +375,7 @@
   "settings.haptics": "Vibration",
   "settings.hapticsOn": "On",
   "settings.hapticsOff": "Off",
-  "settings.hapticsNote": "A small buzz when you swipe a card.",
+  "settings.hapticsNote": "A small buzz when you swipe a card, and when a booking is confirmed.",
   "pay.fee": "Booking fee: {amount} EGP",
   "pay.button": "Pay the booking fee",
   "pay.waiting": "Finish paying in your browser. This page updates by itself.",
@@ -390,8 +390,7 @@
   "refund.full": "If you cancel now, the full booking fee of {amount} EGP is refunded.",
   "refund.part": "If you cancel now, {amount} EGP of the booking fee is refunded.",
   "refund.none": "If you cancel now, the booking fee is not refunded.",
-  "refund.other": "If you cancel, the booking fee goes back to {name}.",
-  "refund.note": "Refunds go back to the original payment method.",
+  "refund.other": "If you cancel, {name} gets their booking fee back.",
   "confirmed.title": "Booking confirmed!",
   "confirmed.dates": "{from} to {to} · {nights}",
   "confirmed.stays": "{pet} stays with {host}",
@@ -399,5 +398,8 @@
   "confirmed.message": "Message {name}",
   "confirmed.handover": "Handover day",
   "confirmed.handoverBody": "Take a photo of {pet} together.",
-  "confirmed.failed": "We could not open this booking. Try again."
+  "confirmed.failed": "We could not open this booking. Try again.",
+  "pay.notFinished": "The payment did not go through. You can try again.",
+  "booking.cancelFailed": "We could not cancel. Try again.",
+  "refund.unknown": "We will work out the refund when you cancel, as in the Terms of Service."
 }

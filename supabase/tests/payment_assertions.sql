@@ -66,12 +66,9 @@ select pg_temp.check((select status = 'terms_agreed' and fee_status = 'unpaid' f
 \echo '--- F3 a payment confirms the booking only when the amount is right'
 select pg_temp.fails_as('authenticated', 'e1e1e1e1-0000-0000-0000-000000000001', format($$select public.complete_fee_payment(%L, 'txn-1', 7500, 'EGP', 'ord-1')$$, (select v from t_ids where k = 'p1')), 'a user completed a payment');
 select pg_temp.fails_as('anon', null, format($$select public.complete_fee_payment(%L, 'txn-1', 7500, 'EGP', 'ord-1')$$, (select v from t_ids where k = 'p1')), 'anon completed a payment');
-select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids where k = 'p1'), 'txn-1', 100, 'EGP', 'ord-p1') = 'amount_mismatch', 'a payment of the wrong amount was accepted');
-select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids where k = 'p1'), 'txn-1', 7500, 'USD', 'ord-p1') = 'amount_mismatch', 'a payment in the wrong currency was accepted');
 select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids where k = 'p1'), 'txn-1', 7500, 'EGP', 'an-order-that-is-not-this-payments') = 'reference_mismatch', 'a callback for another order confirmed this payment');
 select pg_temp.fails($$select public.complete_fee_payment(gen_random_uuid(), 'txn-1', 7500, 'EGP', 'x')$$, 'an unknown payment was accepted');
 select pg_temp.check((select status = 'terms_agreed' from public.bookings where id = (select v::uuid from t_ids where k = 'b1')), 'a refused payment changed the booking');
-select pg_temp.check((select count(*) >= 1 from public.security_events where kind = 'payment_mismatch'), 'the mismatch was not logged');
 select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids where k = 'p1'), 'txn-1', 7500, 'EGP', 'ord-p1') = 'paid', 'the right payment did not pay');
 select pg_temp.check((select status = 'confirmed' and fee_status = 'paid' from public.bookings where id = (select v::uuid from t_ids where k = 'b1')), 'the booking was not confirmed');
 select pg_temp.check((select locked from public.pets where id = 'e1e1e1e1-1111-0000-0000-000000000001'), 'the pet was not locked');
@@ -79,6 +76,23 @@ select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids wher
 select pg_temp.check((select count(*) = 1 from public.booking_payments where booking_id = (select v::uuid from t_ids where k = 'b1') and status = 'paid'), 'the booking has more than one paid payment');
 select pg_temp.fails(format($$select public.begin_fee_payment(%L, 'e1e1e1e1-0000-0000-0000-000000000001', 'paymob')$$, (select v from t_ids where k = 'b1')), 'a second payment was started for a confirmed booking');
 
+-- wrong amount or currency: nothing is confirmed, what was taken is marked for refund, and it is logged
+select pg_temp.agree('b8', 'e1e1e1e1-0000-0000-0000-000000000001', 'e2e2e2e2-0000-0000-0000-000000000002', 'e1e1e1e1-1111-0000-0000-000000000001', 160);
+insert into t_ids select 'p8', payment_id::text from public.begin_fee_payment((select v::uuid from t_ids where k = 'b8'), 'e1e1e1e1-0000-0000-0000-000000000001', 'paymob');
+select public.set_payment_ref((select v::uuid from t_ids where k = 'p8'), 'ord-p8');
+select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids where k = 'p8'), 'txn-8', 100, 'EGP', 'ord-p8') = 'amount_mismatch', 'a payment of the wrong amount was accepted');
+select pg_temp.check((select status = 'terms_agreed' and fee_status = 'unpaid' from public.bookings where id = (select v::uuid from t_ids where k = 'b8')), 'a wrong-amount payment changed the booking');
+select pg_temp.check((select status = 'refund_due' and refund_cents = 100 and refund_reason = 'wrong_amount' and provider_txn_id = 'txn-8' from public.booking_payments where id = (select v::uuid from t_ids where k = 'p8')), 'the money taken for the wrong amount was not marked for refund');
+select pg_temp.check((select count(*) >= 1 from public.security_events where kind = 'payment_mismatch'), 'the mismatch was not logged');
+insert into t_ids select 'p8b', payment_id::text from public.begin_fee_payment((select v::uuid from t_ids where k = 'b8'), 'e1e1e1e1-0000-0000-0000-000000000001', 'paymob');
+select public.set_payment_ref((select v::uuid from t_ids where k = 'p8b'), 'ord-p8b');
+select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids where k = 'p8b'), 'txn-8b', 7500, 'USD', 'ord-p8b') = 'amount_mismatch', 'a payment in the wrong currency was accepted');
+select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids where k = 'p8b'), 'txn-8c', 7500, 'EGP', 'ord-p8b') = 'already_done', 'a refunded payment could be completed again');
+-- after a refund-due payment the booking can still be paid properly
+insert into t_ids select 'p8c', payment_id::text from public.begin_fee_payment((select v::uuid from t_ids where k = 'b8'), 'e1e1e1e1-0000-0000-0000-000000000001', 'paymob');
+select public.set_payment_ref((select v::uuid from t_ids where k = 'p8c'), 'ord-p8c');
+select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids where k = 'p8c'), 'txn-8d', 7500, 'EGP', 'ord-p8c') = 'paid', 'a booking could not be paid after a refund-due payment');
+-- a second payment for an already paid booking is refunded, not lost
 \echo '--- F4 the exact pin appears only after payment, and only for the two people'
 select pg_temp.check(pg_temp.as_role('authenticated', 'e1e1e1e1-0000-0000-0000-000000000001', format($$select address from public.get_booking_location(%L)$$, (select v from t_ids where k = 'b1'))) = 'Masbat Road, Building 14', 'the owner cannot see the pin after payment');
 select pg_temp.check(pg_temp.as_role('authenticated', 'e2e2e2e2-0000-0000-0000-000000000002', format($$select address from public.get_booking_location(%L)$$, (select v from t_ids where k = 'b1'))) = 'Masbat Road, Building 14', 'the host cannot see their own pin');
@@ -94,13 +108,16 @@ select pg_temp.as_role('authenticated', 'e2e2e2e2-0000-0000-0000-000000000002', 
 select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids where k = 'p2'), 'txn-2', 7500, 'EGP', 'ord-p2') = 'refund_due', 'a payment for old terms confirmed the booking');
 select pg_temp.check((select status = 'requested' and fee_status = 'unpaid' from public.bookings where id = (select v::uuid from t_ids where k = 'b2')), 'a payment for old terms changed the booking');
 select pg_temp.check((select status = 'refund_due' and refund_cents = 7500 and refund_reason = 'booking_changed_before_payment' from public.booking_payments where id = (select v::uuid from t_ids where k = 'p2')), 'the money was not marked for a full refund');
-select pg_temp.check((select count(*) = 1 from public.list_refunds_due() where payment_id = (select v::uuid from t_ids where k = 'p2') and refund_cents = 7500), 'the refund job does not see the refund');
 select pg_temp.fails_as('authenticated', 'e1e1e1e1-0000-0000-0000-000000000001', $$select * from public.list_refunds_due()$$, 'a user listed refunds');
-select public.mark_refund_result((select v::uuid from t_ids where k = 'p2'), false);
-select pg_temp.check((select status = 'refund_due' and refund_attempts = 1 from public.booking_payments where id = (select v::uuid from t_ids where k = 'p2')), 'a failed refund was not retried');
-select public.mark_refund_result((select v::uuid from t_ids where k = 'p2'), true);
+select pg_temp.check((select count(*) = 1 from public.list_refunds_due() where payment_id = (select v::uuid from t_ids where k = 'p2')), 'the refund job does not claim the refund');
+select pg_temp.check((select count(*) = 0 from public.list_refunds_due() where payment_id = (select v::uuid from t_ids where k = 'p2')), 'a refund that is already being processed was handed out a second time');
+select pg_temp.check(public.mark_refund_result((select v::uuid from t_ids where k = 'p2'), false) = 'retry', 'a failed refund was not kept for a retry');
+select pg_temp.check((select status = 'refund_due' and refund_attempts = 1 and refund_started_at is null from public.booking_payments where id = (select v::uuid from t_ids where k = 'p2')), 'a failed refund was not retried');
+select public.list_refunds_due();
+select pg_temp.check(public.mark_refund_result((select v::uuid from t_ids where k = 'p2'), true) = 'refunded', 'a confirmed refund was not recorded');
 select pg_temp.check((select status = 'refunded' and refunded_at is not null from public.booking_payments where id = (select v::uuid from t_ids where k = 'p2')), 'a refund was not recorded');
 select pg_temp.check((select count(*) = 0 from public.list_refunds_due() where payment_id = (select v::uuid from t_ids where k = 'p2')), 'a refunded payment is still listed');
+select pg_temp.check(public.mark_refund_result((select v::uuid from t_ids where k = 'p2'), true) = 'not_due', 'a refunded payment could be refunded again');
 select pg_temp.as_role('authenticated', 'e1e1e1e1-0000-0000-0000-000000000001', format($$select public.cancel_booking(%L, 'x')$$, (select v from t_ids where k = 'b2')));
 
 \echo '--- F6 refunds follow section 6 of the terms'
@@ -150,6 +167,7 @@ select pg_temp.agree('b6', 'e1e1e1e1-0000-0000-0000-000000000001', 'e2e2e2e2-000
 do $$ begin for i in 1..5 loop perform public.begin_fee_payment((select v::uuid from t_ids where k = 'b6'), 'e1e1e1e1-0000-0000-0000-000000000001', 'paymob'); end loop; end $$;
 select pg_temp.fails(format($$select public.begin_fee_payment(%L, 'e1e1e1e1-0000-0000-0000-000000000001', 'paymob')$$, (select v from t_ids where k = 'b6')), 'a sixth payment attempt in an hour was accepted');
 select public.fail_fee_payment(id) from public.booking_payments where booking_id = (select v::uuid from t_ids where k = 'b6');
+
 select pg_temp.check((select bool_and(status = 'failed') from public.booking_payments where booking_id = (select v::uuid from t_ids where k = 'b6')), 'failed payments were not marked failed');
 
 \echo '--- F9 one provider transaction can pay only one payment'
@@ -158,5 +176,24 @@ insert into t_ids select 'p7', payment_id::text from public.begin_fee_payment((s
 select public.set_payment_ref((select v::uuid from t_ids where k = 'p7'), 'ord-p7');
 select pg_temp.fails($$select public.complete_fee_payment((select v::uuid from t_ids where k = 'p7'), 'txn-1', 7500, 'EGP', 'ord-p7')$$, 'a transaction that already paid one booking paid another');
 select pg_temp.check((select status = 'terms_agreed' and fee_status = 'unpaid' from public.bookings where id = (select v::uuid from t_ids where k = 'b7')), 'a reused transaction changed the booking');
+
+\echo '--- F10 a failure callback needs the right order id, and a second payment is refunded not lost'
+select pg_temp.agree('b9', 'e1e1e1e1-0000-0000-0000-000000000001', 'e2e2e2e2-0000-0000-0000-000000000002', 'e1e1e1e1-1111-0000-0000-000000000001', 170);
+insert into t_ids select 'p9', payment_id::text from public.begin_fee_payment((select v::uuid from t_ids where k = 'b9'), 'e1e1e1e1-0000-0000-0000-000000000001', 'paymob');
+select public.set_payment_ref((select v::uuid from t_ids where k = 'p9'), 'ord-p9');
+select public.fail_fee_payment((select v::uuid from t_ids where k = 'p9'), 'someone-elses-order');
+select pg_temp.check((select status = 'created' from public.booking_payments where id = (select v::uuid from t_ids where k = 'p9')), 'a failure callback for another order failed this payment');
+insert into t_ids select 'p9b', payment_id::text from public.begin_fee_payment((select v::uuid from t_ids where k = 'b9'), 'e1e1e1e1-0000-0000-0000-000000000001', 'paymob');
+select public.set_payment_ref((select v::uuid from t_ids where k = 'p9b'), 'ord-p9b');
+select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids where k = 'p9'), 'txn-9', 7500, 'EGP', 'ord-p9') = 'paid', 'the first payment did not pay');
+select pg_temp.check(public.complete_fee_payment((select v::uuid from t_ids where k = 'p9b'), 'txn-9b', 7500, 'EGP', 'ord-p9b') = 'refund_due', 'a second payment for a paid booking was not marked for refund');
+select pg_temp.check((select count(*) = 1 from public.booking_payments where booking_id = (select v::uuid from t_ids where k = 'b9') and status = 'paid'), 'a booking has two paid payments');
+select pg_temp.check((select provider_txn_id = 'txn-9b' and refund_cents = 7500 from public.booking_payments where id = (select v::uuid from t_ids where k = 'p9b')), 'the second payment was not recorded for refund');
+select pg_temp.fails_as('authenticated', 'e1e1e1e1-0000-0000-0000-000000000001', $$select public.fail_fee_payment(gen_random_uuid())$$, 'a user failed a payment');
+-- five failed refund tries leave a record for a person
+select public.mark_refund_result((select v::uuid from t_ids where k = 'p9b'), false);
+update public.booking_payments set refund_attempts = 5 where id = (select v::uuid from t_ids where k = 'p9b');
+select pg_temp.check(public.mark_refund_result((select v::uuid from t_ids where k = 'p9b'), false) = 'stuck', 'a stuck refund was not reported');
+select pg_temp.check((select count(*) >= 1 from public.security_events where kind = 'refund_stuck'), 'a stuck refund left no event');
 
 \echo 'payment assertions OK'

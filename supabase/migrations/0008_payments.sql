@@ -69,7 +69,9 @@ create table public.booking_payments (
   refunded_at        timestamptz
 );
 create index on public.booking_payments (booking_id);
-create unique index booking_payments_one_paid on public.booking_payments (booking_id) where status in ('paid', 'refund_due', 'refunded');
+-- Only one payment per booking may be the one that paid it. Money taken for any other reason (a second payment, old terms)
+-- is a separate row marked for refund, and there can be several of those.
+create unique index booking_payments_one_paid on public.booking_payments (booking_id) where status = 'paid';
 create unique index booking_payments_txn on public.booking_payments (provider, provider_txn_id) where provider_txn_id is not null;
 alter table public.booking_payments enable row level security;
 revoke all on public.booking_payments from anon, authenticated;
@@ -149,8 +151,11 @@ begin
     return 'reference_mismatch';
   end if;
   if p_amount_cents <> pay.amount_cents or p_currency <> pay.currency then
-    insert into public.security_events (user_id, kind, details) values (pay.payer_id, 'payment_mismatch', jsonb_build_object('payment', p_payment));
-    return 'amount_mismatch';        -- nothing changes; the event is kept because we return instead of raising
+    -- The money was taken for the wrong amount: the booking stays as it is and what was taken goes back.
+    update public.booking_payments set provider_txn_id = p_txn_id, status = 'refund_due', refund_cents = greatest(p_amount_cents, 0),
+           refund_reason = 'wrong_amount', paid_at = now() where id = p_payment;
+    insert into public.security_events (user_id, kind, details) values (pay.payer_id, 'payment_mismatch', jsonb_build_object('payment', p_payment, 'why', 'amount'));
+    return 'amount_mismatch';        -- we return instead of raising, so the record above is kept
   end if;
   update public.booking_payments set provider_txn_id = p_txn_id where id = p_payment;
   perform public.lock_booking_legs(pay.booking_id);
@@ -171,12 +176,15 @@ end $$;
 revoke execute on function public.complete_fee_payment(uuid, text, integer, text, text) from public, anon, authenticated;
 grant execute on function public.complete_fee_payment(uuid, text, integer, text, text) to service_role;
 
-create or replace function public.fail_fee_payment(p_payment uuid)
+-- The provider's callback says the payment failed. Our reference is not signed by the provider, so (like a success) it only
+-- counts when it carries the order id we made for this payment. Our own function passes null when it never got a checkout.
+create or replace function public.fail_fee_payment(p_payment uuid, p_ref text default null)
 returns void language sql security definer set search_path = public as $$
-  update public.booking_payments set status = 'failed' where id = p_payment and status = 'created';
+  update public.booking_payments set status = 'failed'
+   where id = p_payment and status = 'created' and (p_ref is null or provider_ref = p_ref);
 $$;
-revoke execute on function public.fail_fee_payment(uuid) from public, anon, authenticated;
-grant execute on function public.fail_fee_payment(uuid) to service_role;
+revoke execute on function public.fail_fee_payment(uuid, text) from public, anon, authenticated;
+grant execute on function public.fail_fee_payment(uuid, text) to service_role;
 
 -- ---------------------------------------------------------------- refunds (Terms of Service section 6)
 --   the other person cancels                    -> the payer gets everything back
@@ -238,24 +246,45 @@ end $$;
 revoke execute on function public.cancel_booking(uuid, text) from public, anon;
 grant execute on function public.cancel_booking(uuid, text) to authenticated;
 
--- For the refund job (service role only).
+-- For the refund job (service role only). Listing CLAIMS the rows (a claim lasts 15 minutes), so two runs at once never refund the
+-- same payment twice. Each claim counts as an attempt.
+alter table public.booking_payments add column refund_started_at timestamptz;
 create or replace function public.list_refunds_due()
 returns table (payment_id uuid, provider text, provider_txn_id text, refund_cents integer)
-language sql stable security definer set search_path = public as $$
-  select id, provider, provider_txn_id, refund_cents from public.booking_payments
-   where status = 'refund_due' and provider_txn_id is not null and refund_attempts < 5 order by paid_at limit 50
-$$;
+language plpgsql security definer set search_path = public as $$
+begin
+  return query
+  with due as (
+    select bp.id from public.booking_payments bp
+     where bp.status = 'refund_due' and bp.provider_txn_id is not null and bp.refund_attempts < 5
+       and (bp.refund_started_at is null or bp.refund_started_at < now() - interval '15 minutes')
+     order by bp.paid_at limit 50 for update skip locked)
+  update public.booking_payments p set refund_started_at = now(), refund_attempts = p.refund_attempts + 1
+    from due where p.id = due.id
+  returning p.id, p.provider, p.provider_txn_id, p.refund_cents;
+end $$;
 revoke execute on function public.list_refunds_due() from public, anon, authenticated;
 grant execute on function public.list_refunds_due() to service_role;
 
+-- The refund job reports back. A refund that Paymob did not confirm is tried again later; after five tries it is left for a
+-- person, and a security event says so.
 create or replace function public.mark_refund_result(p_payment uuid, p_ok boolean)
-returns void language sql security definer set search_path = public as $$
-  update public.booking_payments
-     set status = case when p_ok then 'refunded' else status end,
-         refunded_at = case when p_ok then now() else refunded_at end,
-         refund_attempts = refund_attempts + 1
-   where id = p_payment and status = 'refund_due';
-$$;
+returns text language plpgsql security definer set search_path = public as $$
+declare pay public.booking_payments;
+begin
+  select * into pay from public.booking_payments where id = p_payment and status = 'refund_due' for update;
+  if pay.id is null then return 'not_due'; end if;
+  if p_ok then
+    update public.booking_payments set status = 'refunded', refunded_at = now() where id = p_payment;
+    return 'refunded';
+  end if;
+  update public.booking_payments set refund_started_at = null where id = p_payment;     -- free to try again
+  if pay.refund_attempts >= 5 then
+    insert into public.security_events (user_id, kind, details) values (pay.payer_id, 'refund_stuck', jsonb_build_object('payment', p_payment));
+    return 'stuck';
+  end if;
+  return 'retry';
+end $$;
 revoke execute on function public.mark_refund_result(uuid, boolean) from public, anon, authenticated;
 grant execute on function public.mark_refund_result(uuid, boolean) to service_role;
 

@@ -45,7 +45,9 @@ export async function handleCreateFeePayment(req: Request, deps: CreateFeeDeps):
 
   try {
     const checkout = await provider.createCheckout({ paymentId: row.payment_id, amountCents: row.amount_cents, currency: 'EGP' }, deps.fetch);
-    await deps.rpc('set_payment_ref', { p_payment: row.payment_id, p_ref: checkout.providerRef });
+    // The order id must be saved before the person is sent to pay: it is what ties Paymob's callback to this payment.
+    const saved = await deps.rpc('set_payment_ref', { p_payment: row.payment_id, p_ref: checkout.providerRef });
+    if (saved.error) throw new Error('could not save the order reference');
     return json(200, { url: checkout.url, payment_id: row.payment_id, amount_egp: row.amount_cents / 100 });
   } catch {
     await deps.rpc('fail_fee_payment', { p_payment: row.payment_id });       // no checkout page was made: close this attempt

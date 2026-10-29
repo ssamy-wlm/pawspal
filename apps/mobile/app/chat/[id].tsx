@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, Keyboard, Linking, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { AppState, FlatList, Keyboard, Linking, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Button } from '../../src/components/Button';
@@ -45,6 +45,7 @@ export default function ChatScreen() {
   const [busy, setBusy] = React.useState(false);
   const [fee, setFee] = React.useState<number | null>(null);
   const [paying, setPaying] = React.useState(false);                  // the payment page is open in the browser
+  const [payError, setPayError] = React.useState<string | null>(null);
   const [preview, setPreview] = React.useState<RefundPreview | null>(null);
   const firstLoad = React.useRef<Set<number> | null>(null);    // the messages present when the chat opened do not pop in
 
@@ -98,12 +99,21 @@ export default function ChatScreen() {
     if (paying && status0 === 'confirmed' && firstLeg) router.replace(`/booking/done/${firstLeg}` as never);
   }, [paying, status0, firstLeg]);
 
+  // Back from the browser: if the booking is still waiting for the fee, the payment did not finish, so the button works again.
+  React.useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active' || !paying || !other) return;
+      loadBookings(other.other_id).then(() => { setPaying(false); setPayError(tr('pay.notFinished')); }, () => {});
+    });
+    return () => sub.remove();
+  }, [paying, other, loadBookings]);
+
   const pay = async () => {
     if (!firstLeg) return;
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setPayError(null);
     try { await payBookingFee(firstLeg, (url) => Linking.openURL(url)); setPaying(true); } catch (e) {
       const code = (e as Error).message;
-      setError(tr(code === 'not_available' ? 'pay.notAvailable' : code === 'not_payable' ? 'pay.notPayable' : code === 'pet_booked' ? 'booking.petBooked' : code === 'too_many' ? 'pay.tooMany' : code === 'network' ? 'pay.network' : 'pay.failed'));
+      setPayError(tr(code === 'not_available' ? 'pay.notAvailable' : code === 'not_payable' ? 'pay.notPayable' : code === 'pet_booked' ? 'booking.petBooked' : code === 'too_many' ? 'pay.tooMany' : code === 'network' ? 'pay.network' : 'pay.failed'));
       if (code === 'not_payable') await loadBookings(other!.other_id);
     } finally { setBusy(false); }
   };
@@ -137,7 +147,7 @@ export default function ChatScreen() {
     if (!sure) { setSure(true); return; }
     if (!legs[0]) return;
     setBusy(true);
-    try { await cancelBooking(legs[0].id); setSure(false); await loadBookings(other!.other_id); } catch { setError(tr('booking.failed')); } finally { setBusy(false); }
+    try { await cancelBooking(legs[0].id); setSure(false); await loadBookings(other!.other_id); } catch { setSure(false); setError(tr('booking.cancelFailed')); } finally { setBusy(false); }
   };
 
   if (state === 'loading') return null;
@@ -160,7 +170,7 @@ export default function ChatScreen() {
               terms={termsText(b, petNames[b.pet_id] ?? '')} accepted={mine}
               onAccept={() => { if (!busy) accept(b).catch(() => {}); }} onChange={() => router.push(`/booking/${b.id}?other=${other.other_id}` as never)} />
           ))}
-          <Text accessibilityRole="alert" style={{ color: c.text, fontSize: 15, fontFamily: fontFamily('semibold', rtl) }}>
+          <Text style={{ color: c.text, fontSize: 15, fontFamily: fontFamily('semibold', rtl) }}>
             {status === 'confirmed' || status === 'in_progress' ? tr('booking.status.confirmed')
               : status === 'terms_agreed' ? tr('booking.status.agreed')
               : mine && !theirs ? tr('booking.status.waiting', { name: other.first_name ?? '' }) : tr('booking.status.requested')}
@@ -171,10 +181,12 @@ export default function ChatScreen() {
                 {fee != null ? <Text style={{ color: c.text, fontSize: 16, fontFamily: fontFamily('bold', rtl) }}>{tr('pay.fee', { amount: fee })}</Text> : null}
                 <Button disabled={busy || paying} title={tr('pay.button')} onPress={() => { pay().catch(() => {}); }} />
                 {paying ? <Text accessibilityRole="alert" style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('regular', rtl) }}>{tr('pay.waiting')}</Text> : null}
+                {payError ? <Text accessibilityRole="alert" style={{ color: c.danger, fontSize: 15, fontFamily: fontFamily('medium', rtl) }}>{payError}</Text> : null}
               </View>
             ) : <Text style={{ color: c.textMuted, fontSize: 15, fontFamily: fontFamily('regular', rtl) }}>{tr('pay.waitingOther', { name: other.first_name ?? '' })}</Text>
           ) : null}
           {confirmed ? <Button title={tr('booking.viewConfirmed')} onPress={() => router.push(`/booking/done/${legs[0].id}` as never)} /> : null}
+          {confirmed && !preview ? <Text style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('regular', rtl) }}>{tr('refund.unknown')}</Text> : null}
           {confirmed && preview && status0 === 'confirmed' ? (
             <Text style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('regular', rtl) }}>
               {!preview.is_payer ? tr('refund.other', { name: other.first_name ?? '' })

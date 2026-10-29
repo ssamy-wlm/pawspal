@@ -104,7 +104,7 @@ test('webhook: repeats, failures, pending, refunds and other callback kinds', as
   assert.deepEqual(await refundDue.res.json(), { ok: true, status: 'refund_due' });
   const failed = await run({ ...sampleObj, success: false });
   assert.equal(failed.res.status, 200);
-  assert.deepEqual(failed.calls, [{ name: 'fail_fee_payment', args: { p_payment: PAY } }]);
+  assert.deepEqual(failed.calls, [{ name: 'fail_fee_payment', args: { p_payment: PAY, p_ref: '217503754' } }]);
   const pending = await run({ ...sampleObj, success: false, pending: true });
   assert.deepEqual(pending.calls, []);
   const refunded = await run({ ...sampleObj, is_refunded: true });
@@ -114,8 +114,15 @@ test('webhook: repeats, failures, pending, refunds and other callback kinds', as
   const cardToken = await run(sampleObj, 'TOKEN');
   assert.equal(cardToken.res.status, 200);
   assert.deepEqual(cardToken.calls, []);
-  const mismatch = await run(sampleObj, 'TRANSACTION', { complete_fee_payment: () => 'amount_mismatch' });
-  assert.equal(mismatch.res.status, 400);
+  const wrongAmount = await run(sampleObj, 'TRANSACTION', { complete_fee_payment: () => 'amount_mismatch' });
+  assert.equal(wrongAmount.res.status, 200);                                                                          // recorded for refund: Paymob need not retry
+  assert.deepEqual(await wrongAmount.res.json(), { ok: true, status: 'amount_mismatch' });
+  const wrongRef = await run(sampleObj, 'TRANSACTION', { complete_fee_payment: () => 'reference_mismatch' });
+  assert.equal(wrongRef.res.status, 400);
+  const authOnly = await run({ ...sampleObj, is_auth: true, is_capture: false });
+  assert.deepEqual(authOnly.calls, []);                                                                               // held, not taken
+  const child = await run({ ...sampleObj, has_parent_transaction: true });
+  assert.deepEqual(child.calls, []);                                                                                  // a refund or void of an earlier payment
   const unknown = await run(sampleObj, 'TRANSACTION', { complete_fee_payment: () => new Error('unknown payment') });
   assert.equal(unknown.res.status, 404);
   const down = await run(sampleObj, 'TRANSACTION', { complete_fee_payment: () => new Error('connection lost') });
@@ -204,6 +211,13 @@ test('create-fee-payment: turns the database’s refusals into plain codes', asy
   }
 });
 
+test('create-fee-payment: if the order id cannot be saved, nobody is sent to pay', async () => {
+  const { rpc, calls } = fakeRpc({ begin_fee_payment: () => [{ payment_id: PAY, amount_cents: 7500 }], set_payment_ref: () => new Error('db down') });
+  const res = await handleCreateFeePayment(withAuth({ booking_id: BOOKING }), { env: envFrom(ENV), fetch: fetchOk, rpc, authUser: user });
+  assert.equal(res.status, 502);
+  assert.deepEqual(calls.map((c) => c.name), ['begin_fee_payment', 'set_payment_ref', 'fail_fee_payment']);
+});
+
 test('create-fee-payment: when Paymob cannot make a checkout, the attempt is closed', async () => {
   const { rpc, calls } = fakeRpc({ begin_fee_payment: () => [{ payment_id: PAY, amount_cents: 7500 }] });
   const down = (async () => new Response('nope', { status: 500 })) as unknown as typeof fetch;
@@ -237,6 +251,8 @@ test('process-refunds: only with the secret; confirmed refunds are recorded, unc
   assert.deepEqual(await res.json(), { refunded: 1, failed: 1 });
   assert.deepEqual(asked, [{ transaction_id: 111, amount_cents: 7500 }, { transaction_id: 222, amount_cents: 6500 }]);
   assert.deepEqual(marks(), [{ p_payment: 'p1', p_ok: true }, { p_payment: 'p2', p_ok: false }]);
+  const lost = fakeRpc({ list_refunds_due: () => [rows[0]], mark_refund_result: () => new Error('db down') });
+  assert.deepEqual(await (await handleProcessRefunds(refundReq(REFUND_SECRET), { env, fetch: fetchFn, rpc: lost.rpc })).json(), { refunded: 0, failed: 1 });
 });
 
 test('the photo clean-up still refuses callers without its secret (shared check)', async () => {

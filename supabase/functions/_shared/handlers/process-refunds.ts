@@ -30,7 +30,8 @@ export async function handleProcessRefunds(req: Request, deps: RefundDeps): Prom
   for (const r of rows) {
     if (typeof r.payment_id !== 'string' || typeof r.provider_txn_id !== 'string' || typeof r.refund_cents !== 'number' || r.provider !== provider.name) continue;
     const ok = await provider.refund(r.provider_txn_id, r.refund_cents, deps.fetch);
-    await deps.rpc('mark_refund_result', { p_payment: r.payment_id, p_ok: ok });
+    const marked = await deps.rpc('mark_refund_result', { p_payment: r.payment_id, p_ok: ok });
+    if (marked.error) { failed++; continue; }         // the claim expires after 15 minutes and the next run looks again
     if (ok) refunded++; else failed++;
   }
   return json(200, { refunded, failed });
