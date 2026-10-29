@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: apps/mobile } }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
@@ -37,7 +37,7 @@ jobs:
         options: --health-cmd pg_isready --health-interval 5s --health-retries 10
     env: { PGHOST: localhost, PGUSER: postgres, PGPASSWORD: postgres }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - name: Migration safety check
         run: |
