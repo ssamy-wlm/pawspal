@@ -22,7 +22,11 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
-      - run: npm audit --audit-level=high --omit=dev
+      - name: Dependency audit gate
+        run: node ../../scripts/audit-gate.mjs
+      - name: Audit gate self-test
+        working-directory: .
+        run: node --test scripts/audit-gate.test.mjs
   database:
     runs-on: ubuntu-latest
     services:

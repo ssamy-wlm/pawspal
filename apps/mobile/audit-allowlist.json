@@ -1,0 +1,12 @@
+{
+  "$comment": "High or critical advisories that affect BUILD TOOLING ONLY (never code that ships in the app; scripts/audit-gate.mjs checks that by reading the real bundle). Each entry needs a reason and an expiry. Add or renew entries only on the founder's go-ahead.",
+  "allowed": [
+    {
+      "advisory": "GHSA-mrhx-c7xc-m3w5",
+      "package": "zod",
+      "reason": "Memory exhaustion when validating oversized input. Used only by Expo's CLI and the ESLint react-hooks plugin on developer and CI machines, never in the app bundle. The fix exists only in zod 4.6.6+, while Expo's tooling uses zod 3.x, so it cannot be updated from here.",
+      "added": "2026-10-29",
+      "expires": "2027-01-27"
+    }
+  ]
+}
