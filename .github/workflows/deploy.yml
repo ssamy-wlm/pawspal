@@ -69,7 +69,7 @@ jobs:
             echo "### Expo deploy skipped" >> "$GITHUB_STEP_SUMMARY"
             echo "The Expo project is not linked yet (no projectId / updates.url in app.json). See SETUP.md." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.linked.outputs.run == 'true'
         with:
           node-version: 22
