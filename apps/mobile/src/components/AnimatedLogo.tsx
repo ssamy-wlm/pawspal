@@ -1,8 +1,7 @@
 import React, { useEffect } from 'react';
-import { View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import Svg, { Ellipse, G, Path } from 'react-native-svg';
-import { M, ease, pop, squash, useReducedMotion } from '../motion';
+import { M, ease, pop, squash, useReducedFadeIn, useReducedMotion } from '../motion';
 import { useTheme } from '../theme';
 import { t as tr } from '../i18n';
 
@@ -34,7 +33,7 @@ function Toe({ i, size, play }: { i: number; size: number; play: boolean }) {
   return (
     <Animated.View
       pointerEvents="none"
-      style={[{ position: 'absolute', left: 0, top: 0, width: size, height: size,
+      style={[{ position: 'absolute', start: 0, top: 0, width: size, height: size,
         transformOrigin: [t.cx * k, (t.cy + t.ry * 0.8) * k, 0] }, style]}>
       <Svg width={size} height={size} viewBox="0 0 200 200">
         <Ellipse cx={t.cx} cy={t.cy} rx={t.rx} ry={t.ry} transform={`rotate(${t.rot} ${t.cx} ${t.cy})`} fill={brand.orange} />
@@ -47,6 +46,7 @@ function Toe({ i, size, play }: { i: number; size: number; play: boolean }) {
 export function AnimatedLogo({ size = 200, play = true }: { size?: number; play?: boolean }) {
   const brand = useTheme().brand;
   const reduced = useReducedMotion();
+  const fade = useReducedFadeIn();
   const grow = useSharedValue(play && !reduced ? 0 : 1);
   const sq = useSharedValue(1);
   const sway = useSharedValue(0);
@@ -72,7 +72,7 @@ export function AnimatedLogo({ size = 200, play = true }: { size?: number; play?
   });
 
   return (
-    <View accessible accessibilityRole="image" accessibilityLabel={tr('logo.label')} style={{ width: size, height: size }}>
+    <Animated.View accessible accessibilityRole="image" accessibilityLabel={tr('logo.label')} style={[{ width: size, height: size }, fade]}>
       <Animated.View style={[{ width: size, height: size, transformOrigin: ['50%', '100%', 0] }, padStyle]}>
         <Svg width={size} height={size} viewBox="0 0 200 200">
           <G>
@@ -82,6 +82,6 @@ export function AnimatedLogo({ size = 200, play = true }: { size?: number; play?
         </Svg>
         {TOES.map((_, i) => <Toe key={i} i={i} size={size} play={play} />)}
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }

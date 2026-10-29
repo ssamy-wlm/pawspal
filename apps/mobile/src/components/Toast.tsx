@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './Icon';
 import { fontFamily, useTheme } from '../theme';
 import { isRTL, t as tr } from '../i18n';
-import { useEntrance } from '../motion';
+import { M, useEntrance } from '../motion';
 
 type Kind = 'info' | 'success' | 'error';
 interface ToastItem { id: number; message: string; kind: Kind }
@@ -32,7 +32,7 @@ function ToastView({ item, onDone }: { item: ToastItem; onDone: () => void }) {
   const c = t.color;
   const rtl = isRTL();
   const insets = useSafeAreaInsets();
-  const enter = useEntrance({ rise: 20, k: 1.4, duration: 450, origin: 'center' });
+  const enter = useEntrance({ rise: 20, k: M.overshoot.soft, duration: M.duration.pop, origin: 'center' });
   useEffect(() => { const id = setTimeout(onDone, 4000); return () => clearTimeout(id); }, [onDone]);
   const accent = item.kind === 'error' ? c.danger : item.kind === 'success' ? t.brand.teal : t.brand.orange;
   return (

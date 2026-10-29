@@ -8,7 +8,8 @@ import { ChatBubble } from '../src/components/ChatBubble';
 import { HeartBurst, HeartBurstHandle } from '../src/components/HeartBurst';
 import { PinDrop } from '../src/components/PinDrop';
 import { TermsCard } from '../src/components/TermsCard';
-import { entranceSpec, M } from '../src/motion';
+import { ease, entranceSpec, M } from '../src/motion';
+import { ThemeProvider } from '../src/theme';
 import { renderIn } from '../test-utils/render';
 
 jest.mock('react-native-reanimated', () => {
@@ -63,6 +64,30 @@ describe('Reduce Motion turns off loops and overshoot', () => {
     await renderIn(<><ChatBubble text="hi" /><TermsCard terms={terms} accepted={false} onAccept={() => {}} onChange={() => {}} /></>);
     expect(back).not.toHaveBeenCalled();
     expect(screen.getAllByText('hi').length).toBeGreaterThan(0);
+  });
+
+  it('the 200 ms Reduce Motion fade really plays (it opts out of the "skip animations" default)', async () => {
+    const timing = jest.spyOn(Reanimated, 'withTiming');
+    reduceMotion(true);
+    await renderIn(<><ChatBubble text="hi" /><Blob x={0} y={0} size={20} color="x" /></>);
+    const fades = timing.mock.calls.filter(([, cfg]) => cfg?.duration === 200);
+    expect(fades.length).toBeGreaterThanOrEqual(2);
+    for (const [, cfg] of fades) expect(cfg?.reduceMotion).toBe(Reanimated.ReduceMotion.Never);
+  });
+
+  it('the accept ripple plays when terms become accepted, and not when an accepted card is shown again', async () => {
+    const rippleCalls = (spy: jest.SpyInstance) => spy.mock.calls.filter(([, cfg]) => cfg?.easing === ease.out && cfg?.duration === M.duration.pop).length;
+    reduceMotion(false);
+
+    const again = jest.spyOn(Reanimated, 'withTiming');
+    await renderIn(<TermsCard terms={terms} accepted onAccept={() => {}} onChange={() => {}} />);
+    expect(rippleCalls(again)).toBe(0);
+    again.mockClear();
+
+    const { rerender } = await renderIn(<TermsCard terms={terms} accepted={false} onAccept={() => {}} onChange={() => {}} />);
+    again.mockClear();
+    await rerender(<ThemeProvider initialMode="light"><TermsCard terms={terms} accepted onAccept={() => {}} onChange={() => {}} /></ThemeProvider>);
+    expect(rippleCalls(again)).toBe(1);
   });
 
   it('the heart burst does nothing with Reduce Motion', async () => {

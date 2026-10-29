@@ -25,6 +25,19 @@ export function t(key: Key, params?: Params): string {
   return params ? raw.replace(/\{(\w+)\}/g, (m, name: string) => (name in params ? String(params[name]) : m)) : raw;
 }
 
+type PluralBase = Extract<Key, `${string}_other`> extends `${infer B}_other` ? B : never;
+
+/**
+ * Plural-aware lookup. Each plural string is stored as base_zero / _one / _two / _few / _many / _other and the
+ * language's own rules pick one (English has two forms, Arabic has six). {n} is filled in with the number.
+ */
+export function tn(base: PluralBase, n: number, params?: Params): string {
+  const category = new Intl.PluralRules(current === 'ar' ? 'ar' : 'en').select(n);
+  const d = dict[current] as Record<string, string>;
+  const raw = d[`${base}_${category}`] ?? d[`${base}_other`] ?? (en as Record<string, string>)[`${base}_other`] ?? base;
+  return raw.replace(/\{(\w+)\}/g, (m, name: string) => (name === 'n' ? String(n) : params && name in params ? String(params[name]) : m));
+}
+
 /** Call once at start-up, before the first screen. Loads the saved language and makes the layout direction match. */
 export async function initI18n(): Promise<void> {
   try {

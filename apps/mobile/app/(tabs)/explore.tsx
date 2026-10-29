@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { fontFamily, useTheme } from '../../src/theme';
-import { formatDay, isRTL, Key, t as tr } from '../../src/i18n';
+import { formatDay, isRTL, Key, t as tr, tn } from '../../src/i18n';
 import { Chip } from '../../src/components/Chip';
 import { Button } from '../../src/components/Button';
 import { CalendarRange } from '../../src/components/CalendarRange';
@@ -144,7 +144,7 @@ export default function Explore() {
         <Pressable onPress={() => setResults(null)} accessibilityRole="button" accessibilityLabel={tr('explore.editFilters')}
           style={{ margin: 20, padding: 16, borderRadius: 24, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }}>
           <Text style={{ color: c.text, fontFamily: fontFamily('semibold', rtl) }}>
-            {tr('explore.summary', { start: start ? formatDay(start) : '', end: end ? formatDay(end) : '', nights: n, pet: tr(petPlural(petType)) })}
+            {tr('explore.summary', { start: start ? formatDay(start) : '', end: end ? formatDay(end) : '', nights: tn('count.night', n), pet: tr(petPlural(petType)) })}
           </Text>
           <Text style={{ color: c.link, fontFamily: fontFamily('regular', rtl) }}>{tr('explore.editFilters')}</Text>
         </Pressable>
@@ -156,7 +156,7 @@ export default function Explore() {
             data={[...exact, ...close]}
             keyExtractor={(r) => r.availability_id}
             ListHeaderComponent={<Text style={[heading, { fontSize: 18, marginBottom: 4 }]}>
-              {tr('explore.results.exact', { count: exact.length })}{close.length ? ` · ${tr('explore.results.close', { count: close.length })}` : ''}
+              {tn('count.exactMatch', exact.length)}{close.length ? ` · ${tn('count.closeMatch', close.length)}` : ''}
             </Text>}
             ListEmptyComponent={<Text style={muted}>{tr('explore.results.empty')}</Text>}
             renderItem={({ item, index }) => (

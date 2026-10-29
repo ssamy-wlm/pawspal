@@ -45,36 +45,55 @@ export function seeded(seed: number) {
 }
 
 /** What an "arriving" element does. Reduce Motion: no overshoot, no travel, just a 200 ms fade (docs/motion.md section 8). */
-export function entranceSpec(reduced: boolean, opts: { rise?: number; k?: number; duration?: number } = {}) {
+export function entranceSpec(reduced: boolean, opts: { rise?: number; k?: number; duration?: number; scale?: boolean } = {}) {
   return reduced
     ? { rise: 0, overshoot: 0, duration: 200, scales: false }
-    : { rise: opts.rise ?? 40, overshoot: opts.k ?? M.overshoot.pop, duration: opts.duration ?? M.duration.pop, scales: true };
+    : { rise: opts.rise ?? 40, overshoot: opts.k ?? M.overshoot.pop, duration: opts.duration ?? M.duration.pop, scales: opts.scale ?? true };
+}
+
+// The 200 ms Reduce Motion fade must still play when the system setting is on, so it opts out of Reanimated's
+// default "skip animations when Reduce Motion is on" (that default is what makes the overshoot and loops stop).
+const reducedFade = { duration: 200, easing: Easing.inOut(Easing.cubic), reduceMotion: ReduceMotion.Never };
+
+/** Fade from 0 to 1 over 200 ms when Reduce Motion is on; shown at once otherwise (the component animates itself). */
+export function useReducedFadeIn() {
+  const reduced = useReducedMotion();
+  const o = useSharedValue(reduced ? 0 : 1);
+  useEffect(() => { o.set(reduced ? withTiming(1, reducedFade) : 1); }, [reduced, o]);
+  return useAnimatedStyle(() => ({ opacity: o.get() }));
 }
 
 /**
  * Entrance for bubbles, cards and toasts: rises, scales from 0 with a soft overshoot, opacity reaches 1 early.
  * `origin` is the corner it grows from ('start' or 'end' side of the bottom edge, or 'center').
+ * `scale: false` gives a plain rise and fade (the map card).
  */
-export function useEntrance(opts: { delay?: number; rise?: number; k?: number; duration?: number; origin?: 'bottom-start' | 'bottom-end' | 'center'; rtl?: boolean } = {}) {
+export function useEntrance(opts: { delay?: number; rise?: number; k?: number; duration?: number; scale?: boolean; origin?: 'bottom-start' | 'bottom-end' | 'center'; rtl?: boolean } = {}) {
   const reduced = useReducedMotion();
   const spec = entranceSpec(reduced, opts);
   const delay = opts.delay ?? 0;
   const p = useSharedValue(0);
   useEffect(() => {
     p.set(reduced
-      ? withDelay(delay, withTiming(1, { duration: spec.duration, easing: ease.inOut }))
-      : pop(delay, spec.overshoot, spec.duration));
-  }, [p, reduced, delay, spec.duration, spec.overshoot]);
+      ? withDelay(delay, withTiming(1, reducedFade))
+      : spec.scales ? pop(delay, spec.overshoot, spec.duration)
+        : withDelay(delay, withTiming(1, { duration: spec.duration, easing: ease.out, reduceMotion: ReduceMotion.System })));
+  }, [p, reduced, delay, spec.duration, spec.overshoot, spec.scales]);
   const fadeEnd = Math.min(1, 150 / spec.duration);
   const side = opts.origin === 'bottom-end' ? 'end' : 'start';
   const x = opts.origin === 'center' ? '50%' : (side === 'start') !== !!opts.rtl ? '0%' : '100%';
   const y = opts.origin === 'center' ? '50%' : '100%';
+  const rise = spec.rise;
+  const scales = spec.scales;
+  const fades = reduced;
   return useAnimatedStyle(() => {
     const v = p.get();
-    if (!spec.scales) return { opacity: v };
+    if (fades) return { opacity: v };
     return {
       opacity: Math.min(1, v / fadeEnd),
-      transform: [{ translateY: (1 - Math.min(v, 1)) * spec.rise }, { scale: v }],
+      transform: scales
+        ? [{ translateY: (1 - Math.min(v, 1)) * rise }, { scale: v }]
+        : [{ translateY: (1 - Math.min(v, 1)) * rise }],
       transformOrigin: [x, y, 0],
     };
   });

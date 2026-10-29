@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { fontFamily, useTheme } from '../theme';
 import { isRTL, t as tr } from '../i18n';
 import { M, ease, useEntrance } from '../motion';
@@ -13,14 +13,17 @@ export function TermsCard({ terms, accepted, onAccept, onChange }: { terms: Term
   const c = t.color;
   const rtl = isRTL();
   const reduced = useReducedMotion();
-  const entrance = useEntrance({ rise: 40, k: 1.6, duration: 450, origin: 'bottom-start', rtl });
+  const entrance = useEntrance({ rise: 40, k: M.overshoot.bubble, duration: M.duration.pop, origin: 'bottom-start', rtl });
   const press = useSharedValue(1);
   const done = useSharedValue(accepted ? 1 : 0);     // 0 = "Accept terms", 1 = "Accepted"
   const ripple = useSharedValue(0);
+  const wasAccepted = useRef(accepted);
 
   useEffect(() => {
-    done.set(withTiming(accepted ? 1 : 0, { duration: reduced ? 200 : M.duration.fast, easing: ease.inOut }));
-    if (accepted && !reduced) { ripple.set(0); ripple.set(withTiming(1, { duration: M.duration.pop, easing: ease.out })); }
+    // The label cross-fade still plays with Reduce Motion on (200 ms); the ripple does not, and never replays on mount.
+    done.set(withTiming(accepted ? 1 : 0, { duration: reduced ? 200 : M.duration.fast, easing: ease.inOut, reduceMotion: ReduceMotion.Never }));
+    if (accepted && !wasAccepted.current && !reduced) { ripple.set(0); ripple.set(withTiming(1, { duration: M.duration.pop, easing: ease.out })); }
+    wasAccepted.current = accepted;
   }, [accepted, reduced, done, ripple]);
 
   const button = useAnimatedStyle(() => ({ transform: [{ scale: press.get() }] }));

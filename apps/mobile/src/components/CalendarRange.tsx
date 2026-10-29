@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { fontFamily, useTheme } from '../theme';
-import { formatMonth, isRTL, t as tr, weekdayNames } from '../i18n';
+import { formatDay, formatMonth, isRTL, t as tr, weekdayNames } from '../i18n';
 import { isoDate } from '../lib/search';
 
 
@@ -57,12 +57,12 @@ export function CalendarRange({ start, end, onChange, maxNights = 60 }:
           const inside = !!start && !!end && day > start && day < end;
           return (
             <Pressable key={day} disabled={past} onPress={() => pick(day)}
-              accessibilityRole="button" accessibilityState={{ selected: edge || inside, disabled: past }} accessibilityLabel={day}
+              accessibilityRole="button" accessibilityState={{ selected: edge || inside, disabled: past }} accessibilityLabel={formatDay(day)}
               style={{ width: `${100 / 7}%`, height: 44, alignItems: 'center', justifyContent: 'center',
                 backgroundColor: inside ? t.tint.teal : 'transparent' }}>
               <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
                 backgroundColor: edge ? c.primary : 'transparent' }}>
-                <Text style={{ color: edge ? c.onPrimary : past ? c.border : inside ? t.brand.navy : c.text, fontFamily: fontFamily(edge ? 'bold' : 'regular', rtl) }}>
+                <Text style={{ color: edge ? c.onPrimary : past ? c.textMuted : inside ? t.brand.navy : c.text, fontFamily: fontFamily(edge ? 'bold' : 'regular', rtl) }}>
                   {Number(day.slice(8))}
                 </Text>
               </View>

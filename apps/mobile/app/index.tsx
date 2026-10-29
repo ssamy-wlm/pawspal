@@ -6,7 +6,13 @@ import { AnimatedLogo } from '../src/components/AnimatedLogo';
 import { Blob } from '../src/components/Blob';
 import { Illustration } from '../src/components/Illustration';
 import { fontFamily, useTheme } from '../src/theme';
-import { isRTL, t as tr } from '../src/i18n';
+import { isRTL, Key, t as tr } from '../src/i18n';
+
+const LEGAL: { slug: string; label: Key }[] = [
+  { slug: 'termsOfService', label: 'legal.terms' },
+  { slug: 'privacyPolicy', label: 'legal.privacy' },
+  { slug: 'communityGuidelines', label: 'legal.guidelines' },
+];
 
 function Option({ title, sub, primary, onPress, delay }: { title: string; sub: string; primary?: boolean; onPress: () => void; delay: number }) {
   const t = useTheme();
@@ -67,13 +73,18 @@ export default function Welcome() {
         {/* TODO(phase 2): route both options into the sign-up flow with the chosen role. */}
         <Option primary title={tr('welcome.needSitter')} sub={tr('welcome.needSitterSub')} delay={1300} onPress={() => router.push('/(tabs)/explore')} />
         <Option title={tr('welcome.wantSit')} sub={tr('welcome.wantSitSub')} delay={1450} onPress={() => router.push('/(tabs)/explore')} />
+        {/* TODO(phase 2): "Log in" becomes a button into the sign-in flow. */}
         <Text style={{ textAlign: 'center', color: c.textMuted, fontFamily: fontFamily('regular', rtl), marginTop: 6 }}>{tr('welcome.login')}</Text>
-        <Text style={{ textAlign: 'center', color: c.textMuted, fontSize: 12, fontFamily: fontFamily('regular', rtl) }}>
-          {tr('welcome.legal')}{' '}
-          <Link href="/legal/termsOfService" style={{ color: c.link }}>{tr('legal.terms')}</Link>{' · '}
-          <Link href="/legal/privacyPolicy" style={{ color: c.link }}>{tr('legal.privacy')}</Link>{' · '}
-          <Link href="/legal/communityGuidelines" style={{ color: c.link }}>{tr('legal.guidelines')}</Link>
-        </Text>
+        <Text style={{ textAlign: 'center', color: c.textMuted, fontSize: 12, fontFamily: fontFamily('regular', rtl) }}>{tr('welcome.legal')}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 4 }}>
+          {LEGAL.map(({ slug, label }) => (
+            <Link key={slug} href={`/legal/${slug}` as never} asChild>
+              <Pressable accessibilityRole="link" style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', paddingHorizontal: 8 }}>
+                <Text style={{ color: c.link, fontSize: 13, fontFamily: fontFamily('medium', rtl) }}>{tr(label)}</Text>
+              </Pressable>
+            </Link>
+          ))}
+        </View>
       </View>
     </View>
   );

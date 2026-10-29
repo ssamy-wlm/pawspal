@@ -19,7 +19,7 @@ export function MapCard({ exact, lat, lng, address }: { exact?: boolean; lat?: n
   const t = useTheme();
   const c = t.color;
   const rtl = isRTL();
-  const rise = useEntrance({ rise: 60, k: 1, duration: 550 });
+  const rise = useEntrance({ rise: 60, duration: 550, scale: false });
   const toast = useToast();
   const canNavigate = exact && validCoords(lat, lng);
   return (

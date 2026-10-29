@@ -68,7 +68,7 @@ export function LegalDocument({ doc }: { doc: LegalDoc }) {
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ padding: 24, paddingBottom: 64 }}>
       <View style={{ marginBottom: 12 }}>
-        <Text style={{ color: c.textMuted, fontSize: 13 }}>{tr('legal.version', { version: d.version ?? '', effective: d.effective ?? '' })}</Text>
+        <Text style={{ color: c.textMuted, fontSize: 13, fontFamily: fontFamily('regular', rtl) }}>{tr('legal.version', { version: d.version ?? '', effective: d.effective ?? '' })}</Text>
       </View>
       {blocks.map(render)}
     </ScrollView>

@@ -2,7 +2,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { Illustration } from './Illustration';
 import { fontFamily, lightTheme, navyTheme, Theme, useTheme } from '../theme';
-import { formatDay, isRTL, t as tr } from '../i18n';
+import { formatDay, isRTL, t as tr, tn } from '../i18n';
 import type { StayResult } from '../lib/search';
 import type { SvgName } from '../illustrations';
 
@@ -57,7 +57,7 @@ export function BrowseCard({ r, compact }: { r: StayResult; compact?: boolean })
         <View style={{ flexShrink: 1 }}>
           <Text style={{ fontFamily: fontFamily('bold', rtl), fontSize: compact ? 18 : 24, color: c.text }}>{r.first_name}</Text>
           <Text style={{ color: c.textMuted, fontSize: 13, fontFamily: fontFamily('regular', rtl) }}>
-            {isNew ? tr('card.new') : tr('card.rating', { rating: r.rating_avg ?? '–', stays: r.stays_count })}{r.area ? ` · ${r.area}` : ''}
+            {isNew ? tr('card.new') : tr('card.rating', { rating: r.rating_avg ?? '–', stays: tn('count.stay', r.stays_count) })}{r.area ? ` · ${r.area}` : ''}
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>

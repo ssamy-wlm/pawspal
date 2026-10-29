@@ -6,11 +6,12 @@ import { ThemeProvider } from '../src/theme';
 
 jest.mock('expo-router', () => {
   const { Text } = require('react-native');
+  const ReactLib = require('react');
   return {
     router: { push: jest.fn() },
-    Link: ({ children, href }: { children: React.ReactNode; href: string }) => (
-      <Text accessibilityRole="link" accessibilityHint={href}>{children}</Text>
-    ),
+    // asChild: the link is the child itself (a 44 pt Pressable), so pass the address through to it.
+    Link: ({ children, href, asChild }: { children: React.ReactElement<{ accessibilityHint?: string }>; href: string; asChild?: boolean }) =>
+      asChild ? ReactLib.cloneElement(children, { accessibilityHint: href }) : <Text accessibilityRole="link" accessibilityHint={href}>{children}</Text>,
   };
 });
 
@@ -32,6 +33,13 @@ describe('Welcome screen', () => {
     expect(screen.getByText('Terms of Service')).toBeTruthy();
     expect(screen.getByText('Privacy Policy')).toBeTruthy();
     expect(screen.getByText('Community Guidelines')).toBeTruthy();
+  });
+
+  it('makes every footer link at least 44 pt tall', async () => {
+    await renderWelcome();
+    for (const link of screen.getAllByRole('link')) {
+      expect(JSON.stringify(link.props.style)).toMatch(/"minHeight":44/);
+    }
   });
 
   it('opens Explore from "I need a sitter"', async () => {

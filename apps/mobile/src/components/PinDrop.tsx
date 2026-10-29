@@ -1,8 +1,7 @@
 import React, { useEffect } from 'react';
-import { View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { Illustration } from './Illustration';
-import { M, ease, squash, useReducedMotion } from '../motion';
+import { M, ease, squash, useReducedFadeIn, useReducedMotion } from '../motion';
 import { useTheme } from '../theme';
 import { t as tr } from '../i18n';
 
@@ -10,6 +9,7 @@ import { t as tr } from '../i18n';
 export function PinDrop({ delay = 1000, size = 56 }: { delay?: number; size?: number }) {
   const brand = useTheme().brand;
   const reduced = useReducedMotion();
+  const fade = useReducedFadeIn();
   const fall = useSharedValue(reduced ? 1 : 0);
   const sq = useSharedValue(1);
   const glow = useSharedValue(reduced ? 1 : 0);
@@ -29,11 +29,11 @@ export function PinDrop({ delay = 1000, size = 56 }: { delay?: number; size?: nu
   }));
   const h = size * (80 / 60);
   return (
-    <View accessible accessibilityLabel={tr('pin.label')} style={{ width: size * 2.4, height: size * 2.4, alignItems: 'center', justifyContent: 'center' }}>
+    <Animated.View accessible accessibilityLabel={tr('pin.label')} style={[{ width: size * 2.4, height: size * 2.4, alignItems: 'center', justifyContent: 'center' }, fade]}>
       <Animated.View style={[{ position: 'absolute', width: size * 2.4, height: size * 2.4, borderRadius: size * 1.2, backgroundColor: brand.teal }, ring]} />
       <Animated.View style={[{ width: size, height: h, marginTop: -h, transformOrigin: ['50%', '100%', 0] }, pin]}>
         <Illustration name="mapPin" width={size} height={h} />
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }
