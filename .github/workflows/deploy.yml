@@ -73,7 +73,7 @@ jobs:
         if: steps.linked.outputs.run == 'true'
         with:
           node-version: 22
-      - uses: expo/expo-github-action@v8
+      - uses: expo/expo-github-action@v9
         if: steps.linked.outputs.run == 'true'
         with:
           eas-version: latest
