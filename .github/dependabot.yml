@@ -1,8 +1,47 @@
+# Dependabot opens update PRs; .github/workflows/dependabot-automerge.yml merges the ones that pass CI.
 version: 2
 updates:
+  # The mobile app. Packages that Expo manages (listed by Expo in expo/bundledNativeModules.json) are NEVER updated
+  # here: they move together, only with `npx expo install --fix`. TypeScript, ESLint and Jest are tied to the Expo
+  # SDK too, so only their patch updates come through.
   - package-ecosystem: npm
     directory: /apps/mobile
     schedule: { interval: weekly }
+    groups:
+      other-dependencies:
+        patterns: ['*']
+    ignore:
+      - dependency-name: expo
+      - dependency-name: 'expo-*'
+      - dependency-name: '@expo/*'
+      - dependency-name: react
+      - dependency-name: react-dom
+      - dependency-name: react-native
+      - dependency-name: react-native-gesture-handler
+      - dependency-name: react-native-reanimated
+      - dependency-name: react-native-safe-area-context
+      - dependency-name: react-native-screens
+      - dependency-name: react-native-svg
+      - dependency-name: react-native-worklets
+      - dependency-name: eslint-config-expo
+      - dependency-name: jest-expo
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
+      - dependency-name: eslint
+        update-types: ['version-update:semver-major']
+      - dependency-name: jest
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/react'
+        update-types: ['version-update:semver-major']
+
+  # The admin site (Next.js). Not managed by Expo.
+  - package-ecosystem: npm
+    directory: /apps/admin
+    schedule: { interval: weekly }
+    groups:
+      other-dependencies:
+        patterns: ['*']
+
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }

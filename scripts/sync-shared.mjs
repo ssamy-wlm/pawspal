@@ -3,6 +3,8 @@
 //   assets/illustrations/*.svg -> apps/mobile/src/illustrations/index.ts (SVG strings for SvgXml)
 //   assets/logo/*.svg          -> same file
 //   docs/legal/*.md            -> apps/mobile/src/legal/index.ts (text + version, shown in the app)
+//   design/tokens.json         -> apps/admin/src/tokens.json (admin site colours and sizes)
+//   assets/logo/pack/transparent-for-dark-backgrounds/pawspal-logo-stacked-transparent-on-dark.svg -> apps/admin/public/pawspal-logo.svg
 // Run: node scripts/sync-shared.mjs   (also runs before every app start, see apps/mobile/package scripts)
 import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
@@ -39,4 +41,14 @@ writeFileSync(
   join(app, 'legal/index.ts'),
   banner + 'export const legal = ' + JSON.stringify(docs, null, 2) + ' as const;\nexport type LegalDoc = keyof typeof legal;\n'
 );
+// Admin site (apps/admin): same tokens, and the stacked logo made for dark backgrounds.
+const admin = join(root, 'apps/admin');
+mkdirSync(join(admin, 'src'), { recursive: true });
+mkdirSync(join(admin, 'public'), { recursive: true });
+writeFileSync(join(admin, 'src/tokens.json'), readFileSync(join(root, 'design/tokens.json')));
+writeFileSync(
+  join(admin, 'public/pawspal-logo.svg'),
+  readFileSync(join(root, 'assets/logo/pack/transparent-for-dark-backgrounds/pawspal-logo-stacked-transparent-on-dark.svg'))
+);
+
 console.log(`synced tokens, ${Object.keys(svgs).length} svgs, ${Object.keys(docs).length} legal docs`);

@@ -1,0 +1,46 @@
+# Dependabot PRs that pass CI merge themselves. No person reviews them: CI is the gate.
+# Runs after the `ci` workflow finishes for a pull request. It never checks out or runs the PR's code.
+name: dependabot-automerge
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    name: Merge when CI is green
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]'
+    steps:
+      - name: Merge the pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          if [ -z "$PR" ]; then
+            echo "::notice title=No pull request::The CI run is not attached to a pull request. Nothing to merge."
+            exit 0
+          fi
+          author=$(gh api "repos/$REPO/pulls/$PR" --jq .user.login)
+          state=$(gh api "repos/$REPO/pulls/$PR" --jq .state)
+          if [ "$author" != "dependabot[bot]" ] || [ "$state" != "open" ]; then
+            echo "Pull request #$PR is not an open Dependabot pull request. Skipping."
+            exit 0
+          fi
+          # --match-head-commit: merge only the exact commit CI tested.
+          if gh pr merge "$PR" --repo "$REPO" --squash --match-head-commit "$SHA"; then
+            echo "### Merged #$PR" >> "$GITHUB_STEP_SUMMARY"
+          else
+            # GitHub does not let the built-in token merge a change to workflow files (.github/workflows).
+            echo "::warning title=Not merged::#$PR was not merged automatically (it may change workflow files, which the built-in token may not merge, or it conflicts)."
+            echo "### #$PR was not merged automatically" >> "$GITHUB_STEP_SUMMARY"
+          fi

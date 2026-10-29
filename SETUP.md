@@ -72,6 +72,19 @@ Database deploys use the **Supabase GitHub integration**, so no Supabase token o
 
 The mobile app update step needs one GitHub secret, **`EXPO_TOKEN`** (expo.dev, avatar, Account settings, Access tokens, Create token), added at GitHub **Settings, Secrets and variables, Actions, New repository secret**. Until it exists, the step is skipped and the run summary says so. After creating your Expo account, link the project once: `cd apps/mobile && npx eas-cli init && npx eas-cli update:configure`, and commit the changed `app.json`. The first store build needs your Apple and Google accounts: run `npx eas-cli build --platform all --profile production` once yourself; after that `deploy` does it automatically when native code changes.
 
+## E3. Admin site on Vercel
+
+The admin dashboard (`apps/admin`, built in phase 8; for now a one-page placeholder) is deployed by Vercel.
+
+1. In Vercel, import the `pawspal-dahab` GitHub repository as a project.
+2. **Settings, General, Root Directory:** `apps/admin`. Framework: Next.js. Node.js: 22.x.
+3. **Settings, Environments, Production, Branch Tracking:** set the production branch to **`production`** (not `main`). The `deploy` workflow moves `production` to a commit only after `ci` passes, so Vercel never publishes a commit that failed the checks.
+4. Every other branch gets a preview deployment. Previews are protected by Vercel sign-in.
+
+## E4. Dependency updates (automatic)
+
+Dependabot opens update PRs every week. The `dependabot-automerge` workflow merges each one that passes CI, so you do nothing. Packages that Expo manages are never offered, because they must move together (`npx expo install --fix`). Updates to GitHub Actions files are the one exception: GitHub does not let the built-in token merge changes to `.github/workflows`, so those PRs wait for Claude Code to merge them.
+
 ## F. Secrets checklist
 
 | Secret | Where it lives | Never |
