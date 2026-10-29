@@ -7,7 +7,7 @@ import { setLocaleForTests } from '../src/i18n';
 import * as search from '../src/lib/search';
 import * as explore from '../src/lib/explore';
 import * as prof from '../src/lib/profile';
-import Explore, { ROW_HEIGHT, rowLayout } from '../app/(tabs)/explore';
+import Explore, { digitsOnly, ROW_HEIGHT, rowLayout } from '../app/(tabs)/explore';
 import CalendarTab from '../app/(tabs)/calendar';
 import Shortlist from '../app/shortlist';
 import Travellers from '../app/travellers';
@@ -70,10 +70,11 @@ describe('Explore with real data', () => {
     await renderIn(wrap(<Explore />));
     await searchNow();
     await waitFor(() => expect(screen.getByText('Host1')).toBeTruthy());
-    const names = screen.getAllByRole('button').map((b) => b.props.accessibilityLabel).filter((l) => /^Host\d$/.test(l ?? ''));
+    const names = screen.getAllByRole('button').map((b) => b.props.accessibilityLabel as string | undefined).filter((l) => /^Host\d\./.test(l ?? '')).map((l) => (l as string).split('.')[0]);
     expect(names).toEqual(['Host1', 'Host2']);                                        // exact first, then close
+    expect(screen.getByLabelText(/^Host1\. Masbat\. 200 EGP\. .*Exact match/)).toBeTruthy();      // a screen reader hears the details, not only the name
     expect(screen.getByText("Close matches: dates partly fit, or the price is a little over budget but negotiable.")).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText('Host2'));
+    await fireEvent.press(screen.getByLabelText(/^Host2\./));
     expect(router.push).toHaveBeenCalledWith('/host/u2');
   });
 
@@ -88,7 +89,7 @@ describe('Explore with real data', () => {
     expect(list.props.initialNumToRender).toBeLessThanOrEqual(10);
     expect(list.props.windowSize).toBeLessThanOrEqual(10);
     expect(list.props.removeClippedSubviews).toBe(true);
-    expect(screen.getAllByLabelText(/^Host\d+$/).length).toBeLessThan(30);           // only a window is drawn
+    expect(screen.getAllByLabelText(/^Host\d+\./).length).toBeLessThan(30);           // only a window is drawn
     const rows = list.props.data;
     expect(rowLayout(rows, 0)).toEqual({ length: ROW_HEIGHT, offset: 0, index: 0 });
     expect(rowLayout(rows, 61).length).toBe(ROW_HEIGHT);
@@ -105,7 +106,7 @@ describe('Explore with real data', () => {
     await fireEvent.press(screen.getByText('View profile'));
     expect(router.push).toHaveBeenCalledWith('/host/u1');
     await fireEvent.press(screen.getByText('List'));
-    expect(screen.getByLabelText('Host2')).toBeTruthy();
+    expect(screen.getByLabelText(/^Host2\./)).toBeTruthy();
   });
 
   it('saves a liked host to the shortlist, and says so', async () => {
@@ -195,6 +196,15 @@ describe('post your dates', () => {
     expect(router.back).toHaveBeenCalled();
   });
 
+  it('refuses a paid post with a price of zero', async () => {
+    mockRole = 'sitter';
+    await renderIn(wrap(<PostDates />));
+    await fireEvent.press(screen.getByLabelText('pick dates'));
+    await fireEvent.changeText(screen.getByLabelText('Price per night (EGP)'), '0');
+    await fireEvent.press(screen.getByText('Post availability'));
+    expect(x.postAvailability).not.toHaveBeenCalled();
+  });
+
   it('needs a price when the stay is paid', async () => {
     mockRole = 'sitter';
     await renderIn(wrap(<PostDates />));
@@ -264,6 +274,13 @@ describe('animated card backgrounds', () => {
     const json = JSON.stringify(screen.toJSON());
     expect((json.match(/RNSVGEllipse/g) ?? []).length).toBeGreaterThan(2);           // paw pads
     expect((json.match(/RNSVGPath/g) ?? []).length).toBeGreaterThan(2);              // hearts
+  });
+});
+
+describe('typing numbers', () => {
+  it('keeps only digits, including Arabic ones, at most six', () => {
+    expect(digitsOnly('٢٥٠ EGP')).toBe('250');
+    expect(digitsOnly('1234567890')).toBe('123456');
   });
 });
 

@@ -30,8 +30,8 @@ export function BrowseCard({ r, compact }: { r: StayResult; compact?: boolean })
     <View style={{ flex: 1, gap: 4, padding: compact ? 0 : 20 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={{ flexShrink: 1 }}>
-          <Text style={{ fontFamily: fontFamily('bold', rtl), fontSize: compact ? 18 : 24, color: c.text }}>{r.first_name}</Text>
-          <Text style={{ color: c.textMuted, fontSize: 13, fontFamily: fontFamily('regular', rtl) }}>
+          <Text numberOfLines={compact ? 1 : undefined} maxFontSizeMultiplier={compact ? 1.3 : undefined} style={{ fontFamily: fontFamily('bold', rtl), fontSize: compact ? 18 : 24, color: c.text }}>{r.first_name}</Text>
+          <Text numberOfLines={compact ? 1 : undefined} maxFontSizeMultiplier={compact ? 1.3 : undefined} style={{ color: c.textMuted, fontSize: 13, fontFamily: fontFamily('regular', rtl) }}>
             {isNew ? tr('card.new') : tr('card.rating', { rating: r.rating_avg ?? '–', stays: tn('count.stay', r.stays_count) })}{r.area ? ` · ${r.area}` : ''}
           </Text>
         </View>
@@ -44,7 +44,7 @@ export function BrowseCard({ r, compact }: { r: StayResult; compact?: boolean })
           )}
         </View>
       </View>
-      <Text style={{ color: c.textMuted, fontSize: 13, fontFamily: fontFamily('regular', rtl) }}>
+      <Text numberOfLines={compact ? 1 : undefined} maxFontSizeMultiplier={compact ? 1.3 : undefined} style={{ color: c.textMuted, fontSize: 13, fontFamily: fontFamily('regular', rtl) }}>
         {tr('card.available', { from: formatDay(r.starts_on), to: formatDay(r.ends_on) })}
         {r.distance_km != null ? ` · ${tr('card.km', { km: r.distance_km })}` : ''}
       </Text>

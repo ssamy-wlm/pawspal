@@ -5,7 +5,7 @@ import { CardArt } from '../../src/components/CardArt';
 import { EmptyState } from '../../src/components/EmptyState';
 import { Heading } from '../../src/components/Heading';
 import { PetPhoto } from '../../src/components/PetPhoto';
-import { fetchCard, fetchPets, Pet, PublicProfile, useSignedUrl } from '../../src/lib/profile';
+import { fetchCard, fetchPets, HOME_TAGS, Pet, PublicProfile, useSignedUrl } from '../../src/lib/profile';
 import { Availability, fetchAvailability } from '../../src/lib/explore';
 import { fontFamily, useTheme } from '../../src/theme';
 import { formatDay, isRTL, Key, t as tr } from '../../src/i18n';
@@ -76,7 +76,7 @@ export default function HostProfile() {
         </View>
         {(() => {
           const accepts = [...new Set(posts.flatMap((a) => a.pets_accepted))];
-          const tags = [...accepts.map((k) => tr(PET_LABEL[k])), ...p.home_tags.map((k) => tr(`tag.${k}`))];
+          const tags = [...accepts.filter((k) => PET_LABEL[k]).map((k) => tr(PET_LABEL[k])), ...p.home_tags.filter((k) => HOME_TAGS.includes(k)).map((k) => tr(`tag.${k}`))];
           return tags.length > 0 ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }} accessible accessibilityLabel={tags.join(', ')}>
               {tags.map((x) => <Tag key={x} label={x} />)}
@@ -93,9 +93,13 @@ export default function HostProfile() {
             </View>
             <Heading>{tr('host.terms')}</Heading>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {[...new Set(posts.flatMap((a) => a.offers))].map((o) => o === 'paid'
-                ? (posts[0].price_per_night != null ? <Tag key={o} strong label={`${tr('price.egp', { amount: posts[0].price_per_night })} ${tr(posts[0].negotiable ? 'card.perNightNegotiable' : 'card.perNight')}`} /> : null)
-                : <Tag key={o} label={tr(OFFER_LABEL[o])} />)}
+              {[...new Set(posts.flatMap((a) => a.offers))].map((o) => {
+                if (o === 'paid') {
+                  const paidPost = posts.find((a) => a.offers.includes('paid') && a.price_per_night != null);
+                  return paidPost ? <Tag key={o} strong label={`${tr('price.egp', { amount: paidPost.price_per_night as number })} ${tr(paidPost.negotiable ? 'card.perNightNegotiable' : 'card.perNight')}`} /> : null;
+                }
+                return OFFER_LABEL[o] ? <Tag key={o} label={tr(OFFER_LABEL[o])} /> : null;
+              })}
             </View>
           </>
         ) : null}

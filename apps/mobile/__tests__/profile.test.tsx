@@ -76,6 +76,16 @@ describe('edit profile', () => {
     expect(tags).not.toContain('works_from_home');                                      // the ninth and tenth were refused
   });
 
+  it('disables the other tags once eight are picked, and re-enables them when one is removed', async () => {
+    p.fetchMyProfile.mockResolvedValue({ ...me, home_tags: ['garden', 'fenced_yard', 'pet_first_aid', 'experienced', 'has_own_pets', 'quiet_home', 'near_beach', 'air_conditioning'] });
+    await renderIn(<EditProfile />);
+    await waitFor(() => screen.getByText('Pick up to 8.'));
+    const works = screen.getByRole('button', { name: 'Works from home' });
+    expect(works).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: 'Garden' }));
+    expect(screen.getByRole('button', { name: 'Works from home' })).toBeEnabled();
+  });
+
   it('does not offer home tags to someone who only needs a sitter', async () => {
     p.fetchMyProfile.mockResolvedValue({ ...me, role: 'owner' });
     await renderIn(<EditProfile />);

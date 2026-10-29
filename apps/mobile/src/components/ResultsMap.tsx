@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { BrowseCard } from './BrowseCard';
 import { Button } from './Button';
-import { fontFamily, useTheme } from '../theme';
+import { fontFamily, lightTheme, useTheme } from '../theme';
 import { isRTL, t as tr } from '../i18n';
 import type { StayResult } from '../lib/search';
 
@@ -37,12 +37,12 @@ export function ResultsMap({ results, onOpen }: { results: StayResult[]; onOpen:
     <View style={{ gap: 12 }}>
       <View style={{ width: SIZE, height: SIZE, alignSelf: 'center', borderRadius: 24, overflow: 'hidden', backgroundColor: t.tint.sea }}>
         <Svg width={SIZE} height={SIZE} accessible={false}>
-          {[1, 2, 3].map((i) => <Line key={`h${i}`} x1={0} x2={SIZE} y1={(SIZE / 4) * i} y2={(SIZE / 4) * i} stroke={t.color.surface} strokeOpacity={0.6} strokeWidth={2} />)}
-          {[1, 2, 3].map((i) => <Line key={`v${i}`} y1={0} y2={SIZE} x1={(SIZE / 4) * i} x2={(SIZE / 4) * i} stroke={t.color.surface} strokeOpacity={0.6} strokeWidth={2} />)}
+          {[1, 2, 3].map((i) => <Line key={`h${i}`} x1={0} x2={SIZE} y1={(SIZE / 4) * i} y2={(SIZE / 4) * i} stroke={lightTheme.color.surface} strokeOpacity={0.6} strokeWidth={2} />)}
+          {[1, 2, 3].map((i) => <Line key={`v${i}`} y1={0} y2={SIZE} x1={(SIZE / 4) * i} x2={(SIZE / 4) * i} stroke={lightTheme.color.surface} strokeOpacity={0.6} strokeWidth={2} />)}
           {located.map((r) => {
             const { x, y } = place(r);
             const on = r.availability_id === selected;
-            return <Circle key={r.availability_id} cx={x} cy={y} r={RADIUS} fill={on ? t.brand.orange : t.tint.teal} fillOpacity={0.85} stroke={on ? t.brand.coral : t.brand.teal} strokeWidth={3} />;
+            return <Circle key={r.availability_id} cx={x} cy={y} r={RADIUS} fill={on ? t.brand.orange : t.tint.teal} fillOpacity={0.85} stroke={on ? t.brand.coral : t.brand.tealDeep} strokeWidth={on ? 5 : 3} />;
           })}
         </Svg>
         {located.map((r) => {

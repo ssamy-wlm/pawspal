@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Path } from 'react-native-svg';
 import { Blob } from './Blob';
 import { Illustration } from './Illustration';
-import { navyTheme, Theme, useTheme } from '../theme';
+import { lightTheme, navyTheme, Theme, useTheme } from '../theme';
 import type { SvgName } from '../illustrations';
 
 export type CardIllustration = 'dog-biscuit' | 'cat-mango' | 'cat-midnight' | 'husky-storm';
@@ -17,7 +17,7 @@ export const ART: Record<CardIllustration, SvgName> = {
 
 /** Three circles per background (big tint, small white, warm accent), as on the mockups. Looks the same in every app theme. */
 export function cardBackground(kind: string, t: Theme) {
-  const white = t.color.surface;
+  const white = lightTheme.color.surface;        // white in every app theme, like the printed card
   switch (kind) {
     case 'circles_orange': return { fill: t.tint.orange, circles: [t.tint.orangeSoft, white, t.tint.teal] as const, pattern: false };
     case 'circles_sand': return { fill: t.brand.sand, circles: [t.tint.sand, white, t.tint.orange] as const, pattern: false };
@@ -71,7 +71,7 @@ export function CardArt({ illustration, background, height = 220, compact, label
       style={{ height: size, ...(compact ? { width: 96, borderRadius: 20 } : null), backgroundColor: bg.fill, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
       {bg.pattern ? (
         <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', top: 0, start: 0 }}>
-          <PawHeartPattern width={width} height={size} paw={t.brand.sand} heart={t.tint.coral} />
+          <PawHeartPattern width={width} height={size} paw={t.tint.paw} heart={t.tint.heart} />
         </View>
       ) : bg.circles ? GEOMETRY.map(([x, y, s, anchor], i) => compact ? (
         <View key={i} pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants"

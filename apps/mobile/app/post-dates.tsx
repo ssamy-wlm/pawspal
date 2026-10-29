@@ -43,7 +43,7 @@ export default function PostDates() {
   const [error, setError] = React.useState<string | null>(null);
 
   const paid = offers.includes('paid');
-  const ready = !!start && !!end && (kind === 'travel' || (pets.length > 0 && offers.length > 0 && (!paid || price !== '')));
+  const ready = !!start && !!end && (kind === 'travel' || (pets.length > 0 && offers.length > 0 && (!paid || Number(price) > 0)));
 
   const toggle = <T,>(list: T[], v: T): T[] => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 

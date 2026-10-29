@@ -94,7 +94,7 @@ They are placeholders: real pet photos replace them on live profiles. A sitter w
 ### Browse card backgrounds (user choice)
 
 1. **Circles:** soft circles in teal, orange or sand tint.
-2. **Pattern:** white background, light yellow paws and pink hearts.
+2. **Pattern:** white background, light yellow paws (`tint.paw`) and pink hearts (`tint.heart`).
 3. **Navy:** navy background with `#26394C` circles (new, from the navy posts).
 
 ## Right-to-left

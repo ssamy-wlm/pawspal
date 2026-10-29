@@ -6,7 +6,7 @@ import { formatDay, isRTL, Key, t as tr, tn } from '../../src/i18n';
 import { Chip } from '../../src/components/Chip';
 import { Button } from '../../src/components/Button';
 import { CalendarRange } from '../../src/components/CalendarRange';
-import { BrowseCard } from '../../src/components/BrowseCard';
+import { BrowseCard, priceLabel } from '../../src/components/BrowseCard';
 import { SwipeDeck, SwipeDirection } from '../../src/components/SwipeDeck';
 import { HeartBurst, HeartBurstHandle } from '../../src/components/HeartBurst';
 import { ResultsMap } from '../../src/components/ResultsMap';
@@ -35,11 +35,13 @@ const OFFERS: { key: Offer; label: Key }[] = [
   { key: 'volunteer', label: 'offer.volunteer' },
 ];
 const PETS: PetType[] = ['dog', 'cat', 'other'];
+/** Digits only, also when typed on an Arabic keyboard. */
+export const digitsOnly = (v: string) => v.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, '').slice(0, 6);
 
 // Rows have a fixed height so a long list can be measured without drawing it (smooth scrolling with 100 results).
 export const ROW_HEIGHT = 124;
 const ROW_GAP = 12;
-const NOTE_HEIGHT = 40;
+const NOTE_HEIGHT = 72;
 type Row = { kind: 'note' } | { kind: 'host'; r: StayResult };
 export const rowLayout = (rows: Row[], index: number) => {
   let offset = 0;
@@ -49,7 +51,7 @@ export const rowLayout = (rows: Row[], index: number) => {
 
 const HostRow = React.memo(function HostRow({ r, onOpen }: { r: StayResult; onOpen: (r: StayResult) => void }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={r.first_name ?? ''} onPress={() => onOpen(r)} style={{ height: ROW_HEIGHT }}>
+    <Pressable accessibilityRole="button" accessibilityLabel={[r.first_name, r.area, priceLabel(r), tr('card.available', { from: formatDay(r.starts_on), to: formatDay(r.ends_on) }), r.match_label ? tr(r.match_label === 'Exact match' ? 'match.exact' : 'match.close') : null].filter(Boolean).join('. ')} onPress={() => onOpen(r)} style={{ height: ROW_HEIGHT }}>
       <BrowseCard r={r} compact />
     </Pressable>
   );
@@ -194,7 +196,7 @@ export default function Explore() {
     const n = start && end ? nights(start, end) : 0;
     return (
       <View style={{ flex: 1, backgroundColor: c.background }}>
-        <Pressable onPress={() => setResults(null)} accessibilityRole="button" accessibilityLabel={tr('explore.editFilters')}
+        <Pressable onPress={() => setResults(null)} accessibilityRole="button" accessibilityLabel={`${tr('explore.summary', { start: start ? formatDay(start) : '', end: end ? formatDay(end) : '', nights: tn('count.night', n), pet: tr(petPlural(petType)) })}. ${tr('explore.editFilters')}`}
           style={{ margin: 20, padding: 16, borderRadius: 24, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }}>
           <Text style={{ color: c.text, fontFamily: fontFamily('semibold', rtl) }}>
             {tr('explore.summary', { start: start ? formatDay(start) : '', end: end ? formatDay(end) : '', nights: tn('count.night', n), pet: tr(petPlural(petType)) })}
@@ -215,7 +217,7 @@ export default function Explore() {
           <FlatList
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
             data={rows}
-            keyExtractor={(row, i) => (row.kind === 'note' ? 'note' : row.r.availability_id) + i}
+            keyExtractor={(row) => (row.kind === 'note' ? 'note' : row.r.availability_id)}
             getItemLayout={(data, i) => rowLayout((data ?? []) as Row[], i)}
             initialNumToRender={8}
             maxToRenderPerBatch={8}
@@ -241,7 +243,7 @@ export default function Explore() {
   }
 
   // ---------- Filters
-  const input = { flex: 1, minHeight: 48, borderRadius: 16, borderWidth: 2, borderColor: c.border, paddingHorizontal: 14, color: c.text, backgroundColor: c.surface, fontFamily: fontFamily('regular', rtl), textAlign: rtl ? 'right' : 'left' } as const;
+  const input = { flex: 1, minHeight: 48, borderRadius: 16, borderWidth: 2, borderColor: c.border, paddingHorizontal: 14, color: c.text, backgroundColor: c.surface, fontFamily: fontFamily('regular', rtl), textAlign: 'auto' } as const;
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ padding: 20, gap: 22, paddingBottom: 48 }}>
       {segment()}
@@ -260,9 +262,9 @@ export default function Explore() {
           onPress={() => { setBudget(i); setCustomMin(''); setCustomMax(''); }} />)}
         <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
           <TextInput accessibilityLabel={tr('explore.budget.minLabel')} placeholder={tr('explore.budget.min')} placeholderTextColor={c.textMuted}
-            keyboardType="number-pad" value={customMin} onChangeText={(v) => setCustomMin(v.replace(/[^0-9]/g, '').slice(0, 6))} style={input} />
+            keyboardType="number-pad" value={customMin} onChangeText={(v) => setCustomMin(digitsOnly(v))} style={input} />
           <TextInput accessibilityLabel={tr('explore.budget.maxLabel')} placeholder={tr('explore.budget.max')} placeholderTextColor={c.textMuted}
-            keyboardType="number-pad" value={customMax} onChangeText={(v) => setCustomMax(v.replace(/[^0-9]/g, '').slice(0, 6))} style={input} />
+            keyboardType="number-pad" value={customMax} onChangeText={(v) => setCustomMax(digitsOnly(v))} style={input} />
         </View>
       </Section>
 

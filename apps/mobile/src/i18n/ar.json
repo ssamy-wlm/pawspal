@@ -337,7 +337,7 @@
   "tag.works_from_home": "يعمل من المنزل",
   "tag.medication_ok": "يستطيع إعطاء الأدوية",
   "edit.tags": "عن منزلك",
-  "edit.tagsHint": "اختر حتى 8.",
+  "edit.tagsHint": "اختر حتى {n}.",
   "host.available": "متاح",
   "host.terms": "الشروط",
   "host.tags": "جيد أن تعرف"

@@ -75,10 +75,10 @@ export default function EditProfile() {
         {role !== 'owner' ? (
           <>
             <Heading>{tr('edit.tags')}</Heading>
-            <Text style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('regular', isRTL()) }}>{tr('edit.tagsHint')}</Text>
+            <Text style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('regular', isRTL()) }}>{tr('edit.tagsHint', { n: MAX_HOME_TAGS })}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {HOME_TAGS.map((k) => (
-                <Chip key={k} label={tr(`tag.${k}`)} selected={tags.includes(k)}
+                <Chip key={k} label={tr(`tag.${k}`)} selected={tags.includes(k)} disabled={!tags.includes(k) && tags.length >= MAX_HOME_TAGS}
                   onPress={() => setTags((cur) => cur.includes(k) ? cur.filter((x) => x !== k) : cur.length < MAX_HOME_TAGS ? [...cur, k] : cur)} />
               ))}
             </View>

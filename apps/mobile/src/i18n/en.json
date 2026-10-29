@@ -317,7 +317,7 @@
   "tag.works_from_home": "Works from home",
   "tag.medication_ok": "Can give medication",
   "edit.tags": "About your home",
-  "edit.tagsHint": "Pick up to 8.",
+  "edit.tagsHint": "Pick up to {n}.",
   "host.available": "Available",
   "host.terms": "Terms",
   "host.tags": "Good to know"
