@@ -1,5 +1,6 @@
 // Shared motion vocabulary. Same timings as the social media animations (docs/motion.md).
-import { Easing, ReduceMotion, useReducedMotion, withDelay, withSequence, withTiming } from 'react-native-reanimated';
+import { useEffect } from 'react';
+import { Easing, ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withSequence, withTiming } from 'react-native-reanimated';
 import tokens from '../theme/tokens.json';
 
 export const M = tokens.motion;
@@ -41,4 +42,40 @@ export function seeded(seed: number) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** What an "arriving" element does. Reduce Motion: no overshoot, no travel, just a 200 ms fade (docs/motion.md section 8). */
+export function entranceSpec(reduced: boolean, opts: { rise?: number; k?: number; duration?: number } = {}) {
+  return reduced
+    ? { rise: 0, overshoot: 0, duration: 200, scales: false }
+    : { rise: opts.rise ?? 40, overshoot: opts.k ?? M.overshoot.pop, duration: opts.duration ?? M.duration.pop, scales: true };
+}
+
+/**
+ * Entrance for bubbles, cards and toasts: rises, scales from 0 with a soft overshoot, opacity reaches 1 early.
+ * `origin` is the corner it grows from ('start' or 'end' side of the bottom edge, or 'center').
+ */
+export function useEntrance(opts: { delay?: number; rise?: number; k?: number; duration?: number; origin?: 'bottom-start' | 'bottom-end' | 'center'; rtl?: boolean } = {}) {
+  const reduced = useReducedMotion();
+  const spec = entranceSpec(reduced, opts);
+  const delay = opts.delay ?? 0;
+  const p = useSharedValue(0);
+  useEffect(() => {
+    p.set(reduced
+      ? withDelay(delay, withTiming(1, { duration: spec.duration, easing: ease.inOut }))
+      : pop(delay, spec.overshoot, spec.duration));
+  }, [p, reduced, delay, spec.duration, spec.overshoot]);
+  const fadeEnd = Math.min(1, 150 / spec.duration);
+  const side = opts.origin === 'bottom-end' ? 'end' : 'start';
+  const x = opts.origin === 'center' ? '50%' : (side === 'start') !== !!opts.rtl ? '0%' : '100%';
+  const y = opts.origin === 'center' ? '50%' : '100%';
+  return useAnimatedStyle(() => {
+    const v = p.get();
+    if (!spec.scales) return { opacity: v };
+    return {
+      opacity: Math.min(1, v / fadeEnd),
+      transform: [{ translateY: (1 - Math.min(v, 1)) * spec.rise }, { scale: v }],
+      transformOrigin: [x, y, 0],
+    };
+  });
 }

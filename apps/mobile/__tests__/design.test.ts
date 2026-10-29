@@ -20,13 +20,25 @@ describe('shared design files', () => {
   });
 });
 
-describe('screens use the theme, not hard-coded colours', () => {
-  const dir = join(__dirname, '..', 'app');
+describe('screens and components use the theme, not hard-coded colours', () => {
   const files = (d: string): string[] =>
     readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(d, e.name)) : [join(d, e.name)]));
+  const source = [...files(join(__dirname, '..', 'app')), ...files(join(__dirname, '..', 'src', 'components')), join(__dirname, '..', 'src', 'theme', 'index.tsx')]
+    .filter((f) => /\.tsx?$/.test(f));
 
-  it.each(files(dir).filter((f) => f.endsWith('.tsx')))('%s has no hex colours', (file) => {
+  it('checks the files it should', () => {
+    expect(source.length).toBeGreaterThan(30);
+  });
+
+  it.each(source)('%s has no hex or rgb colours', (file) => {
     const code = readFileSync(file, 'utf8');
     expect(code.match(/#[0-9A-Fa-f]{3,8}\b/g) ?? []).toEqual([]);
+    expect(code.match(/\brgba?\(/g) ?? []).toEqual([]);
+  });
+
+  it('has no hard-coded font names outside the theme', () => {
+    for (const file of source.filter((f) => !f.endsWith(join('theme', 'index.tsx')) && !f.endsWith('_layout.tsx'))) {
+      expect([file, /['"](Poppins|Cairo)_\d+['"]/.test(readFileSync(file, 'utf8'))]).toEqual([file, false]);
+    }
   });
 });

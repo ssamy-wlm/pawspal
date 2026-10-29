@@ -64,9 +64,9 @@ export default function Welcome() {
       </View>
 
       <View style={{ paddingHorizontal: 24, paddingBottom: 32, gap: 14 }}>
-        {/* TODO(phase 2): route into the sign-up flow with the chosen role. */}
-        <Option primary title={tr('welcome.needSitter')} sub={tr('welcome.needSitterSub')} delay={1300} onPress={() => router.push('/explore')} />
-        <Option title={tr('welcome.wantSit')} sub={tr('welcome.wantSitSub')} delay={1450} onPress={() => router.push('/showcase')} />
+        {/* TODO(phase 2): route both options into the sign-up flow with the chosen role. */}
+        <Option primary title={tr('welcome.needSitter')} sub={tr('welcome.needSitterSub')} delay={1300} onPress={() => router.push('/(tabs)/explore')} />
+        <Option title={tr('welcome.wantSit')} sub={tr('welcome.wantSitSub')} delay={1450} onPress={() => router.push('/(tabs)/explore')} />
         <Text style={{ textAlign: 'center', color: c.textMuted, fontFamily: fontFamily('regular', rtl), marginTop: 6 }}>{tr('welcome.login')}</Text>
         <Text style={{ textAlign: 'center', color: c.textMuted, fontSize: 12, fontFamily: fontFamily('regular', rtl) }}>
           {tr('welcome.legal')}{' '}

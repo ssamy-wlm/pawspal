@@ -18,7 +18,7 @@ export function Blob({ x, y, size, color, delay = 0 }: { x: number; y: number; s
       pointerEvents="none"
       accessible={false}
       importantForAccessibility="no-hide-descendants"
-      style={[{ position: 'absolute', left: x, top: y, width: size, height: size, borderRadius: size / 2, backgroundColor: color }, style]}
+      style={[{ position: 'absolute', start: x, top: y, width: size, height: size, borderRadius: size / 2, backgroundColor: color }, style]}
     />
   );
 }

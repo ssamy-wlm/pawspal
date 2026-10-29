@@ -78,7 +78,7 @@ function Layer({ depth, promote, topStyle, pan, height, children }: any) {
     return { transform: [{ translateY: level * 26 }, { scale: 1 - level * 0.05 }, { rotate: `${rot}deg` }] };
   });
   const card = (
-    <Animated.View style={[{ position: 'absolute', left: 0, right: 0, height, zIndex: 10 - depth }, style, depth === 0 ? topStyle : null]}>
+    <Animated.View style={[{ position: 'absolute', start: 0, end: 0, height, zIndex: 10 - depth }, style, depth === 0 ? topStyle : null]}>
       {children}
     </Animated.View>
   );

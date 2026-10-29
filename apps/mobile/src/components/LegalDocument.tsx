@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { legal, LegalDoc } from '../legal';
 import { fontFamily, useTheme } from '../theme';
-import { isRTL } from '../i18n';
+import { isRTL, t as tr } from '../i18n';
 import { Block, Inline, parseMarkdown } from './markdown';
 
 /** Renders a bundled legal document (Privacy Policy, Terms, Community Guidelines) inside the app. Works offline. */
@@ -68,7 +68,7 @@ export function LegalDocument({ doc }: { doc: LegalDoc }) {
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ padding: 24, paddingBottom: 64 }}>
       <View style={{ marginBottom: 12 }}>
-        <Text style={{ color: c.textMuted, fontSize: 13 }}>Version {d.version} · Effective {d.effective}</Text>
+        <Text style={{ color: c.textMuted, fontSize: 13 }}>{tr('legal.version', { version: d.version ?? '', effective: d.effective ?? '' })}</Text>
       </View>
       {blocks.map(render)}
     </ScrollView>

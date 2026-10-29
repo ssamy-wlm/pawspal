@@ -37,6 +37,6 @@ describe('Welcome screen', () => {
   it('opens Explore from "I need a sitter"', async () => {
     await renderWelcome();
     await fireEvent.press(screen.getByLabelText(/I need a sitter/));
-    expect(router.push).toHaveBeenCalledWith('/explore');
+    expect(router.push).toHaveBeenCalledWith('/(tabs)/explore');
   });
 });

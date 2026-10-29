@@ -1,7 +1,8 @@
 import React from 'react';
 import { Pressable, Text, ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { useTheme } from '../theme';
+import { fontFamily, useTheme } from '../theme';
+import { isRTL } from '../i18n';
 
 type Variant = 'primary' | 'secondary' | 'accent' | 'danger';
 
@@ -11,7 +12,7 @@ export function Button({ title, onPress, variant = 'primary', disabled, style, n
   const s = useSharedValue(1);
   const anim = useAnimatedStyle(() => ({ transform: [{ scale: s.get() }] }));
   const bg = { primary: t.color.primary, secondary: 'transparent', accent: t.color.accent, danger: t.color.danger }[variant];
-  const fg = { primary: t.color.onPrimary, secondary: t.color.primary, accent: t.color.onAccent, danger: '#FFFFFF' }[variant];
+  const fg = { primary: t.color.onPrimary, secondary: t.color.primary, accent: t.color.onAccent, danger: t.color.onDanger }[variant];
   return (
     <Pressable
       accessibilityRole="button"
@@ -26,7 +27,7 @@ export function Button({ title, onPress, variant = 'primary', disabled, style, n
         backgroundColor: bg, borderWidth: variant === 'secondary' ? 3 : 0, borderColor: t.color.primary,
         opacity: disabled ? 0.5 : 1,
       }, anim, style]}>
-        <Text style={{ color: fg, fontSize: 17, fontFamily: 'Poppins_600' }}>{title}</Text>
+        <Text style={{ color: fg, fontSize: 17, fontFamily: fontFamily('semibold', isRTL()) }}>{title}</Text>
       </Animated.View>
     </Pressable>
   );

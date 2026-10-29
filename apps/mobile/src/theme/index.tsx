@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import tokens from './tokens.json';
 
 export type ThemeMode = 'system' | 'light' | 'navy';
@@ -33,15 +34,34 @@ export const navyTheme = build('navy');
 interface Ctx { theme: Theme; mode: ThemeMode; setMode: (m: ThemeMode) => void }
 const ThemeContext = createContext<Ctx>({ theme: lightTheme, mode: 'system', setMode: () => {} });
 
+const STORE_KEY = 'pawspal.theme';
+const isMode = (v: unknown): v is ThemeMode => v === 'system' || v === 'light' || v === 'navy';
+
+/** Holds the theme choice (System, Light, Navy) and remembers it between launches. */
 export function ThemeProvider({ children, initialMode = 'system' }: { children: React.ReactNode; initialMode?: ThemeMode }) {
   const system = useColorScheme();
-  const [mode, setMode] = useState<ThemeMode>(initialMode);
+  const [mode, setModeState] = useState<ThemeMode>(initialMode);
+  useEffect(() => {
+    SecureStore.getItemAsync(STORE_KEY).then((v) => { if (isMode(v)) setModeState(v); }).catch(() => {});
+  }, []);
+  const setMode = useCallback((m: ThemeMode) => {
+    setModeState(m);
+    SecureStore.setItemAsync(STORE_KEY, m).catch(() => {});
+  }, []);
   const theme = useMemo(() => {
     if (mode === 'navy') return navyTheme;
     if (mode === 'light') return lightTheme;
     return system === 'dark' ? navyTheme : lightTheme;
   }, [mode, system]);
-  return <ThemeContext.Provider value={{ theme, mode, setMode }}>{children}</ThemeContext.Provider>;
+  const value = useMemo(() => ({ theme, mode, setMode }), [theme, mode, setMode]);
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+/** Everything inside always uses the navy theme (trust screens: verification, safety, rules, suspension). */
+export function ForceNavy({ children }: { children: React.ReactNode }) {
+  const ctx = useContext(ThemeContext);
+  const value = useMemo(() => ({ ...ctx, theme: navyTheme }), [ctx]);
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 /** Current theme. Pass `forceNavy` on trust screens (verification, safety, rules, suspension). */
