@@ -12,6 +12,21 @@ const validCoords = (lat?: number, lng?: number): lat is number =>
   typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
 
 /**
+ * The "Exact pin unlocked" chip: slides down 20 px and fades in at 1700 ms, after the pin has landed (docs/motion.md
+ * section 6, item 5). With Reduce Motion it only fades in over 200 ms.
+ */
+function ExactChip() {
+  const t = useTheme();
+  const rtl = isRTL();
+  const slide = useEntrance({ delay: 1700, rise: -20, duration: 400, scale: false });
+  return (
+    <Animated.View style={[{ alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999, backgroundColor: t.color.primary }, slide]}>
+      <Text style={{ fontSize: 14, color: t.color.onPrimary, fontFamily: fontFamily('semibold', rtl) }}>{tr('map.exact')}</Text>
+    </Animated.View>
+  );
+}
+
+/**
  * Approximate area (shaded circle) for everyone, or the exact pin once a booking is confirmed and paid.
  * Exact coordinates only ever come from get_booking_location(); this card never fetches them itself.
  */
@@ -30,9 +45,11 @@ export function MapCard({ exact, lat, lng, address }: { exact?: boolean; lat?: n
         )}
       </View>
       <View style={{ padding: 16, gap: 10 }}>
-        <View style={{ alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999, backgroundColor: exact ? c.primary : t.tint.orange }}>
-          <Text style={{ fontSize: 14, color: exact ? c.onPrimary : t.brand.navy, fontFamily: fontFamily('semibold', rtl) }}>{exact ? tr('map.exact') : tr('map.approx')}</Text>
-        </View>
+        {exact ? <ExactChip /> : (
+          <View style={{ alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999, backgroundColor: t.tint.orange }}>
+            <Text style={{ fontSize: 14, color: t.brand.navy, fontFamily: fontFamily('semibold', rtl) }}>{tr('map.approx')}</Text>
+          </View>
+        )}
         {exact && address ? <Text style={{ color: c.text, fontSize: 16, fontFamily: fontFamily('regular', rtl) }}>{address}</Text> : null}
         {canNavigate ? (
           <Button title={tr('map.directions')} onPress={() => { Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`).catch(() => toast.show(tr('map.openFailed'), 'error')); }} />

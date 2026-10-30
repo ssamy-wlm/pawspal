@@ -137,6 +137,13 @@ The booking fee is paid through Paymob. It works in **test mode** with a Paymob 
 
 Chat is live (Supabase Realtime). Nothing to set up: new messages and booking changes reach both people at once. Phone numbers, emails, links and app names in messages are hidden until the two people have a confirmed, paid booking together.
 
+## E9. Handover photos, reviews and the Safety Center (phase 7)
+Nothing to set up: no new accounts or secrets. What to know:
+- **Handover photos** are taken with the phone camera, cleaned by `process-upload` (no GPS or hidden data) and saved in the private `handovers` bucket. A person only ever sees the other side's photo through a link that works for 60 seconds (`handover-photo-url`). Photos that were taken but never saved are removed by the nightly clean-up (E6) after a day.
+- **Emergency** alerts the other person inside the app (a red banner at the top of the Chat tab) and opens a **high-priority report** for the team (`reports.priority = 'high'`, `emergency = true`). It does **not** send a text message or a push notification yet: those need the SMS provider (E5) and the notifications work in phase 9. The emergency screen shows the vet's number first so the person can call straight away.
+- **Reviews** are possible only after the owner marks the stay finished, once per person, for 14 days. Phone numbers and links in a review are hidden.
+- **Reports** reach the admin dashboard (phase 8). Until it exists, you can read them in the Supabase table editor (`reports`, newest high-priority first).
+
 ## F. Secrets checklist
 
 | Secret | Where it lives | Never |

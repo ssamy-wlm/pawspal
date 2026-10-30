@@ -70,7 +70,7 @@ export async function verifyOtp(phone: string, token: string, captchaToken?: str
   if (error) throw new ApiError('try_again_later', 0);
 }
 
-export type UploadKind = 'face' | 'pet' | 'home';
+export type UploadKind = 'face' | 'pet' | 'home' | 'handover';
 
 /**
  * Sends a photo to the private "incoming" folder, then asks the server to clean it (all hidden data, including GPS,
@@ -99,6 +99,17 @@ export async function verifyFace(facePath: string): Promise<boolean> {
 /** Asks the server for a checkout page for the booking fee. The amount is the server's; the app never sends one. */
 export async function createFeePayment(bookingId: string): Promise<{ url: string; payment_id: string; amount_egp: number }> {
   return call('create-fee-payment', { booking_id: bookingId }, await accessToken());
+}
+
+/** A link (good for a minute) to a handover photo of a booking I am in. The server checks I am in it. */
+export async function handoverPhotoUrl(photoId: string): Promise<string> {
+  return (await call<{ url: string }>('handover-photo-url', { photo_id: photoId }, await accessToken())).url;
+}
+
+/** "Something is wrong with the pet": the other person is alerted and the team gets a high-priority report. */
+export async function sendEmergency(bookingId: string, note: string | null): Promise<'sent' | 'already_sent'> {
+  const r = await call<{ status: 'sent' | 'already_sent' }>('emergency', { booking_id: bookingId, ...(note ? { note } : {}) }, await accessToken());
+  return r.status;
 }
 
 export async function verifyId(): Promise<{ ok: boolean; adult: boolean }> {

@@ -442,5 +442,11 @@ verify_jwt = false      # called by a timer; it proves itself with REFUND_SECRET
 [functions.process-upload]
 verify_jwt = true
 
+[functions.handover-photo-url]
+verify_jwt = true
+
+[functions.emergency]
+verify_jwt = true
+
 [functions.verify-identity]
 verify_jwt = true

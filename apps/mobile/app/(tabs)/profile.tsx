@@ -55,6 +55,7 @@ export default function ProfileTab() {
       {row(tr('profile.edit'), '/profile/edit')}
       {row(tr('profile.pets'), '/pets')}
       {row(tr('profile.settings'), '/settings', true)}
+      {row(tr('profile.safety'), '/safety')}
       <Text accessibilityRole="header" style={{ color: c.text, fontSize: 17, marginTop: 16, fontFamily: fontFamily('bold', rtl) }}>{tr('profile.legal')}</Text>
       {LEGAL.map((d) => row(tr(d.label), `/legal/${d.slug}`))}
       <View style={{ marginTop: 16 }}><Button variant="secondary" title={tr('pending.signout')} onPress={() => { signOut().catch(() => {}); }} /></View>

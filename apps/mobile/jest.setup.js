@@ -46,6 +46,8 @@ jest.mock('expo-camera', () => {
 });
 jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: jest.fn(async () => ({ canceled: false, assets: [{ uri: 'file:///photo.jpg' }] })),
+  requestCameraPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  launchCameraAsync: jest.fn(async () => ({ canceled: false, assets: [{ uri: 'file:///camera.jpg' }] })),
 }));
 jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3 },

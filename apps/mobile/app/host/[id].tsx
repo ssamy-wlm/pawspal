@@ -11,8 +11,9 @@ import { Heading } from '../../src/components/Heading';
 import { PetPhoto } from '../../src/components/PetPhoto';
 import { fetchCard, fetchPets, HOME_TAGS, Pet, PublicProfile, useSignedUrl } from '../../src/lib/profile';
 import { Availability, fetchAvailability } from '../../src/lib/explore';
+import { fetchReviewsAbout, ReviewRow } from '../../src/lib/safety';
 import { fontFamily, useTheme } from '../../src/theme';
-import { formatDay, isRTL, Key, t as tr } from '../../src/i18n';
+import { formatDay, isRTL, Key, t as tr, tn } from '../../src/i18n';
 
 function Stat({ value, label }: { value: string; label: string }) {
   const t = useTheme();
@@ -42,7 +43,8 @@ const OFFER_LABEL: Record<string, Key> = { volunteer: 'offer.volunteer', swap: '
 /** A host's public profile (mockup 03): card art, name, area, stats, about, their pets and home, and the Message and Request booking buttons. */
 export default function HostProfile() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const c = useTheme().color;
+  const t = useTheme();
+  const c = t.color;
   const rtl = isRTL();
   const { session, state: auth } = useAuth();
   const insets = useSafeAreaInsets();
@@ -51,6 +53,7 @@ export default function HostProfile() {
   const [p, setP] = React.useState<PublicProfile | null>(null);
   const [pets, setPets] = React.useState<Pet[]>([]);
   const [posts, setPosts] = React.useState<Availability[]>([]);
+  const [reviews, setReviews] = React.useState<ReviewRow[]>([]);
   const homeUrl = useSignedUrl('homes', p?.home_photo_path);
 
   React.useEffect(() => {
@@ -61,8 +64,8 @@ export default function HostProfile() {
       if (!live) return;
       if (!card) { setState('missing'); return; }
       setP(card); setState('ready');
-      const [list, avail] = await Promise.all([fetchPets(id).catch(() => [] as Pet[]), fetchAvailability(id).catch(() => [] as Availability[])]);
-      if (live) { setPets(list); setPosts(avail); }
+      const [list, avail, revs] = await Promise.all([fetchPets(id).catch(() => [] as Pet[]), fetchAvailability(id).catch(() => [] as Availability[]), fetchReviewsAbout(id).catch(() => [] as ReviewRow[])]);
+      if (live) { setPets(list); setPosts(avail); setReviews(revs); }
     })().catch(() => { if (live) setState('missing'); });
     return () => { live = false; };
   }, [id]);
@@ -131,6 +134,17 @@ export default function HostProfile() {
                 </Pressable>
               ))}
             </View>
+          </>
+        ) : null}
+        {reviews.length > 0 ? (
+          <>
+            <Heading>{tr('host.reviews')}</Heading>
+            {reviews.map((r) => (
+              <View key={r.id} accessible accessibilityLabel={`${tn('count.star', r.rating)}. ${r.body ?? ''}`} style={{ gap: 4, padding: 14, borderRadius: 20, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }}>
+                <Text style={{ color: c.primary, fontSize: 18 }}>{'★'.repeat(r.rating)}</Text>
+                {r.body ? <Text style={{ color: c.text, fontSize: 15, lineHeight: 22, fontFamily: fontFamily('regular', rtl) }}>{r.body}</Text> : null}
+              </View>
+            ))}
           </>
         ) : null}
         {homeUrl ? (

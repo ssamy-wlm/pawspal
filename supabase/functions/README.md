@@ -5,14 +5,14 @@
 | `request-otp` | 2 | Asks Supabase Auth to text a code. Per-device limit, hides banned numbers (same answer as for everyone else) | anon key, service role |
 | `verify-otp` | 2 | Checks the code with Supabase Auth, counts wrong tries (CAPTCHA or 10 minute wait after two), returns the session | anon key, service role |
 | `send-sms` | 2 | The Supabase **Send SMS hook**: Auth calls it with the code, it sends through the providers named in `SMS_PROVIDERS` (in order, with fallback) | hook secret, provider keys |
-| `process-upload` | 2 | Takes a raw photo from `incoming/<uid>/`, strips all metadata (EXIF, GPS), saves the clean copy under a random name in `faces`, `pets` or `homes`, deletes the raw file | service role |
+| `process-upload` | 2 | Takes a raw photo from `incoming/<uid>/`, strips all metadata (EXIF, GPS), saves the clean copy under a random name in `faces`, `pets`, `homes` or `handovers`, deletes the raw file | service role |
 | `cleanup-photos` | 5 | Nightly: deletes photo files nobody uses (raw uploads left in `incoming` after an hour; clean photos no pet or profile points to after a day). Called by Supabase Cron with the `x-cleanup-secret` header. Never logs file names | `CLEANUP_SECRET`, service role |
 | `verify-identity` | 2 | Face and ID checks through the provider named in `IDENTITY_PROVIDER`; stores only the result and a hash of the document, never an ID image; calls `record_verification()` (service role only) | provider key, service role |
 | `paymob-webhook` | 6 | Verifies Paymob's HMAC signature, checks the amount and the order id, then calls `complete_fee_payment` (which confirms the booking). A forged callback is refused with 401 | Paymob HMAC secret, service role |
 | `create-fee-payment` | 6 | Starts a payment for a `terms_agreed` booking: the database makes the payment row with the fee from `app_settings`, Paymob makes the checkout page. The app never sends an amount | Paymob secret key, service role |
 | `process-refunds` | 6 | Hourly: asks Paymob to refund the payments the database marked "refund due" (Terms section 6). Secret protected | `REFUND_SECRET`, Paymob secret key, service role |
-| `handover-photo-url` | 7 | Gives the booking partner a short signed URL for the other side's handover photo | service role |
-| `emergency` | 7 | Notifies the owner and opens a high-priority report | service role |
+| `handover-photo-url` | 7 | Gives the booking partner a link (valid 60 seconds) to the other side's handover photo; the database checks they are in the booking | service role |
+| `emergency` | 7 | Either person in a running booking can raise it: the other person gets an in-app alert and a high-priority report opens for the team. Text message or push alerts come later (phase 9) | service role |
 | `export-my-data`, `delete-my-account` | 9 | Privacy rights from the policy (section 8) | service role |
 
 Every function: verify the user's JWT, validate input, rate-limit, and never log personal data.

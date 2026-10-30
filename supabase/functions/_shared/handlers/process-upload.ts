@@ -17,7 +17,7 @@ export interface UploadDeps {
   randomId(): string;
 }
 
-const BUCKET_FOR: Record<string, string> = { face: 'faces', pet: 'pets', home: 'homes' };
+const BUCKET_FOR: Record<string, string> = { face: 'faces', pet: 'pets', home: 'homes', handover: 'handovers' };
 
 export async function handleProcessUpload(req: Request, deps: UploadDeps): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });

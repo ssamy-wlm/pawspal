@@ -4,6 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { CardArt } from '../../src/components/CardArt';
 import { EmptyState } from '../../src/components/EmptyState';
 import { Conversation, fetchConversations, listenToActivity } from '../../src/lib/chat';
+import { Alert, dismissAlert, fetchAlerts } from '../../src/lib/safety';
 import { fontFamily, useTheme } from '../../src/theme';
 import { isRTL, t as tr } from '../../src/i18n';
 
@@ -19,18 +20,33 @@ export default function ChatTab() {
   const t = useTheme();
   const rtl = isRTL();
   const [items, setItems] = React.useState<Conversation[] | null>(null);
+  const [alerts, setAlerts] = React.useState<Alert[]>([]);
 
-  const load = React.useCallback(() => { fetchConversations().then(setItems, () => setItems((cur) => cur ?? [])); }, []);
+  const load = React.useCallback(() => {
+    fetchConversations().then(setItems, () => setItems((cur) => cur ?? []));
+    fetchAlerts().then(setAlerts, () => {});
+  }, []);
   useFocusEffect(React.useCallback(() => { load(); return listenToActivity(load); }, [load]));
 
+  const banners = alerts.length > 0 ? (<View style={{ gap: 10 }}>
+          {alerts.map((a) => (
+            <Pressable key={a.id} accessibilityRole="button" accessibilityLiveRegion="assertive" accessibilityLabel={tr('alert.emergency', { name: a.from_name ?? '', pet: a.pet_name ?? '' })}
+              onPress={() => { setAlerts((cur) => cur.filter((x) => x.id !== a.id)); dismissAlert(a.id).catch(() => {}); router.push(`/booking/done/${a.booking_id}` as never); }}
+              style={{ minHeight: 64, padding: 16, borderRadius: 24, backgroundColor: c.danger, gap: 2 }}>
+              <Text style={{ color: t.color.onDanger, fontSize: 17, fontFamily: fontFamily('bold', rtl) }}>{tr('alert.emergency', { name: a.from_name ?? '', pet: a.pet_name ?? '' })}</Text>
+              <Text style={{ color: t.color.onDanger, fontSize: 14, fontFamily: fontFamily('regular', rtl) }}>{tr('alert.open')}</Text>
+            </Pressable>
+          ))}
+        </View>) : undefined;
   if (items === null) return null;
-  if (items.length === 0) return <View style={{ flex: 1, backgroundColor: c.background }}><EmptyState message={tr('chat.empty')} actionLabel={tr('empty.findHost')} onAction={() => router.navigate('/(tabs)/explore')} /></View>;
+  if (items.length === 0) return <View style={{ flex: 1, backgroundColor: c.background }}>{banners ? <View style={{ padding: 24, paddingBottom: 0 }}>{banners}</View> : null}<EmptyState message={tr('chat.empty')} actionLabel={tr('empty.findHost')} onAction={() => router.navigate('/(tabs)/explore')} /></View>;
   return (
     <FlatList
       style={{ backgroundColor: c.background }}
       contentContainerStyle={{ padding: 24, gap: 12 }}
       data={items}
       keyExtractor={(x) => x.id}
+      ListHeaderComponent={banners}
       renderItem={({ item }) => {
         const preview = item.last_body ? (item.last_mine ? tr('chat.you', { text: item.last_body }) : item.last_body) : tr('chat.noMessages');
         return (

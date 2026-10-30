@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToast } from '../../../src/components/Toast';
@@ -99,6 +99,12 @@ export default function BookingDone() {
         <Text style={{ color: t.brand.navy, fontSize: 18, fontFamily: fontFamily('bold', rtl) }}>{tr('confirmed.handover')}</Text>
         <Text style={{ color: t.brand.navy, fontSize: 15, fontFamily: fontFamily('regular', rtl) }}>{tr('confirmed.handoverBody', { pet: pet?.name ?? '' })}</Text>
       </View>
+      <Button title={tr(booking.status === 'completed' ? 'review.leave' : 'handover.open')} onPress={() => router.push((booking.status === 'completed' ? `/review/${booking.id}` : `/handover/${booking.id}`) as never)} />
+      {booking.status === 'completed' ? <Button variant="secondary" title={tr('handover.open')} onPress={() => router.push(`/handover/${booking.id}` as never)} /> : (
+        <Pressable accessibilityRole="button" accessibilityLabel={tr('safety.emergencyTitle')} onPress={() => router.push(`/safety/emergency?booking=${booking.id}` as never)} style={{ minHeight: 44, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: c.danger, fontSize: 15, fontFamily: fontFamily('semibold', rtl) }}>{tr('safety.emergencyTitle')}</Text>
+        </Pressable>
+      )}
     </ScrollView>
   );
 }

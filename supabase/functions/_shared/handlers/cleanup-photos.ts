@@ -14,7 +14,7 @@ export interface CleanupDeps {
 }
 
 const BATCH = 100;
-const BUCKETS = new Set(['incoming', 'pets', 'homes', 'faces']);
+const BUCKETS = new Set(['incoming', 'pets', 'homes', 'faces', 'handovers']);
 
 export async function handleCleanupPhotos(req: Request, deps: CleanupDeps): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });

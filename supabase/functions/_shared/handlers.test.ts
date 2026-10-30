@@ -4,6 +4,8 @@ import { bytesToBase64, hmacSha256, sha256Hex } from './crypto.ts';
 import { envFrom } from './config.ts';
 import type { Rpc } from './http.ts';
 import { handleProcessUpload, type StorageOps } from './handlers/process-upload.ts';
+import { handleHandoverPhotoUrl } from './handlers/handover-photo-url.ts';
+import { handleEmergency } from './handlers/emergency.ts';
 import { handleRequestOtp } from './handlers/request-otp.ts';
 import { handleSendSms } from './handlers/send-sms.ts';
 import { handleVerifyIdentity } from './handlers/verify-identity.ts';
@@ -334,7 +336,7 @@ test('process-upload: only your own raw files, only known kinds, only signed-in 
   assert.equal((await handleProcessUpload(post({ kind: 'pet', path: `${UID}/x.jpg` }), deps)).status, 401);
   assert.equal((await handleProcessUpload(withAuth({ kind: 'pet', path: `${UID}/x.jpg` }), uploadDeps(fs.storage, fakeRpc().rpc, null))).status, 401);
   for (const bad of [
-    { kind: 'handover', path: `${UID}/x.jpg` }, { kind: 'pet', path: 'other/x.jpg' }, { kind: 'pet', path: `${UID}/../other/x.jpg` },
+    { kind: 'avatar', path: `${UID}/x.jpg` }, { kind: 'pet', path: 'other/x.jpg' }, { kind: 'pet', path: `${UID}/../other/x.jpg` },
     { kind: 'pet', path: `${UID}/sub/x.jpg` }, { kind: 'pet', path: `${UID}/x y.jpg` }, { kind: 'pet', path: '' }, { kind: 'pet' }, {},
   ]) assert.equal((await handleProcessUpload(withAuth(bad), deps)).status, 400, JSON.stringify(bad));
   assert.equal((await handleProcessUpload(withAuth({ kind: 'pet', path: `${UID}/missing.jpg` }), deps)).status, 404);
@@ -449,7 +451,7 @@ test('cleanup-photos: deletes the listed files bucket by bucket, in batches, and
   const rows = [
     ...Array.from({ length: 150 }, (_, i) => ({ bucket_id: 'pets', name: `u/p${i}.jpg` })),
     { bucket_id: 'incoming', name: 'u/raw.jpg' },
-    { bucket_id: 'handovers', name: 'u/should-never-be-touched.jpg' },
+    { bucket_id: 'avatars', name: 'u/should-never-be-touched.jpg' },
     { bucket_id: 'homes', name: 5 },
   ];
   const { rpc, calls } = fakeRpc({ list_unused_uploads: () => rows });
@@ -468,4 +470,84 @@ test('cleanup-photos: counts failures honestly and stops cleanly when the databa
   const bad = fakeRpc({ list_unused_uploads: () => new Error('db down') });
   const res2 = await handleCleanupPhotos(cleanupReq(CLEANUP_KEY), { env: envFrom({ CLEANUP_SECRET: CLEANUP_KEY }), rpc: bad.rpc, removeMany: async () => true });
   assert.equal(res2.status, 502);
+});
+
+// ---------------------------------------------------------------- handover photos and emergencies (phase 7)
+test('process-upload: a handover photo goes to the handovers bucket', async () => {
+  const fs = fakeStorage({ [`incoming/${UID}/h.jpg`]: photo() });
+  const res = await handleProcessUpload(withAuth({ kind: 'handover', path: `${UID}/h.jpg` }), uploadDeps(fs.storage));
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { path: `${UID}/rand-1.jpg` });
+  assert.ok(fs.store.has(`handovers/${UID}/rand-1.jpg`));
+  assert.ok(!fs.store.has(`incoming/${UID}/h.jpg`));
+});
+
+const PHOTO_ID = '99999999-8888-7777-6666-555555555555';
+const signer = (url: string | null = 'https://signed.test/x') => {
+  const asked: [string, string, number][] = [];
+  return { asked, urls: { async signedUrl(b: string, p: string, s: number) { asked.push([b, p, s]); return url; } } };
+};
+
+test('handover-photo-url: a person in the booking gets a link that works for a minute', async () => {
+  const { rpc, calls } = fakeRpc({ handover_photo_for: () => `${UID}/rand-1.jpg` });
+  const s = signer();
+  const res = await handleHandoverPhotoUrl(withAuth({ photo_id: PHOTO_ID }), { authUser: async () => ({ id: UID }), rpc, urls: s.urls });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { url: 'https://signed.test/x', expires_in: 60 });
+  assert.deepEqual(calls[0], { name: 'handover_photo_for', args: { p_user: UID, p_photo: PHOTO_ID } });
+  assert.deepEqual(s.asked, [['handovers', `${UID}/rand-1.jpg`, 60]]);
+});
+
+test('handover-photo-url: someone outside the booking gets nothing, and so does a missing photo', async () => {
+  const s = signer();
+  const none = fakeRpc({ handover_photo_for: () => null });
+  const res = await handleHandoverPhotoUrl(withAuth({ photo_id: PHOTO_ID }), { authUser: async () => ({ id: UID }), rpc: none.rpc, urls: s.urls });
+  assert.equal(res.status, 404);
+  assert.deepEqual(s.asked, [], 'a link was made for someone outside the booking');
+  const down = fakeRpc({ handover_photo_for: () => new Error('db down') });
+  assert.equal((await handleHandoverPhotoUrl(withAuth({ photo_id: PHOTO_ID }), { authUser: async () => ({ id: UID }), rpc: down.rpc, urls: s.urls })).status, 502);
+  const ok = fakeRpc({ handover_photo_for: () => 'a/b.jpg' });
+  const noLink = signer(null);
+  assert.equal((await handleHandoverPhotoUrl(withAuth({ photo_id: PHOTO_ID }), { authUser: async () => ({ id: UID }), rpc: ok.rpc, urls: noLink.urls })).status, 502);
+});
+
+test('handover-photo-url: signed-in people only, valid ids only, POST only', async () => {
+  const s = signer();
+  const deps = { authUser: async () => ({ id: UID }), rpc: fakeRpc().rpc, urls: s.urls };
+  assert.equal((await handleHandoverPhotoUrl(post({ photo_id: PHOTO_ID }), deps)).status, 401);
+  assert.equal((await handleHandoverPhotoUrl(withAuth({ photo_id: PHOTO_ID }), { ...deps, authUser: async () => null })).status, 401);
+  for (const bad of [{}, { photo_id: 'nope' }, { photo_id: 5 }, '[]']) assert.equal((await handleHandoverPhotoUrl(withAuth(bad), deps)).status, 400, JSON.stringify(bad));
+  assert.equal((await handleHandoverPhotoUrl(new Request('https://f.test/', { method: 'GET' }), deps)).status, 405);
+});
+
+const BOOKING_ID = '12121212-3434-5656-7878-909090909090';
+test('emergency: the database is asked with the caller id from the token, never from the body', async () => {
+  const { rpc, calls } = fakeRpc({ raise_emergency: () => 'sent' });
+  const res = await handleEmergency(withAuth({ booking_id: BOOKING_ID, note: 'Bruno will not eat', user_id: 'someone-else' }), { authUser: async () => ({ id: UID }), rpc });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, status: 'sent' });
+  assert.deepEqual(calls[0], { name: 'raise_emergency', args: { p_user: UID, p_booking: BOOKING_ID, p_note: 'Bruno will not eat' } });
+  const again = fakeRpc({ raise_emergency: () => 'already_sent' });
+  const res2 = await handleEmergency(withAuth({ booking_id: BOOKING_ID }), { authUser: async () => ({ id: UID }), rpc: again.rpc });
+  assert.deepEqual(await res2.json(), { ok: true, status: 'already_sent' });
+  assert.equal(again.calls[0].args.p_note, null);
+});
+
+test('emergency: refusals from the database become plain codes', async () => {
+  const run = async (answer: unknown) => handleEmergency(withAuth({ booking_id: BOOKING_ID }), { authUser: async () => ({ id: UID }), rpc: fakeRpc({ raise_emergency: () => answer }).rpc });
+  assert.equal((await run('not_allowed')).status, 403);
+  assert.equal((await run('too_many')).status, 429);
+  assert.equal((await run('invalid')).status, 400);
+  assert.equal((await run('something new')).status, 502);
+  assert.equal((await run(new Error('db down'))).status, 502);
+});
+
+test('emergency: signed-in people only, valid input only, POST only', async () => {
+  const deps = { authUser: async () => ({ id: UID }), rpc: fakeRpc().rpc };
+  assert.equal((await handleEmergency(post({ booking_id: BOOKING_ID }), deps)).status, 401);
+  assert.equal((await handleEmergency(withAuth({ booking_id: BOOKING_ID }), { ...deps, authUser: async () => null })).status, 401);
+  for (const bad of [{}, { booking_id: 'x' }, { booking_id: BOOKING_ID, note: 5 }, { booking_id: BOOKING_ID, note: 'x'.repeat(501) }]) {
+    assert.equal((await handleEmergency(withAuth(bad), deps)).status, 400, JSON.stringify(bad));
+  }
+  assert.equal((await handleEmergency(new Request('https://f.test/', { method: 'GET' }), deps)).status, 405);
 });

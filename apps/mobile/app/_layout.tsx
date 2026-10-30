@@ -40,6 +40,12 @@ function Nav() {
         <Stack.Screen name="chat/[id]" options={{ title: '' }} />
         <Stack.Screen name="booking/[id]" options={{ title: '' }} />
         <Stack.Screen name="booking/done/[id]" options={{ title: '' }} />
+        <Stack.Screen name="handover/[id]" options={{ title: '' }} />
+        <Stack.Screen name="review/[id]" options={{ title: '' }} />
+        <Stack.Screen name="safety/index" options={{ title: tr('safety.title') }} />
+        <Stack.Screen name="safety/report" options={{ title: tr('safety.reportTitle') }} />
+        <Stack.Screen name="safety/blocked" options={{ title: tr('safety.blockedTitle') }} />
+        <Stack.Screen name="safety/emergency" options={{ title: tr('safety.emergencyTitle') }} />
         <Stack.Screen name="legal/[doc]" options={{ title: '' }} />
         <Stack.Screen name="showcase" options={{ title: tr('dev.title') }} />
       </Stack>

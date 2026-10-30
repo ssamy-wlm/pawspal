@@ -78,8 +78,9 @@ select * from public.get_booking_location(:'booking');
 reset role;
 
 \echo '--- T14 drop-off photo starts stay, owner completes, review works'
+insert into storage.objects (bucket_id, name) values ('handovers', 'bbbbbbbb-0000-0000-0000-000000000002/h1.jpg');
 set role authenticated; set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
-insert into public.handover_photos (booking_id, uploaded_by, kind, photo_path) values (:'booking', auth.uid(), 'dropoff', 'b/h1.jpg');
+select public.add_handover_photo(:'booking', 'dropoff', 'bbbbbbbb-0000-0000-0000-000000000002/h1.jpg') is not null as photo_saved;
 set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select public.complete_booking(:'booking');
 insert into public.reviews (booking_id, author_id, subject_id, rating, body) values (:'booking', auth.uid(), 'bbbbbbbb-0000-0000-0000-000000000002', 5, 'Lovely');
@@ -90,7 +91,7 @@ select first_name, rating_avg, stays_count from public.profiles where first_name
 
 \echo '--- T16 block hides profiles'
 set role authenticated; set request.jwt.claim.sub = 'cccccccc-0000-0000-0000-000000000003';
-insert into public.blocks values (auth.uid(), 'aaaaaaaa-0000-0000-0000-000000000001');
+select public.block_user('aaaaaaaa-0000-0000-0000-000000000001');
 select first_name from public.profile_cards order by 1;
 \echo '--- T17 non-admin enforcement (expect ERROR), then admin'
 select public.admin_take_action('aaaaaaaa-0000-0000-0000-000000000001','warning','x',null,false,'[]','x');

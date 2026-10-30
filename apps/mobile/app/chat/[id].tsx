@@ -9,6 +9,7 @@ import { TermsCard } from '../../src/components/TermsCard';
 import { TextField } from '../../src/components/TextField';
 import { useAuth } from '../../src/lib/auth';
 import { acceptedByMe, acceptedByOther, acceptTerms, Booking, cancelBooking, currentBookings, feePayerOf, fetchBookingFee, fetchBookingsBetween, fetchRefundPreview, payBookingFee, RefundPreview, termsText } from '../../src/lib/bookings';
+import { blockUser, hasReviewed, reviewOpen } from '../../src/lib/safety';
 import { Conversation, fetchConversations, fetchMessages, listenToActivity, listenToMessages, markRead, Message, PAGE_SIZE, sendMessage } from '../../src/lib/chat';
 import { fetchCard, fetchPet, PublicProfile } from '../../src/lib/profile';
 import { fontFamily, useTheme } from '../../src/theme';
@@ -47,12 +48,16 @@ export default function ChatScreen() {
   const [paying, setPaying] = React.useState(false);                  // the payment page is open in the browser
   const [payError, setPayError] = React.useState<string | null>(null);
   const [preview, setPreview] = React.useState<RefundPreview | null>(null);
+  const [reviewable, setReviewable] = React.useState<Booking | null>(null);   // a finished stay I can still review
+  const [sureBlock, setSureBlock] = React.useState(false);
   const firstLoad = React.useRef<Set<number> | null>(null);    // the messages present when the chat opened do not pop in
 
   const loadBookings = React.useCallback(async (otherId: string) => {
     const all = await fetchBookingsBetween(me, otherId).catch(() => [] as Booking[]);
     const current = currentBookings(all);
     setLegs(current);
+    const finished = all.find((b) => b.status === 'completed' && reviewOpen(b.ends_on));
+    setReviewable(finished && !(await hasReviewed(finished.id, me).catch(() => true)) ? finished : null);
     const names: Record<string, string> = {};
     await Promise.all(current.map(async (b) => { const p = await fetchPet(b.pet_id).catch(() => null); if (p) names[b.pet_id] = p.name; }));
     setPetNames((cur) => ({ ...cur, ...names }));
@@ -150,6 +155,11 @@ export default function ChatScreen() {
     try { await cancelBooking(legs[0].id); setSure(false); await loadBookings(other!.other_id); } catch { setSure(false); setError(tr('booking.cancelFailed')); } finally { setBusy(false); }
   };
 
+  const block = async () => {
+    if (!sureBlock) { setSureBlock(true); return; }
+    try { await blockUser(other!.other_id); router.back(); } catch { setSureBlock(false); setError(tr('safety.failed')); }
+  };
+
   if (state === 'loading') return null;
   if (state === 'failed' || !other) return <EmptyState message={tr('chat.loadFailed')} />;
 
@@ -199,6 +209,17 @@ export default function ChatScreen() {
       ) : !canRequest ? null : (
         <Button variant="secondary" title={tr('booking.request')} onPress={() => router.push(`/booking/new?other=${other.other_id}` as never)} />
       )}
+      {reviewable ? <Button variant="secondary" title={tr('review.leave')} onPress={() => router.push(`/review/${reviewable.id}` as never)} /> : null}
+      <View style={{ flexDirection: 'row', gap: 20 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={tr('chat.report', { name: other.first_name ?? '' })} style={{ minHeight: 44, justifyContent: 'center' }}
+          onPress={() => router.push(`/safety/report?user=${other.other_id}&name=${encodeURIComponent(other.first_name ?? '')}&conversation=${id}` as never)}>
+          <Text style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('medium', rtl) }}>{tr('chat.report', { name: other.first_name ?? '' })}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={sureBlock ? tr('chat.blockSure', { name: other.first_name ?? '' }) : tr('chat.block', { name: other.first_name ?? '' })} style={{ minHeight: 44, justifyContent: 'center' }}
+          onPress={() => { block().catch(() => {}); }}>
+          <Text style={{ color: sureBlock ? c.danger : c.textMuted, fontSize: 14, fontFamily: fontFamily(sureBlock ? 'bold' : 'medium', rtl) }}>{sureBlock ? tr('chat.blockSure', { name: other.first_name ?? '' }) : tr('chat.block', { name: other.first_name ?? '' })}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 

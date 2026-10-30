@@ -3,6 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.118.0';
 import type { Env } from './config.ts';
 import type { Rpc } from './http.ts';
 import type { StorageOps } from './handlers/process-upload.ts';
+import type { SignedUrlOps } from './handlers/handover-photo-url.ts';
 
 declare const Deno: { env: { get(name: string): string | undefined } };
 
@@ -42,6 +43,15 @@ export function storageOf(client: ReturnType<typeof adminClient>): StorageOps {
     },
     async remove(bucket, path) {
       await client.storage.from(bucket).remove([path]);
+    },
+  };
+}
+
+export function signedUrlsOf(client: ReturnType<typeof adminClient>): SignedUrlOps {
+  return {
+    async signedUrl(bucket, path, seconds) {
+      const { data, error } = await client.storage.from(bucket).createSignedUrl(path, seconds);
+      return error || !data ? null : data.signedUrl;
     },
   };
 }

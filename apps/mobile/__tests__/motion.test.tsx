@@ -6,6 +6,7 @@ import { Blob } from '../src/components/Blob';
 import { CheckStamp } from '../src/components/CheckStamp';
 import { ChatBubble } from '../src/components/ChatBubble';
 import { HeartBurst, HeartBurstHandle } from '../src/components/HeartBurst';
+import { MapCard } from '../src/components/MapCard';
 import { PinDrop } from '../src/components/PinDrop';
 import { TermsCard } from '../src/components/TermsCard';
 import { ease, entranceSpec, M } from '../src/motion';
@@ -104,5 +105,39 @@ describe('Reduce Motion turns off loops and overshoot', () => {
     await renderIn(<HeartBurst ref={ref2} />);
     await act(async () => { ref2.current?.burst(); });
     expect(timing).toHaveBeenCalled();
+  });
+});
+
+describe('the "Exact pin unlocked" chip (docs/motion.md section 6, item 5)', () => {
+  afterEach(() => { reduceMotion(false); jest.restoreAllMocks(); });
+  const atChipTime = (spy: jest.SpyInstance) => spy.mock.calls.filter(([delay]) => delay === 1700);
+
+  it('slides down 20 px and fades in at 1700 ms', async () => {
+    const delay = jest.spyOn(Reanimated, 'withDelay');
+    const timing = jest.spyOn(Reanimated, 'withTiming');
+    reduceMotion(false);
+    await renderIn(<MapCard exact lat={28.5} lng={34.5} />);
+    expect(atChipTime(delay)).toHaveLength(1);
+    expect(timing.mock.calls.some(([, cfg]) => cfg?.duration === 400 && cfg?.easing === ease.out)).toBe(true);
+    expect(screen.getByText('Exact pin unlocked')).toBeTruthy();
+  });
+
+  it('only fades in over 200 ms with Reduce Motion, and still shows the chip', async () => {
+    const delay = jest.spyOn(Reanimated, 'withDelay');
+    const timing = jest.spyOn(Reanimated, 'withTiming');
+    reduceMotion(true);
+    await renderIn(<MapCard exact lat={28.5} lng={34.5} />);
+    expect(atChipTime(delay)).toHaveLength(1);
+    const fades = timing.mock.calls.filter(([, cfg]) => cfg?.duration === 200);
+    expect(fades.length).toBeGreaterThan(0);
+    for (const [, cfg] of fades) expect(cfg?.reduceMotion).toBe(Reanimated.ReduceMotion.Never);
+    expect(screen.getByText('Exact pin unlocked')).toBeTruthy();
+  });
+
+  it('the approximate-area chip does not animate', async () => {
+    const delay = jest.spyOn(Reanimated, 'withDelay');
+    reduceMotion(false);
+    await renderIn(<MapCard />);
+    expect(atChipTime(delay)).toHaveLength(0);
   });
 });
