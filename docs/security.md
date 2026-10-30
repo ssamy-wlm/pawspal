@@ -37,7 +37,7 @@ Goal: a fake person, a thief or a careless user cannot hurt a pet, steal a locat
 ## Before launch: security checklist
 
 - [ ] Supabase: RLS enabled on all tables (run the Security Advisor and fix every warning)
-- [ ] Supabase: email sign-up disabled; phone only; OTP expiry 300 s; rate limits set
+- [ ] Supabase: people sign up by phone only (the email provider is on for invited admins; the database refuses any other email sign-up); OTP expiry 300 s; rate limits set
 - [ ] Storage buckets private; signed URL expiry 1 hour or less
 - [ ] Google Maps keys restricted to app IDs and to the Maps and Places APIs only; budget alert set
 - [x] Paymob webhook HMAC verified, and tested with a forged request (must be rejected): `supabase/functions/_shared/payments.test.ts`

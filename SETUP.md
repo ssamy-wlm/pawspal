@@ -41,7 +41,7 @@ Written for a non-developer. Do the steps in order. Anything in `code style` is 
 2. In **Project Settings → API**, copy the **Project URL** and the **anon public** key.
 3. Copy `apps/mobile/.env.example` to `apps/mobile/.env.local` and paste both values in. This file is never uploaded (it's in `.gitignore`).
 4. **Never** copy the `service_role` key into the app, a chat or GitHub. It goes only into Supabase Edge Function secrets (phase 2 and later).
-5. In **Authentication → Providers**: turn **Phone** on and **Email** off. Twilio details come in phase 2.
+5. In **Authentication → Providers**: turn **Phone** on. Twilio details come in phase 2. Phase 8 turns **Email** on too (see E10): it is only for the admin dashboard, and the database refuses any email sign-up that was not invited.
 
 ## E. Start building with Claude Code
 
@@ -143,6 +143,27 @@ Nothing to set up: no new accounts or secrets. What to know:
 - **Emergency** alerts the other person inside the app (a red banner at the top of the Chat tab) and opens a **high-priority report** for the team (`reports.priority = 'high'`, `emergency = true`). It does **not** send a text message or a push notification yet: those need the SMS provider (E5) and the notifications work in phase 9. The emergency screen shows the vet's number first so the person can call straight away.
 - **Reviews** are possible only after the owner marks the stay finished, once per person, for 14 days. Phone numbers and links in a review are hidden.
 - **Reports** reach the admin dashboard (phase 8). Until it exists, you can read them in the Supabase table editor (`reports`, newest high-priority first).
+
+## E10. Admin dashboard (phase 8)
+
+The dashboard is the website in `apps/admin` (Vercel). Admin power needs **three things at once**: a password, a six digit code from an authenticator app, and a place in the admins list. The database checks the code on every request, so a stolen password alone opens nothing.
+
+**One-time settings**
+1. Supabase → **Authentication → Providers → Email**: switch it **on**. It is only for admins: the database refuses every email sign-up that was not invited first, and people still join with their phone only.
+2. Same area: make sure **Multi-Factor (authenticator app / TOTP)** is enabled (it is by default).
+3. Vercel → your admin project → **Settings → Environment Variables** (all environments): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the same public values as the app) and `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (the same Cloudflare Turnstile site key as the app; add the admin site's address to that widget's allowed hostnames in Cloudflare). Supabase asks for the Turnstile check on every sign-in, so without the key the sign-in button stays off.
+
+**Make yourself the first admin** (Supabase → **SQL Editor**; only you, as project owner, can do this):
+1. Run `select private.invite_admin('you@example.com');` (your real email).
+2. **Authentication → Users → Add user → Create new user.** Same email, a long password from your password manager, and tick **Auto Confirm User**.
+3. Run `select private.grant_admin('you@example.com');`. It must answer `granted`. (`no_user`: step 2 was not done. `no_invite`: step 1 was not done. `not_confirmed`: tick Auto Confirm.)
+4. Open the admin site, sign in with the email and password. The first time it shows a QR code: scan it with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password) and type the six digit code. Keep the app safe: that code is your second key.
+
+**Lost your phone?** In the SQL Editor run `delete from auth.mfa_factors where user_id = (select id from auth.users where email = 'you@example.com');`, then sign in again and scan a new QR code.
+
+**Adding or removing an admin:** repeat the three steps for a new person. To remove one: `select private.revoke_admin('their@email.com');` (it takes effect at once, even for a page they have open). Keep the list short: admins can read reports, photos and reported chats (every chat read is written to the audit log).
+
+**What admins can and cannot do:** every change goes through an audited database function (warn, suspend 3 or 7 days or until fixed, remove, reinstate, approve, decide appeals, resolve reports, remove a photo). Nobody can edit or delete the audit log, an admin cannot act on an admin (or on themselves), and a removed person's phone, ID and device are blocked. Fixed-length suspensions end by themselves (a job runs every 15 minutes; check with `select * from cron.job;`, it should list `lift-expired-suspensions`). The admin site signs itself out after 30 minutes without use.
 
 ## F. Secrets checklist
 

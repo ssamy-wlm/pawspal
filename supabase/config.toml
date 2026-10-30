@@ -218,8 +218,9 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# PawsPal is phone-only (docs/security.md). Email sign-up stays off.
-enable_signup = false
+# PawsPal people sign up by phone only (docs/security.md). The email provider is on so invited admins can sign in with a
+# password and an authenticator code. The database refuses every email sign-up that was not invited (handle_new_user).
+enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
@@ -303,8 +304,9 @@ max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+# Admins sign in with an authenticator-app code (the dashboard and is_admin() both require it).
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]

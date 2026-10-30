@@ -17,4 +17,5 @@ PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres
 PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/chat_assertions.sql
 PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/payment_assertions.sql
 PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/safety_assertions.sql
+PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/admin_assertions.sql
 python3 scripts/check-legal-versions.py "env PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres"

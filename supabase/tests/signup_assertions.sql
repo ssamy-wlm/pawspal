@@ -167,8 +167,8 @@ select pg_temp.check((pg_temp.as_role('authenticated', 'a4a4a4a4-0000-0000-0000-
 
 \echo '--- S10 once approved, the person gets in'
 select public.admin_take_action('a3a3a3a3-0000-0000-0000-000000000003', 'approval', null, null, false, '[]', 'Welcome') is not null as approved_by_admin
-  from (select set_config('request.jwt.claim.sub', 'dddddddd-0000-0000-0000-000000000004', false)) x;
-select set_config('request.jwt.claim.sub', '', false);
+  from (select set_config('request.jwt.claim.sub', 'dddddddd-0000-0000-0000-000000000004', false), set_config('request.jwt.claims', '{"aal":"aal2"}', false)) x;
+select set_config('request.jwt.claim.sub', '', false), set_config('request.jwt.claims', '', false);
 select pg_temp.check((select status = 'active' from public.profiles where id = 'a3a3a3a3-0000-0000-0000-000000000003'), 'an admin approval makes the profile active');
 select pg_temp.check(pg_temp.count_as('a3a3a3a3-0000-0000-0000-000000000003', $$select count(*) from public.profile_cards where first_name = 'host'$$) = 1, 'after approval the person sees hosts');
 

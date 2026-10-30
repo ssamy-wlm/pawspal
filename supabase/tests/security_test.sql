@@ -95,10 +95,10 @@ select public.block_user('aaaaaaaa-0000-0000-0000-000000000001');
 select first_name from public.profile_cards order by 1;
 \echo '--- T17 non-admin enforcement (expect ERROR), then admin'
 select public.admin_take_action('aaaaaaaa-0000-0000-0000-000000000001','warning','x',null,false,'[]','x');
-set request.jwt.claim.sub = 'dddddddd-0000-0000-0000-000000000004';
+set request.jwt.claim.sub = 'dddddddd-0000-0000-0000-000000000004'; set request.jwt.claims = '{"aal":"aal2"}';
 select public.admin_take_action('cccccccc-0000-0000-0000-000000000003','suspension','Keep payments in the app',null,true,'["Stop asking for off-app payment"]','Please keep payments in the app') is not null as action_ok;
 select action, target_user is not null as has_target from public.audit_log;
-reset role;
+reset role; set request.jwt.claims = '';
 select first_name, status from public.profiles where first_name='cccccccc';
 \echo '--- T18 suspended user cannot message or list (expect ERROR)'
 set role authenticated; set request.jwt.claim.sub = 'cccccccc-0000-0000-0000-000000000003';
