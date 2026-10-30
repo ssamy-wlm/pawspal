@@ -31,6 +31,7 @@ grant execute on function public.admin_status() to authenticated;
 -- ---------------------------------------------------------------- adding and removing admins (SQL editor only)
 create table private.admin_invites (
   email      text primary key check (email = lower(btrim(email)) and email like '%_@_%'),
+  user_id    uuid,                                   -- the account made for this invite (an invite is used once)
   created_at timestamptz not null default now()
 );
 
@@ -47,9 +48,11 @@ create or replace function private.grant_admin(p_email text)
 returns text language plpgsql security definer set search_path = public, private, auth as $$
 declare v_id uuid; v_confirmed timestamptz;
 begin
-  select id, email_confirmed_at into v_id, v_confirmed from auth.users where lower(email) = lower(btrim(p_email));
+  select id, email_confirmed_at into v_id, v_confirmed from auth.users where lower(email) = lower(btrim(p_email)) and phone is null;
   if v_id is null then return 'no_user'; end if;
-  if not exists (select 1 from private.admin_invites where email = lower(btrim(p_email))) then return 'no_invite'; end if;
+  -- The account must be the one made for this invite, made after it, with a confirmed email.
+  if not exists (select 1 from private.admin_invites i join auth.users u on u.id = v_id
+                  where i.email = lower(btrim(p_email)) and i.user_id = v_id and u.created_at >= i.created_at) then return 'no_invite'; end if;
   if v_confirmed is null then return 'not_confirmed'; end if;
   insert into public.admins (user_id) values (v_id) on conflict do nothing;
   insert into public.audit_log (admin_id, action, target_user, details)
@@ -78,7 +81,8 @@ create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public, private, extensions as $$
 begin
   if new.phone is null and new.email is not null
-     and exists (select 1 from private.admin_invites where email = lower(btrim(new.email))) then
+     and exists (select 1 from private.admin_invites where email = lower(btrim(new.email)) and user_id is null) then
+    update private.admin_invites set user_id = new.id where email = lower(btrim(new.email));   -- one account per invite
     insert into public.profiles (id, phone_verified) values (new.id, false);
     return new;
   end if;
@@ -144,6 +148,7 @@ begin
   -- A suspension is 3 days, 7 days or until fixed: exactly one of them. Nothing else has a length.
   if p_action = 'suspension' and ((p_duration_days is null) = (not v_until)) then raise exception 'choose 3 days, 7 days or until fixed'; end if;
   if p_action <> 'suspension' and (p_duration_days is not null or v_until) then raise exception 'only a suspension has a length'; end if;
+  if p_duration_days is not null and p_duration_days not in (3, 7) then raise exception 'choose 3 days, 7 days or until fixed'; end if;
 
   v_to := case p_action
     when 'suspension'    then 'suspended'
@@ -157,7 +162,10 @@ begin
   if p_action = 'removal' then
     insert into public.banned_identifiers (kind, hash) select kind, hash from private.identity_hashes(p_user) on conflict do nothing;
   elsif p_action = 'reinstatement' and v_from = 'removed' then
-    delete from public.banned_identifiers b using private.identity_hashes(p_user) h where b.kind = h.kind and b.hash = h.hash;
+    delete from public.banned_identifiers b using private.identity_hashes(p_user) h
+     where b.kind = h.kind and b.hash = h.hash
+       and not exists (select 1 from public.profiles p2 cross join lateral private.identity_hashes(p2.id) h2
+                        where p2.status = 'removed' and p2.id <> p_user and h2.kind = b.kind and h2.hash = b.hash);
   end if;
 
   insert into public.enforcement_actions (user_id, action, rule, duration_days, until_fixed, checklist, message, admin_id, ends_at)
@@ -173,6 +181,14 @@ begin
 end $$;
 revoke execute on function public.admin_take_action(uuid, public.action_type, text, integer, boolean, jsonb, text) from public, anon;
 grant execute on function public.admin_take_action(uuid, public.action_type, text, integer, boolean, jsonb, text) to authenticated;
+
+-- ---------------------------------------------------------------- chats are read through the audited function only
+-- (admin_report_messages is security definer, so it still works). Before, an admin could read any chat straight from the table.
+drop policy "participants read messages" on public.messages;
+create policy "participants read messages" on public.messages
+  for select to authenticated using (
+    exists (select 1 from public.conversations c where c.id = conversation_id and auth.uid() in (c.user_a, c.user_b))
+  );
 
 -- ---------------------------------------------------------------- reports
 create or replace function public.admin_set_report_status(p_report uuid, p_status public.report_status, p_note text default null)

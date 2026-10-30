@@ -9,11 +9,23 @@ cc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cc)
 
 
-def p(text):
-    return cc.problems(tomllib.loads(text))
+SAFE_ADMIN = '[auth]\nminimum_password_length = 12\npassword_requirements = "lower_upper_letters_digits"\n[auth.email]\nenable_confirmations = true\n[auth.mfa.totp]\nenroll_enabled = true\nverify_enabled = true\n'
+
+
+def p(text, admin=SAFE_ADMIN):
+    return cc.problems(tomllib.loads(text + '\n' + admin))
 
 
 class CheckConfig(unittest.TestCase):
+    def test_admin_settings(self):
+        self.assertEqual(p(''), [])
+        self.assertTrue(p('', admin=SAFE_ADMIN.replace('= 12', '= 8')))
+        self.assertTrue(p('', admin=SAFE_ADMIN.replace('password_requirements = "lower_upper_letters_digits"\n', '')))
+        self.assertTrue(p('', admin=SAFE_ADMIN.replace('enable_confirmations = true', 'enable_confirmations = false')))
+        self.assertTrue(p('', admin=SAFE_ADMIN.replace('verify_enabled = true', 'verify_enabled = false')))
+        self.assertTrue(p('', admin=''))
+
+
     def test_clean(self):
         self.assertEqual(p('[auth.sms.test_otp]\n[auth.sms.twilio]\nenabled = false\nauth_token = "env(X_TOKEN)"\n'), [])
 

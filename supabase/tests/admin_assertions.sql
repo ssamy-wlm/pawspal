@@ -4,11 +4,11 @@
 \i supabase/tests/helpers.sql
 
 select private.invite_admin('boss@example.com');
-insert into auth.users (id, phone, phone_confirmed_at, email, email_confirmed_at) values
-  ('a8a8a8a8-0000-0000-0000-000000000001', null, null, 'boss@example.com', now()),                 -- the founder: an invited email
-  ('a9a9a9a9-0000-0000-0000-000000000002', '201277600002', now(), null, null),                      -- Una, a normal user
-  ('aaaaaaa1-0000-0000-0000-000000000003', '201277600003', now(), null, null),                      -- Vik, a normal user
-  ('aaaaaaa2-0000-0000-0000-000000000004', '201277600004', now(), null, null);                      -- Wes, waiting for review
+insert into auth.users (id, phone, phone_confirmed_at, email, email_confirmed_at, created_at) values
+  ('a8a8a8a8-0000-0000-0000-000000000001', null, null, 'boss@example.com', now(), now()),                 -- the founder: an invited email
+  ('a9a9a9a9-0000-0000-0000-000000000002', '201277600002', now(), null, null, now()),                      -- Una, a normal user
+  ('aaaaaaa1-0000-0000-0000-000000000003', '201277600003', now(), null, null, now()),                      -- Vik, a normal user
+  ('aaaaaaa2-0000-0000-0000-000000000004', '201277600004', now(), null, null, now());                      -- Wes, waiting for review
 update public.profiles set first_name = 'Una', role = 'both', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'a9a9a9a9-0000-0000-0000-000000000002';
 update public.profiles set first_name = 'Vik', role = 'both', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'aaaaaaa1-0000-0000-0000-000000000003';
 update public.profiles set first_name = 'Wes', role = 'both', status = 'pending_review' where id = 'aaaaaaa2-0000-0000-0000-000000000004';
@@ -38,6 +38,9 @@ delete from private.admin_invites;
 select pg_temp.check(private.grant_admin('boss@example.com') = 'no_invite', 'an email that was never invited became an admin');
 select pg_temp.check(private.grant_admin('nobody@example.com') = 'no_user', 'a missing account became an admin');
 select pg_temp.check(left(private.invite_admin('Boss@Example.com '), 7) = 'invited', 'the invite was not recorded');
+select pg_temp.check((select user_id is null from private.admin_invites where email = 'boss@example.com'), 'a fresh invite already has an account');
+select pg_temp.check(private.grant_admin('boss@example.com') = 'no_invite', 'an invite not tied to the account made an admin');
+update private.admin_invites set user_id = 'a8a8a8a8-0000-0000-0000-000000000001', created_at = now() - interval '1 hour' where email = 'boss@example.com';
 select pg_temp.check(not exists (select 1 from public.admins where user_id = 'a8a8a8a8-0000-0000-0000-000000000001'), 'an invite alone made an admin');
 select pg_temp.check(private.grant_admin('boss@example.com') = 'granted', 'an invited, confirmed account could not become an admin');
 select pg_temp.check(exists (select 1 from public.admins where user_id = 'a8a8a8a8-0000-0000-0000-000000000001'), 'the admin row is missing');
@@ -51,6 +54,13 @@ select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002',
 select pg_temp.fails_as('anon', null, $$select private.invite_admin('x@y.com')$$, 'anon called invite_admin');
 select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', $$insert into public.admins values ('a9a9a9a9-0000-0000-0000-000000000002')$$, 'a user made themselves an admin');
 select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', $$insert into private.admin_invites values ('me@x.com')$$, 'a user invited themselves');
+
+select pg_temp.fails($$insert into auth.users (id, email, email_confirmed_at) values (gen_random_uuid(), 'boss@example.com', now())$$, 'a second account was made for a used invite');
+select private.invite_admin('phoneuser@example.com');
+update auth.users set email = 'phoneuser@example.com', email_confirmed_at = now() where id = 'a9a9a9a9-0000-0000-0000-000000000002';
+select pg_temp.check(private.grant_admin('phoneuser@example.com') = 'no_user', 'a phone account that took an invited email became an admin');
+update auth.users set email = null, email_confirmed_at = null where id = 'a9a9a9a9-0000-0000-0000-000000000002';
+delete from private.admin_invites where email = 'phoneuser@example.com';
 
 \echo '--- D2 an email account without an invite cannot sign up, and a phone sign-up still works'
 select pg_temp.fails($$insert into auth.users (id, email, email_confirmed_at) values (gen_random_uuid(), 'stranger@example.com', now())$$, 'an uninvited email account was created');
@@ -79,6 +89,8 @@ select pg_temp.fails_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0
 select pg_temp.fails_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0000-0000-0000-000000000002', 'suspension', 'x', null, false, '[]', 'x')$$, 'a suspension with no length');
 select pg_temp.fails_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0000-0000-0000-000000000002', 'suspension', 'x', 3, true, '[]', 'x')$$, 'a suspension with two lengths');
 select pg_temp.fails_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0000-0000-0000-000000000002', 'suspension', 'x', 5, false, '[]', 'x')$$, 'a suspension of 5 days');
+select pg_temp.fails_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0000-0000-0000-000000000002', 'suspension', 'x', -3, false, '[]', 'x')$$, 'a suspension of minus 3 days');
+select pg_temp.fails_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0000-0000-0000-000000000002', 'suspension', 'x', 999999999, false, '[]', 'x')$$, 'a huge suspension');
 select pg_temp.fails_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0000-0000-0000-000000000002', 'warning', 'x', 3, false, '[]', 'x')$$, 'a warning with a length');
 select pg_temp.fails_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0000-0000-0000-000000000002', 'warning', 'x', null, false, '{}', 'x')$$, 'a checklist that is not a list');
 select pg_temp.fails_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0000-0000-0000-000000000002', 'reinstatement', null, null, false, '[]', null)$$, 'reinstating someone who is active');
@@ -110,6 +122,17 @@ select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002',
 select pg_temp.fails_admin('aal2', $$delete from public.audit_log$$, 'an admin deleted the audit log');
 select pg_temp.fails_admin('aal2', $$update public.audit_log set action = 'x'$$, 'an admin edited the audit log');
 
+-- two removed accounts that share a device: reinstating one must not lift the ban the other still needs
+insert into auth.users (id, phone, phone_confirmed_at) values ('aaaaaaa3-0000-0000-0000-000000000005', '201277600005', now());
+update public.profiles set first_name = 'Xan', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'aaaaaaa3-0000-0000-0000-000000000005';
+insert into private.identity_fingerprints (kind, hash, user_id) values ('device', 'devhash-shared', 'aaaaaaa3-0000-0000-0000-000000000005'), ('device', 'devhash-shared', 'aaaaaaa1-0000-0000-0000-000000000003');
+select pg_temp.as_admin('aal2', $$select public.admin_take_action('aaaaaaa3-0000-0000-0000-000000000005', 'removal', 'Fraud', null, false, '[]', 'Removed')$$);
+select pg_temp.as_admin('aal2', $$select public.admin_take_action('aaaaaaa1-0000-0000-0000-000000000003', 'removal', 'Fraud', null, false, '[]', 'Removed')$$);
+select pg_temp.as_admin('aal2', $$select public.admin_take_action('aaaaaaa1-0000-0000-0000-000000000003', 'reinstatement', null, null, false, '[]', 'Mistake')$$);
+select pg_temp.check(exists (select 1 from public.banned_identifiers where hash = 'devhash-shared'), 'reinstating one person lifted a ban another removed person still needs');
+select pg_temp.as_admin('aal2', $$select public.admin_take_action('aaaaaaa3-0000-0000-0000-000000000005', 'reinstatement', null, null, false, '[]', 'Mistake')$$);
+select pg_temp.check(not exists (select 1 from public.banned_identifiers where hash = 'devhash-shared'), 'the shared ban stayed after both people were reinstated');
+
 \echo '--- D6 reports'
 insert into public.reports (id, reporter_id, reported_id, reason, details, priority) values
   ('a0000000-0000-0000-0000-000000000001', 'a9a9a9a9-0000-0000-0000-000000000002', 'aaaaaaa1-0000-0000-0000-000000000003', 'rude_or_harassment', 'rude', 'normal');
@@ -127,6 +150,7 @@ insert into public.messages (conversation_id, sender_id, body) values ('a1000000
 update public.reports set conversation_id = 'a1000000-0000-0000-0000-000000000001' where id = 'a0000000-0000-0000-0000-000000000001';
 select pg_temp.check(pg_temp.as_admin('aal2', $$select count(*) from public.admin_report_messages('a0000000-0000-0000-0000-000000000001')$$)::int = 1, 'the admin could not read the reported conversation');
 select pg_temp.check((select count(*) = 1 from public.audit_log where action = 'read_conversation'), 'reading a chat was not audited');
+select pg_temp.check(pg_temp.as_admin('aal2', 'select count(*) from public.messages')::int = 0, 'an admin read chats straight from the table, skipping the audit log');
 select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', $$select * from public.admin_report_messages('a0000000-0000-0000-0000-000000000001')$$, 'a user read a chat through the admin function');
 
 \echo '--- D7 appeals'

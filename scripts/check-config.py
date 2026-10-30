@@ -36,7 +36,21 @@ def problems(cfg: dict) -> list[str]:
         if twilio.get('account_sid') == 'local-placeholder':
             out.append(f'{tag}: the local placeholder SMS provider is enabled.')
 
+    def check_admin_settings(tag, root):
+        # Admins sign in with email and password, so these must not be loosened.
+        auth = root.get('auth', {})
+        if auth.get('minimum_password_length', 0) < 12:
+            out.append(f'{tag}: [auth] minimum_password_length must be at least 12 (admins use passwords).')
+        if not auth.get('password_requirements'):
+            out.append(f'{tag}: [auth] password_requirements must be set (letters and digits).')
+        if not auth.get('email', {}).get('enable_confirmations', False):
+            out.append(f'{tag}: [auth.email] enable_confirmations must stay true (it stops someone registering an invited admin email).')
+        totp = auth.get('mfa', {}).get('totp', {})
+        if not (totp.get('enroll_enabled') and totp.get('verify_enabled')):
+            out.append(f'{tag}: [auth.mfa.totp] enroll_enabled and verify_enabled must be true (admins need the authenticator code).')
+
     check_table('config.toml', cfg)
+    check_admin_settings('config.toml', cfg)
     for name, remote in cfg.get('remotes', {}).items():
         check_table(f'remotes.{name}', remote)
 
