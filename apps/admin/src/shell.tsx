@@ -83,8 +83,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   if (state.kind === 'enroll') return <Centered><Code enroll={{ qr: state.qr, secret: state.secret }} /></Centered>;
   if (state.kind === 'ask_code') return <Centered><Code /></Centered>;
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: C.background }}>
-      <nav aria-label="Main" style={{ width: 230, flexShrink: 0, background: C.dark.background, color: C.dark.text, padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div className="shell" style={{ display: 'flex', minHeight: '100vh', background: C.background }}>
+      <nav aria-label="Main" className="sidenav" style={{ position: 'sticky', top: 0, height: '100vh', overflowY: 'auto', width: 230, flexShrink: 0, background: C.dark.background, color: C.dark.text, padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/pawspal-logo.svg" alt="PawsPal Dahab" width={96} height={96} style={{ alignSelf: 'center', marginBottom: 12 }} />
         {NAV.map(([href, label]) => {
@@ -96,7 +96,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <button onClick={() => { signOut().catch(() => {}); }} style={{ minHeight: 40, borderRadius: 999, border: `2px solid ${C.dark.primary}`, background: 'transparent', color: C.dark.text, fontWeight: 600, cursor: 'pointer' }}>Sign out</button>
         </div>
       </nav>
-      <main style={{ flex: 1, minWidth: 0, color: C.text }}>{children}</main>
+      <main className="page" style={{ flex: 1, minWidth: 0, color: C.text }}>{children}</main>
     </div>
   );
 }

@@ -21,6 +21,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
         }}
       >
+        <style>{`@media (max-width: 800px) { .shell { flex-direction: column !important; } .sidenav { width: auto !important; flex-direction: row !important; flex-wrap: wrap; height: auto !important; position: static !important; } .sidenav img { display: none; } .page > div { padding: 16px !important; } }`}</style>
         <AuthProvider>
           <Shell>{children}</Shell>
         </AuthProvider>

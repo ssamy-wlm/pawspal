@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { actionArgs, actionsFor, cleanCode, gateFor, IDLE_LIMIT_MS, isIdle, looksLikeId, validateAction, type ActionForm } from './rules.ts';
+import { confirmLabel, nice, actionArgs, actionsFor, cleanCode, gateFor, IDLE_LIMIT_MS, isIdle, looksLikeId, validateAction, type ActionForm } from './rules.ts';
 
 const form = (over: Partial<ActionForm> = {}): ActionForm => ({ action: 'warning', rule: 'Real photos only', message: 'Please use real photos', length: '3', checklist: '', ...over });
 
@@ -52,4 +52,13 @@ test('idle sign-out and code cleaning', () => {
   assert.equal(cleanCode('1234567'), null);
   assert.equal(looksLikeId('6f1c2a40-1111-4222-8333-444455556666'), true);
   assert.equal(looksLikeId('Mona'), false);
+});
+
+test('a suspension needs a length, and the confirm button names it', () => {
+  assert.match(validateAction('active', form({ action: 'suspension', length: '' }))!, /how long/);
+  assert.equal(validateAction('active', form({ action: 'suspension', length: '7' })), null);
+  assert.equal(confirmLabel({ action: 'suspension', length: '7' }), 'Yes, suspend for 7 days');
+  assert.equal(confirmLabel({ action: 'suspension', length: 'fixed' }), 'Yes, suspend until fixed');
+  assert.equal(confirmLabel({ action: 'removal', length: '' }), 'Yes, remove and ban this person');
+  assert.equal(nice('terms_agreed_now'), 'terms agreed now');
 });

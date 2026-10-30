@@ -1,7 +1,8 @@
 'use client';
 import React from 'react';
+import { nice } from '../../src/rules';
 import { searchUsers } from '../../src/data';
-import { Badge, Card, Err, Field, H1, inputStyle, Muted, pageStyle, PersonLink, statusTone, Table, Td, useLoad, day } from '../../src/ui';
+import { Badge, Card, Status, Field, H1, inputStyle, Muted, pageStyle, PersonLink, statusTone, Table, Td, useLoad, day } from '../../src/ui';
 
 export default function Users() {
   const [query, setQuery] = React.useState('');
@@ -22,15 +23,15 @@ export default function Users() {
           </select>
         </Field>
       </div>
-      <Err>{list.error}</Err>
+      <Status l={list} />
       <Card>
-        {list.data && list.data.length === 0 ? <Muted>No one found.</Muted> : (
+        {!list.loading && list.data && list.data.length === 0 ? <Muted>No one found.</Muted> : (
           <Table head={['Name', 'Status', 'Role', 'Area', 'Joined']}>
             {(list.data ?? []).map((p) => (
               <tr key={p.id}>
                 <Td><PersonLink id={p.id} name={p.first_name} /></Td>
-                <Td><Badge tone={statusTone(p.status)}>{p.status.replace('_', ' ')}</Badge></Td>
-                <Td>{p.role}</Td><Td>{p.area ?? ''}</Td><Td>{day(p.created_at)}</Td>
+                <Td><Badge tone={statusTone(p.status)}>{nice(p.status)}</Badge></Td>
+                <Td>{nice(p.role)}</Td><Td>{p.area ?? ''}</Td><Td>{day(p.created_at)}</Td>
               </tr>
             ))}
           </Table>

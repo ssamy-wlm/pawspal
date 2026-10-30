@@ -1,15 +1,19 @@
 'use client';
 import React from 'react';
 import { getReportChat, getReports, refusal, setReportStatus, type ChatLine, type ReportRow } from '../../src/data';
-import { REPORT_REASONS } from '../../src/rules';
-import { Badge, Btn, Card, C, Err, Field, H1, inputStyle, Muted, pageStyle, PersonLink, statusTone, useLoad, when } from '../../src/ui';
+import { nice, REPORT_REASONS } from '../../src/rules';
+import { Badge, Btn, Card, C, Err, Field, H1, inputStyle, Muted, pageStyle, PersonLink, Status, statusTone, useLoad, when } from '../../src/ui';
+
+const toggle = (on: boolean): React.CSSProperties => ({ minHeight: 40, padding: '0 18px', borderRadius: 999, border: `2px solid ${C.primary}`, background: on ? C.primary : 'transparent', color: on ? C.onPrimary : C.primary, fontWeight: 600, cursor: 'pointer' });
 
 function Report({ r, onChanged }: { r: ReportRow; onChanged: () => void }) {
   const [note, setNote] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [chat, setChat] = React.useState<ChatLine[] | null>(null);
+  const [pending, setPending] = React.useState<string | null>(null);
   const change = async (status: 'in_review' | 'resolved' | 'dismissed') => {
+    if (status !== 'in_review' && pending !== status) { setPending(status); return; }
     setBusy(true); setError(null);
     try { await setReportStatus(r.id, status, note); onChanged(); } catch (e) { setError(refusal(e)); } finally { setBusy(false); }
   };
@@ -23,7 +27,7 @@ function Report({ r, onChanged }: { r: ReportRow; onChanged: () => void }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         {r.emergency ? <Badge tone="bad">Emergency</Badge> : null}
         <Badge tone={r.priority === 'high' ? 'bad' : 'neutral'}>{r.priority} priority</Badge>
-        <Badge tone={statusTone(r.status)}>{r.status.replace('_', ' ')}</Badge>
+        <Badge tone={statusTone(r.status)}>{nice(r.status)}</Badge>
         <strong>{REPORT_REASONS[r.reason] ?? r.reason}</strong>
         <span style={{ color: C.textMuted, fontSize: 14 }}>{when(r.created_at)}</span>
       </div>
@@ -47,8 +51,9 @@ function Report({ r, onChanged }: { r: ReportRow; onChanged: () => void }) {
           <Err>{error}</Err>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {r.status === 'new' ? <Btn kind="secondary" disabled={busy} onClick={() => { change('in_review').catch(() => {}); }}>Start review</Btn> : null}
-            <Btn disabled={busy} onClick={() => { change('resolved').catch(() => {}); }}>Resolve</Btn>
-            <Btn kind="secondary" disabled={busy} onClick={() => { change('dismissed').catch(() => {}); }}>Dismiss</Btn>
+            <Btn kind="secondary" disabled={busy} onClick={() => { change('resolved').catch(() => {}); }}>{pending === 'resolved' ? 'Yes, mark resolved' : 'Resolve'}</Btn>
+            <Btn kind="secondary" disabled={busy} onClick={() => { change('dismissed').catch(() => {}); }}>{pending === 'dismissed' ? 'Yes, dismiss it' : 'Dismiss'}</Btn>
+            {pending ? <Btn kind="secondary" onClick={() => setPending(null)}>Cancel</Btn> : null}
           </div>
           <Muted>To warn, suspend or remove, open the person&apos;s page.</Muted>
         </>
@@ -64,11 +69,11 @@ export default function Reports() {
     <div style={pageStyle}>
       <H1 sub="High priority first. Emergencies come from the Safety Center in the app.">Reports</H1>
       <div style={{ display: 'flex', gap: 8 }}>
-        <Btn kind={open ? 'primary' : 'secondary'} onClick={() => setOpen(true)}>Open</Btn>
-        <Btn kind={open ? 'secondary' : 'primary'} onClick={() => setOpen(false)}>Closed</Btn>
+        <button aria-pressed={open} onClick={() => setOpen(true)} style={toggle(open)}>Open</button>
+        <button aria-pressed={!open} onClick={() => setOpen(false)} style={toggle(!open)}>Closed</button>
       </div>
-      <Err>{list.error}</Err>
-      {list.data && list.data.length === 0 ? <Muted>{open ? 'No open reports.' : 'No closed reports yet.'}</Muted> : null}
+      <Status l={list} />
+      {!list.loading && list.data && list.data.length === 0 ? <Muted>{open ? 'No open reports.' : 'No closed reports yet.'}</Muted> : null}
       {(list.data ?? []).map((r) => <Report key={r.id} r={r} onChanged={list.reload} />)}
     </div>
   );

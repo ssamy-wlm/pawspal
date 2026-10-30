@@ -25,11 +25,11 @@ export function Card({ children, style }: { children: React.ReactNode; style?: R
 
 type Tone = 'neutral' | 'good' | 'warn' | 'bad';
 const TONES: Record<Tone, [string, string]> = {
-  neutral: [C.surfaceTint, C.text], good: [C.tint.teal, C.primary], warn: [C.tint.orange, C.navy], bad: [C.tint.coral, C.danger],
+  neutral: [C.surfaceTint, C.text], good: [C.surface, C.primary], warn: [C.tint.orange, C.navy], bad: [C.surface, C.danger],
 };
 export function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: Tone }) {
   const [bg, fg] = TONES[tone];
-  return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 999, background: bg, color: fg, fontSize: font.caption, fontWeight: 600, whiteSpace: 'nowrap' }}>{children}</span>;
+  return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 999, background: bg, color: fg, border: `1px solid ${tone === 'good' || tone === 'bad' ? fg : 'transparent'}`, fontSize: font.caption, fontWeight: 600, whiteSpace: 'nowrap' }}>{children}</span>;
 }
 export const statusTone = (s: string): Tone => (s === 'active' || s === 'resolved' || s === 'completed' || s === 'confirmed' ? 'good' : s === 'suspended' || s === 'removed' || s === 'dismissed' || s === 'cancelled' ? 'bad' : 'warn');
 
@@ -39,7 +39,7 @@ export function Btn({ children, onClick, kind = 'primary', disabled, type = 'but
   const fg = kind === 'secondary' ? C.primary : C.onPrimary;
   return (
     <button type={type} onClick={onClick} disabled={disabled}
-      style={{ minHeight: 40, padding: '0 18px', borderRadius: 999, border: kind === 'secondary' ? `2px solid ${C.primary}` : 'none', background: bg, color: fg, fontWeight: 600, fontSize: font.small, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+      style={{ minHeight: 40, padding: '0 18px', borderRadius: 999, border: kind === 'secondary' ? `2px solid ${C.primary}` : 'none', background: bg, color: fg, fontWeight: 600, fontSize: font.small, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, borderStyle: disabled ? 'dashed' : undefined }}>
       {children}
     </button>
   );
@@ -57,7 +57,7 @@ export function Table({ head, children }: { head: string[]; children: React.Reac
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: font.small }}>
-        <thead><tr>{head.map((h) => <th key={h} style={{ textAlign: 'left', padding: '8px 10px', color: C.textMuted, borderBottom: `2px solid ${C.border}`, fontWeight: 600 }}>{h}</th>)}</tr></thead>
+        <thead><tr>{head.map((h) => <th key={h} scope="col" style={{ textAlign: 'left', padding: '8px 10px', color: C.textMuted, borderBottom: `2px solid ${C.border}`, fontWeight: 600 }}>{h}</th>)}</tr></thead>
         <tbody>{children}</tbody>
       </table>
     </div>
@@ -73,13 +73,14 @@ export function useLoad<T>(fn: () => Promise<T>, deps: React.DependencyList) {
   const [data, setData] = React.useState<T | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [tick, setTick] = React.useState(0);
+  const [loading, setLoading] = React.useState(true);
   React.useEffect(() => {
     let live = true;
-    fn().then((v) => { if (live) { setData(v); setError(null); } }, () => { if (live) setError('Could not load this. Try again.'); });
+    fn().then((v) => { if (live) { setData(v); setError(null); setLoading(false); } }, () => { if (live) { setError('Could not load this. Try again.'); setLoading(false); } });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
-  return { data, error, reload: () => setTick((n) => n + 1) };
+  return { data, error, loading, reload: () => { setLoading(true); setTick((n) => n + 1); } };
 }
 
 /** A photo from a private bucket. The admin's own sign-in (with the code) is what allows the link. */
@@ -98,4 +99,10 @@ export function Photo({ bucket, path, size = 140, alt }: { bucket: 'faces' | 'pe
 
 export function PersonLink({ id, name }: { id: string; name: string | null | undefined }) {
   return <Link href={`/users/${id}`} style={{ color: C.link, fontWeight: 600 }}>{name ?? 'No name'}</Link>;
+}
+
+/** "Loading", the error with a Try again button, or nothing. Put it above a list so an empty list never looks like "no results". */
+export function Status({ l }: { l: { loading: boolean; error: string | null; reload: () => void } }) {
+  if (l.error) return <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}><Err>{l.error}</Err><Btn kind="secondary" onClick={l.reload}>Try again</Btn></div>;
+  return l.loading ? <p role="status" style={{ margin: 0, color: C.textMuted, fontSize: font.small }}>Loading</p> : null;
 }

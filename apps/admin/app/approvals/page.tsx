@@ -2,7 +2,7 @@
 import React from 'react';
 import { ActionPanel } from '../../src/action-panel';
 import { getPending, type Profile } from '../../src/data';
-import { Badge, Card, Err, H1, Muted, pageStyle, Photo, PersonLink, useLoad, when } from '../../src/ui';
+import { Badge, Card, Status, H1, Muted, pageStyle, Photo, PersonLink, useLoad, when } from '../../src/ui';
 
 function Pending({ p, onDone }: { p: Profile; onDone: () => void }) {
   return (
@@ -31,8 +31,8 @@ export default function Approvals() {
   return (
     <div style={pageStyle}>
       <H1 sub="New profiles that passed the automatic checks and wait for a person.">Approvals</H1>
-      <Err>{list.error}</Err>
-      {list.data && list.data.length === 0 ? <Muted>No one is waiting.</Muted> : null}
+      <Status l={list} />
+      {!list.loading && list.data && list.data.length === 0 ? <Muted>No one is waiting.</Muted> : null}
       {(list.data ?? []).map((p) => <Pending key={p.id} p={p} onDone={list.reload} />)}
     </div>
   );

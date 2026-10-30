@@ -28,7 +28,7 @@ export const actionsFor = (status: AccountStatus): ActionKind[] => ALLOWED[statu
 
 export const needsReason = (a: ActionKind) => a === 'reminder' || a === 'warning' || a === 'suspension' || a === 'removal';
 
-export interface ActionForm { action: ActionKind; rule: string; message: string; length: SuspensionLength; checklist: string }
+export interface ActionForm { action: ActionKind; rule: string; message: string; length: SuspensionLength | ''; checklist: string }
 
 /** Null when the form is fine, otherwise the sentence to show. Mirrors admin_take_action. */
 export function validateAction(status: AccountStatus, f: ActionForm): string | null {
@@ -37,6 +37,7 @@ export function validateAction(status: AccountStatus, f: ActionForm): string | n
     if (f.rule.trim() === '') return 'Choose the rule that was broken.';
     if (f.message.trim() === '') return 'Write the message the person will read.';
   }
+  if (f.action === 'suspension' && f.length === '') return 'Choose how long the suspension lasts.';
   if (f.message.length > 1000) return 'The message is too long (1000 characters at most).';
   if (f.rule.length > 120) return 'The rule is too long.';
   return null;
@@ -50,7 +51,7 @@ export function actionArgs(userId: string, f: ActionForm) {
     p_user: userId,
     p_action: f.action,
     p_rule: needsReason(f.action) ? f.rule.trim() : null,
-    p_duration_days: suspension && f.length !== 'fixed' ? Number(f.length) : null,
+    p_duration_days: suspension && f.length !== 'fixed' && f.length !== '' ? Number(f.length) : null,
     p_until_fixed: suspension && f.length === 'fixed',
     p_checklist: suspension && f.length === 'fixed' ? checklist : [],
     p_message: f.message.trim() === '' ? null : f.message.trim(),
@@ -78,3 +79,18 @@ export function cleanCode(input: string): string | null {
 }
 
 export const looksLikeId = (q: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q.trim());
+
+/** What the confirm button says, in words that cannot be misread. */
+export function confirmLabel(f: Pick<ActionForm, 'action' | 'length'>): string {
+  switch (f.action) {
+    case 'removal': return 'Yes, remove and ban this person';
+    case 'suspension': return `Yes, suspend ${f.length === 'fixed' ? 'until fixed' : f.length ? `for ${f.length} days` : ''}`.trim();
+    case 'warning': return 'Send the warning';
+    case 'reminder': return 'Send the reminder';
+    case 'reinstatement': return 'Reinstate this account';
+    default: return 'Approve this profile';
+  }
+}
+
+/** A database value as words: "in_progress" becomes "in progress". */
+export const nice = (v: string | null | undefined) => (v ?? '').replace(/_/g, ' ');

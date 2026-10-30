@@ -3,12 +3,12 @@ import Link from 'next/link';
 import React from 'react';
 import { getOpenAppeals, getOverview, getReports } from '../src/data';
 import { Badge, Card, C, Err, H1, H2, Muted, pageStyle, PersonLink, Table, Td, useLoad, when } from '../src/ui';
-import { REPORT_REASONS } from '../src/rules';
+import { REPORT_REASONS, nice } from '../src/rules';
 
 function Stat({ label, value, href, tone }: { label: string; value: number | undefined; href?: string; tone?: boolean }) {
   const inner = (
     <Card style={{ minWidth: 170, flex: '1 1 170px', borderColor: tone ? C.danger : C.border }}>
-      <span style={{ fontSize: 32, fontWeight: 800, color: tone ? C.danger : C.primary }}>{value ?? '…'}</span>
+      <span style={{ fontSize: 32, fontWeight: 800, color: tone ? C.danger : C.primary }}>{value ?? <span role="status" aria-label="Loading">…</span>}</span>
       <span style={{ color: C.textMuted, fontSize: 14 }}>{label}</span>
     </Card>
   );
@@ -42,7 +42,7 @@ export default function Overview() {
             {(reports.data ?? []).map((r) => (
               <tr key={r.id}>
                 <Td>{when(r.created_at)}</Td>
-                <Td>{r.emergency ? <Badge tone="bad">Emergency</Badge> : <Badge tone={r.priority === 'high' ? 'bad' : 'neutral'}>{r.priority}</Badge>}</Td>
+                <Td>{r.emergency ? <Badge tone="bad">Emergency</Badge> : <Badge tone={r.priority === 'high' ? 'bad' : 'neutral'}>{nice(r.priority)}</Badge>}</Td>
                 <Td><Link href="/reports" style={{ color: C.link }}>{REPORT_REASONS[r.reason] ?? r.reason}</Link></Td>
                 <Td>{r.reported ? <PersonLink id={r.reported.id} name={r.reported.first_name} /> : ''}</Td>
                 <Td>{r.reporter ? <PersonLink id={r.reporter.id} name={r.reporter.first_name} /> : ''}</Td>
@@ -51,7 +51,7 @@ export default function Overview() {
           </Table>
         )}
       </Card>
-      {appeals.data && appeals.data.length > 0 ? <Muted>{appeals.data.length} appeal(s) are waiting on the Appeals page.</Muted> : null}
+      {appeals.data && appeals.data.length > 0 ? <Muted>{appeals.data.length === 1 ? '1 appeal is' : `${appeals.data.length} appeals are`} waiting on the Appeals page.</Muted> : null}
     </div>
   );
 }
