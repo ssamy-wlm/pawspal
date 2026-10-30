@@ -165,6 +165,9 @@ The dashboard is the website in `apps/admin` (Vercel). Admin power needs **three
 
 **What admins can and cannot do:** every change goes through an audited database function (warn, suspend 3 or 7 days or until fixed, remove, reinstate, approve, decide appeals, resolve reports, remove a photo). Nobody can edit or delete the audit log, an admin cannot act on an admin (or on themselves), and a removed person's phone, ID and device are blocked. Fixed-length suspensions end by themselves (a job runs every 15 minutes; check with `select * from cron.job;`, it should list `lift-expired-suspensions`). The admin site signs itself out after 30 minutes without use.
 
+## E11. Check that the database got the migrations
+After each deploy, in Supabase → **SQL Editor** run `select count(*) from information_schema.tables where table_schema = 'public';` (it should be well above 0) and `select max(version) from supabase_migrations.schema_migrations;` (it should end in the number of the newest file in `supabase/migrations`). If the first answer is 0, the GitHub integration is not deploying: Supabase → **Project Settings → Integrations → GitHub**: the repository must be `ssamy-wlm/pawspal`, the production branch `production` and the directory `supabase`, with **Deploy to production** on. Then push something to `production` (or ask Claude to).
+
 ## F. Secrets checklist
 
 | Secret | Where it lives | Never |
