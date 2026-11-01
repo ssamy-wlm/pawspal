@@ -4,14 +4,15 @@
 \i supabase/tests/helpers.sql
 
 select private.invite_admin('boss@example.com');
-insert into auth.users (id, phone, phone_confirmed_at, email, email_confirmed_at, created_at) values
-  ('a8a8a8a8-0000-0000-0000-000000000001', null, null, 'boss@example.com', now(), now()),                 -- the founder: an invited email
-  ('a9a9a9a9-0000-0000-0000-000000000002', '201277600002', now(), null, null, now()),                      -- Una, a normal user
-  ('aaaaaaa1-0000-0000-0000-000000000003', '201277600003', now(), null, null, now()),                      -- Vik, a normal user
-  ('aaaaaaa2-0000-0000-0000-000000000004', '201277600004', now(), null, null, now());                      -- Wes, waiting for review
-update public.profiles set first_name = 'Una', role = 'both', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'a9a9a9a9-0000-0000-0000-000000000002';
-update public.profiles set first_name = 'Vik', role = 'both', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'aaaaaaa1-0000-0000-0000-000000000003';
-update public.profiles set first_name = 'Wes', role = 'both', status = 'pending_review' where id = 'aaaaaaa2-0000-0000-0000-000000000004';
+-- The founder's account is made in the Supabase dashboard: an email, no role, so it must have been invited first.
+insert into auth.users (id, email, email_confirmed_at, created_at) values ('a8a8a8a8-0000-0000-0000-000000000001', 'boss@example.com', now(), now());
+select pg_temp.new_user('a9a9a9a9-0000-0000-0000-000000000002', 'una@example.com', 'owner');     -- Una, a normal user
+select pg_temp.new_user('aaaaaaa1-0000-0000-0000-000000000003', 'vik@example.com', 'sitter');    -- Vik, a normal user
+select pg_temp.new_user('aaaaaaa2-0000-0000-0000-000000000004', 'wes@example.com', 'owner');     -- Wes, waiting for review
+select pg_temp.activate('a9a9a9a9-0000-0000-0000-000000000002', 'Una');
+select pg_temp.activate('aaaaaaa1-0000-0000-0000-000000000003', 'Vik');
+update public.profiles set first_name = 'Wes', status = 'pending_review' where id = 'aaaaaaa2-0000-0000-0000-000000000004';
+insert into public.verification_requests (user_id, face_path, id_path) values ('aaaaaaa2-0000-0000-0000-000000000004', 'aaaaaaa2-0000-0000-0000-000000000004/face.jpg', 'aaaaaaa2-0000-0000-0000-000000000004/id.jpg');
 create temp table t_ids (k text primary key, v text);
 -- Run a statement as a signed-in person, with or without the authenticator code (aal2).
 create or replace function pg_temp.as_admin(p_aal text, p_sql text) returns text language plpgsql as $$
@@ -36,55 +37,76 @@ end $$;
 \echo '--- D1 adding the first admin'
 delete from private.admin_invites;
 select pg_temp.check(private.grant_admin('boss@example.com') = 'no_invite', 'an email that was never invited became an admin');
+select pg_temp.check(private.grant_admin('una@example.com') = 'no_invite', 'a normal confirmed account became an admin without an invite');
 select pg_temp.check(private.grant_admin('nobody@example.com') = 'no_user', 'a missing account became an admin');
 select pg_temp.check(left(private.invite_admin('Boss@Example.com '), 7) = 'invited', 'the invite was not recorded');
-select pg_temp.check((select user_id is null from private.admin_invites where email = 'boss@example.com'), 'a fresh invite already has an account');
-select pg_temp.check(private.grant_admin('boss@example.com') = 'no_invite', 'an invite not tied to the account made an admin');
-update private.admin_invites set user_id = 'a8a8a8a8-0000-0000-0000-000000000001', created_at = now() - interval '1 hour' where email = 'boss@example.com';
+select pg_temp.check(exists (select 1 from private.admin_invites where email = 'boss@example.com'), 'the invite was not stored in lower case');
 select pg_temp.check(not exists (select 1 from public.admins where user_id = 'a8a8a8a8-0000-0000-0000-000000000001'), 'an invite alone made an admin');
+select pg_temp.check(private.grant_admin('boss@example.com') = 'no_invite', 'an invite not tied to the account made an admin');
+update private.admin_invites set user_id = 'a8a8a8a8-0000-0000-0000-000000000001' where email = 'boss@example.com';
+select pg_temp.check(not exists (select 1 from public.admins where user_id = 'a9a9a9a9-0000-0000-0000-000000000002'), 'an invite for someone else made a normal user an admin');
+update auth.users set email_confirmed_at = null where id = 'a8a8a8a8-0000-0000-0000-000000000001';
+select pg_temp.check(private.grant_admin('boss@example.com') = 'not_confirmed', 'an unconfirmed email became an admin');
+select pg_temp.check(not exists (select 1 from public.admins where user_id = 'a8a8a8a8-0000-0000-0000-000000000001'), 'an unconfirmed invited account is in the admin list');
+update auth.users set email_confirmed_at = now() where id = 'a8a8a8a8-0000-0000-0000-000000000001';
 select pg_temp.check(private.grant_admin('boss@example.com') = 'granted', 'an invited, confirmed account could not become an admin');
 select pg_temp.check(exists (select 1 from public.admins where user_id = 'a8a8a8a8-0000-0000-0000-000000000001'), 'the admin row is missing');
 select pg_temp.check((select count(*) >= 1 from public.audit_log where action = 'admin_granted'), 'granting an admin was not audited');
-update auth.users set email_confirmed_at = null where id = 'a8a8a8a8-0000-0000-0000-000000000001';
-delete from public.admins where user_id = 'a8a8a8a8-0000-0000-0000-000000000001';
-select pg_temp.check(private.grant_admin('boss@example.com') = 'not_confirmed', 'an unconfirmed email became an admin');
-update auth.users set email_confirmed_at = now() where id = 'a8a8a8a8-0000-0000-0000-000000000001';
-select private.grant_admin('boss@example.com');
+select pg_temp.check(private.grant_admin(' BOSS@example.com') = 'granted', 'an email in other case could not be granted');
 select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', $$select private.grant_admin('boss@example.com')$$, 'a user called grant_admin');
+select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', $$select private.revoke_admin('boss@example.com')$$, 'a user called revoke_admin');
 select pg_temp.fails_as('anon', null, $$select private.invite_admin('x@y.com')$$, 'anon called invite_admin');
+select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', $$select private.invite_admin('x@y.com')$$, 'a user called invite_admin');
 select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', $$insert into public.admins values ('a9a9a9a9-0000-0000-0000-000000000002')$$, 'a user made themselves an admin');
 select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', $$insert into private.admin_invites values ('me@x.com')$$, 'a user invited themselves');
 
-select pg_temp.fails($$insert into auth.users (id, email, email_confirmed_at) values (gen_random_uuid(), 'boss@example.com', now())$$, 'a second account was made for a used invite');
-select private.invite_admin('phoneuser@example.com');
-update auth.users set email = 'phoneuser@example.com', email_confirmed_at = now() where id = 'a9a9a9a9-0000-0000-0000-000000000002';
-select pg_temp.check(private.grant_admin('phoneuser@example.com') = 'no_user', 'a phone account that took an invited email became an admin');
-update auth.users set email = null, email_confirmed_at = null where id = 'a9a9a9a9-0000-0000-0000-000000000002';
-delete from private.admin_invites where email = 'phoneuser@example.com';
-
-\echo '--- D2 an email account without an invite cannot sign up, and a phone sign-up still works'
-select pg_temp.fails($$insert into auth.users (id, email, email_confirmed_at) values (gen_random_uuid(), 'stranger@example.com', now())$$, 'an uninvited email account was created');
-select pg_temp.fails($$insert into auth.users (id, phone, phone_confirmed_at) values (gen_random_uuid(), '14155550123', now())$$, 'a foreign phone sign-up was accepted');
-select pg_temp.check(exists (select 1 from public.profiles where id = 'a8a8a8a8-0000-0000-0000-000000000001'), 'the admin account has no profile row');
-
--- The dashboard's Add user form sends phone = '' (empty), not null: an invited email must still work, an uninvited one must not.
-select private.invite_admin('formuser@example.com');
-insert into auth.users (id, phone, email, email_confirmed_at, created_at) values ('a8a8a8a8-0000-0000-0000-000000000009', '', 'formuser@example.com', now(), now());
-select pg_temp.check(private.grant_admin('formuser@example.com') = 'granted', 'an invited account with an empty phone could not become an admin');
-select private.revoke_admin('formuser@example.com');
-delete from auth.users where id = 'a8a8a8a8-0000-0000-0000-000000000009';
-select pg_temp.fails($$insert into auth.users (id, phone, email, email_confirmed_at) values (gen_random_uuid(), '', 'nobody@example.com', now())$$, 'an uninvited email with an empty phone was accepted');
-select pg_temp.fails($$insert into auth.users (id, phone, email, email_confirmed_at) values (gen_random_uuid(), '   ', null, now())$$, 'a blank phone with no email was accepted');
-
--- Refusals say why in the server log (a code, never an address or number), and still refuse.
+\echo '--- D2 sign-up: a role and the current Terms, or an invite; every refusal carries its code'
+-- Refusals say why in the server log (a code, never an address), and still refuse.
 create or replace function pg_temp.refusal_of(p_sql text) returns text language plpgsql as $$
 begin execute p_sql; return 'accepted'; exception when others then return sqlerrm; end $$;
-select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at) values (gen_random_uuid(), 'stranger2@example.com', now())$$) = 'sign-up not allowed [E1]', 'an uninvited email did not get code E1');
-insert into private.admin_invites (email, user_id) values ('used@example.com', gen_random_uuid());
-select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at) values (gen_random_uuid(), 'used@example.com', now())$$) = 'sign-up not allowed [E2]', 'a used invite did not get code E2');
-delete from private.admin_invites where email = 'used@example.com';
-select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, phone, phone_confirmed_at) values (gen_random_uuid(), '14155550123', now())$$) = 'sign-up not allowed [E3]', 'a foreign phone did not get code E3');
-select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, phone, phone_confirmed_at) values (gen_random_uuid(), '', now())$$) = 'sign-up not allowed [E4]', 'no phone and no email did not get code E4');
+create or replace function pg_temp.signup_sql(p_email text, p_meta jsonb) returns text language sql as $$
+  select format('insert into auth.users (id, email, email_confirmed_at, created_at, raw_user_meta_data) values (gen_random_uuid(), %L, now(), now(), %L::jsonb)', p_email, p_meta::text) $$;
+create or replace function pg_temp.terms_now() returns text language sql as $$ select current_version from public.legal_documents where doc = 'terms' $$;
+
+-- no role and no invite: E2
+select pg_temp.fails($$insert into auth.users (id, email, email_confirmed_at) values (gen_random_uuid(), 'stranger@example.com', now())$$, 'an uninvited email account without a role was created');
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at) values (gen_random_uuid(), 'stranger2@example.com', now())$$) = 'sign-up not allowed [E2]', 'no role and no invite did not get code E2');
+insert into private.admin_invites (email, user_id) values ('usedinvite@example.com', gen_random_uuid());
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at) values (gen_random_uuid(), 'usedinvite@example.com', now())$$) = 'sign-up not allowed [E2]', 'a used invite let a second account in');
+delete from private.admin_invites where email = 'usedinvite@example.com';
+-- an email that is not an email: E1
+select pg_temp.check(pg_temp.refusal_of(pg_temp.signup_sql('not-an-email', jsonb_build_object('role', 'owner', 'terms_version', pg_temp.terms_now()))) = 'sign-up not allowed [E1]', 'a bad email did not get code E1');
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email) values (gen_random_uuid(), null)$$) = 'sign-up not allowed [E1]', 'no email at all did not get code E1');
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, phone, phone_confirmed_at) values (gen_random_uuid(), '201277600099', now())$$) = 'sign-up not allowed [E1]', 'a phone sign-up was accepted');
+-- a role that is not owner or sitter: E3 (there is no "both" any more, and nobody signs up as an admin)
+select pg_temp.check(pg_temp.refusal_of(pg_temp.signup_sql('both@example.com', jsonb_build_object('role', 'both', 'terms_version', pg_temp.terms_now()))) = 'sign-up not allowed [E3]', 'the removed role both did not get code E3');
+select pg_temp.check(pg_temp.refusal_of(pg_temp.signup_sql('admin@example.com', jsonb_build_object('role', 'admin', 'terms_version', pg_temp.terms_now()))) = 'sign-up not allowed [E3]', 'the role admin did not get code E3');
+-- the Terms version must be the current one: E4
+select pg_temp.check(pg_temp.refusal_of(pg_temp.signup_sql('old@example.com', jsonb_build_object('role', 'owner', 'terms_version', '0.0.1'))) = 'sign-up not allowed [E4]', 'an old Terms version did not get code E4');
+select pg_temp.check(pg_temp.refusal_of(pg_temp.signup_sql('none@example.com', jsonb_build_object('role', 'sitter'))) = 'sign-up not allowed [E4]', 'a sign-up without a Terms version did not get code E4');
+-- banned: E5 email, E6 device
+insert into public.banned_identifiers (kind, hash) values ('email', private.email_hash('banned@example.com')), ('device', private.device_hash('device-banned-9')) on conflict do nothing;
+select pg_temp.check(pg_temp.refusal_of(pg_temp.signup_sql('Banned@Example.com ', jsonb_build_object('role', 'owner', 'terms_version', pg_temp.terms_now()))) = 'sign-up not allowed [E5]', 'a banned email did not get code E5');
+select pg_temp.check(pg_temp.refusal_of(pg_temp.signup_sql('someone-new@example.com', jsonb_build_object('role', 'owner', 'terms_version', pg_temp.terms_now(), 'device_id', 'device-banned-9'))) = 'sign-up not allowed [E6]', 'a banned device did not get code E6');
+select pg_temp.check(not exists (select 1 from auth.users where email in ('banned@example.com', 'Banned@Example.com ', 'someone-new@example.com', 'both@example.com', 'old@example.com', 'stranger@example.com')), 'a refused sign-up left an account behind');
+
+-- a good sign-up: the trigger makes the profile, the membership and the Terms and Privacy acceptances
+select pg_temp.check(pg_temp.refusal_of(pg_temp.signup_sql('New.Host@Example.com', jsonb_build_object('role', 'sitter', 'terms_version', pg_temp.terms_now(), 'device_id', 'device-new-1'))) = 'accepted', 'a good host sign-up was refused');
+select pg_temp.check((select p.role = 'sitter' and p.status = 'pending_verification' from public.profiles p join auth.users u on u.id = p.id where u.email = 'New.Host@Example.com'), 'the host profile is not a pending host');
+select pg_temp.check((select m.paid_until is null from public.memberships m join auth.users u on u.id = m.user_id where u.email = 'New.Host@Example.com'), 'a new person has no membership date yet');
+select pg_temp.check((select count(*) = 2 and bool_and(a.version = (select current_version from public.legal_documents d where d.doc = a.doc)) from public.legal_acceptances a join auth.users u on u.id = a.user_id where u.email = 'New.Host@Example.com' and a.doc in ('terms', 'privacy')), 'sign-up did not record the Terms and Privacy acceptances');
+select pg_temp.check(exists (select 1 from private.identity_fingerprints f join auth.users u on u.id = f.user_id where u.email = 'New.Host@Example.com' and f.kind = 'device' and f.hash = private.device_hash('device-new-1')), 'sign-up did not keep the hashed device');
+select pg_temp.check(not exists (select 1 from private.identity_fingerprints f join auth.users u on u.id = f.user_id where u.email = 'New.Host@Example.com' and f.hash = 'device-new-1'), 'the device id was stored as plain text');
+-- the founder's dashboard account (no role, invited) has a profile and a membership too
+select pg_temp.check(exists (select 1 from public.profiles where id = 'a8a8a8a8-0000-0000-0000-000000000001') and exists (select 1 from public.memberships where user_id = 'a8a8a8a8-0000-0000-0000-000000000001'), 'the admin account has no profile or membership row');
+-- an invited email works with other letter case, and an invite does not let anyone else in
+select private.invite_admin('mixed@example.com');
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at, created_at) values (gen_random_uuid(), 'Mixed@Example.COM', now(), now())$$) = 'accepted', 'an invited email in other case was refused');
+select pg_temp.check(private.grant_admin('mixed@example.com') = 'granted', 'the invited account in other case could not become an admin');
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at, created_at) values (gen_random_uuid(), 'mixed2@example.com', now(), now())$$) = 'sign-up not allowed [E2]', 'an invite for one address let another address in');
+select private.revoke_admin('mixed@example.com');
+select pg_temp.check(not exists (select 1 from public.admins a join auth.users u on u.id = a.user_id where u.email ilike 'mixed@example.com'), 'revoking left an admin row');
+select pg_temp.check(not exists (select 1 from private.admin_invites where email = 'mixed@example.com'), 'revoking left the invite');
 
 \echo '--- D3 admin rights need the authenticator code'
 select pg_temp.check(pg_temp.as_admin(null, 'select public.admin_status()') = 'needs_mfa', 'an admin without the code was not told to use it');
@@ -101,6 +123,8 @@ select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002',
 select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', 'select * from public.admin_audit_log()', 'a user read the audit log');
 select pg_temp.fails_as('anon', null, 'select public.admin_overview()', 'anon read the overview');
 select pg_temp.check(pg_temp.as_admin('aal2', 'select (public.admin_overview() ->> ''pending_approvals'')')::int >= 1, 'the overview does not count the profile waiting for review');
+select pg_temp.check(pg_temp.as_admin('aal2', 'select (public.admin_overview() ->> ''pending_verifications'')')::int >= 1, 'the overview does not count the person waiting for verification');
+select pg_temp.check((pg_temp.as_admin('aal2', 'select public.admin_overview()::text')::jsonb ?& array['pending_payments', 'expiring_soon', 'paused']), 'the overview misses a membership count');
 
 \echo '--- D4 actions follow the rules'
 select pg_temp.fails_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0000-0000-0000-000000000002', 'warning', null, null, false, '[]', 'x')$$, 'a warning without a rule');
@@ -119,31 +143,37 @@ select pg_temp.fails_admin('aal2', $$select public.admin_take_action('a8a8a8a8-0
 select pg_temp.fails_admin('aal2', $$select public.admin_take_action(gen_random_uuid(), 'warning', 'x', null, false, '[]', 'x')$$, 'an action on nobody');
 select pg_temp.as_admin('aal2', $$select public.admin_take_action('aaaaaaa2-0000-0000-0000-000000000004', 'approval', null, null, false, '[]', 'Welcome')$$);
 select pg_temp.check((select status = 'active' from public.profiles where id = 'aaaaaaa2-0000-0000-0000-000000000004'), 'approval did not activate the profile');
-select pg_temp.as_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0000-0000-0000-000000000002', 'warning', 'Keep payments in the app', null, false, '["Stop"]', 'Please keep payments in the app')$$);
+select pg_temp.as_admin('aal2', $$select public.admin_take_action('a9a9a9a9-0000-0000-0000-000000000002', 'warning', 'Keep chats respectful', null, false, '["Stop"]', 'Please keep chats respectful')$$);
 select pg_temp.check((select status = 'active' from public.profiles where id = 'a9a9a9a9-0000-0000-0000-000000000002'), 'a warning changed the status');
 select pg_temp.check(pg_temp.count_as('a9a9a9a9-0000-0000-0000-000000000002', $$select count(*) from public.enforcement_actions where action = 'warning'$$) = 1, 'the person cannot read their own warning');
 select pg_temp.check(pg_temp.count_as('aaaaaaa1-0000-0000-0000-000000000003', $$select count(*) from public.enforcement_actions$$) = 0, 'someone read another person''s actions');
 
 \echo '--- D5 removal bans the person, reinstatement lifts it, everything is audited'
-insert into private.identity_fingerprints (kind, hash, user_id) values ('id_document', 'idhash-vik', 'aaaaaaa1-0000-0000-0000-000000000003'), ('device', 'devhash-vik', 'aaaaaaa1-0000-0000-0000-000000000003');
+insert into private.identity_fingerprints (kind, hash, user_id) values ('device', private.device_hash('device-vik-1'), 'aaaaaaa1-0000-0000-0000-000000000003');
 select pg_temp.as_admin('aal2', $$select public.admin_take_action('aaaaaaa1-0000-0000-0000-000000000003', 'removal', 'Animal harm', null, false, '[]', 'Removed')$$);
 select pg_temp.check((select status = 'removed' from public.profiles where id = 'aaaaaaa1-0000-0000-0000-000000000003'), 'removal did not remove');
-select pg_temp.check((select count(*) = 4 from public.banned_identifiers where hash in ('idhash-vik', 'devhash-vik') or hash in (select hash from private.identity_hashes('aaaaaaa1-0000-0000-0000-000000000003'))), 'removal did not ban the phone (both forms), id and device');
-select pg_temp.check(exists (select 1 from public.banned_identifiers where kind = 'phone' and hash = private.phone_hash('201277600003')), 'removal did not ban the phone');
-select pg_temp.fails($$insert into auth.users (id, phone, phone_confirmed_at) values (gen_random_uuid(), '201277600003', now())$$, 'a removed person signed up again with the same number');
+select pg_temp.check(exists (select 1 from public.banned_identifiers where kind = 'email' and hash = private.email_hash('vik@example.com')), 'removal did not ban the email');
+select pg_temp.check(exists (select 1 from public.banned_identifiers where kind = 'device' and hash = private.device_hash('device-vik-1')), 'removal did not ban the device');
+select pg_temp.check((select count(*) = 2 from public.banned_identifiers where hash in (select hash from private.identity_hashes('aaaaaaa1-0000-0000-0000-000000000003'))), 'removal banned something other than the email and the device');
+select pg_temp.check(not exists (select 1 from public.banned_identifiers where kind not in ('email', 'device', 'id_document')), 'a ban of a kind the app no longer collects exists');
+select pg_temp.check(pg_temp.refusal_of(pg_temp.signup_sql('VIK@example.com', jsonb_build_object('role', 'sitter', 'terms_version', pg_temp.terms_now()))) = 'sign-up not allowed [E5]', 'a removed person signed up again with the same email');
+select pg_temp.check(pg_temp.refusal_of(pg_temp.signup_sql('vik-again@example.com', jsonb_build_object('role', 'sitter', 'terms_version', pg_temp.terms_now(), 'device_id', 'device-vik-1'))) = 'sign-up not allowed [E6]', 'a removed person signed up again from the same device');
 select pg_temp.fails_admin('aal2', $$select public.admin_take_action('aaaaaaa1-0000-0000-0000-000000000003', 'removal', 'x', null, false, '[]', 'x')$$, 'removing someone twice');
 select pg_temp.as_admin('aal2', $$select public.admin_take_action('aaaaaaa1-0000-0000-0000-000000000003', 'reinstatement', null, null, false, '[]', 'Mistake')$$);
 select pg_temp.check((select status = 'active' from public.profiles where id = 'aaaaaaa1-0000-0000-0000-000000000003'), 'reinstatement did not restore');
-select pg_temp.check(not exists (select 1 from public.banned_identifiers where hash in ('idhash-vik', 'devhash-vik')), 'reinstatement left the bans in place');
-select pg_temp.check((select count(*) >= 4 from public.audit_log where target_user = 'aaaaaaa1-0000-0000-0000-000000000003' or action = 'approval'), 'actions are missing from the audit log');
+select pg_temp.check(not exists (select 1 from public.banned_identifiers where (kind = 'email' and hash = private.email_hash('vik@example.com')) or (kind = 'device' and hash = private.device_hash('device-vik-1'))), 'reinstatement left the bans in place');
+select pg_temp.check(pg_temp.refusal_of(pg_temp.signup_sql('vik-back@example.com', jsonb_build_object('role', 'sitter', 'terms_version', pg_temp.terms_now(), 'device_id', 'device-vik-1'))) = 'accepted', 'a reinstated person device is still refused');
+select pg_temp.check((select count(*) = 1 from public.audit_log where target_user = 'aaaaaaa1-0000-0000-0000-000000000003' and action = 'removal')
+                  and (select count(*) = 1 from public.audit_log where target_user = 'aaaaaaa1-0000-0000-0000-000000000003' and action = 'reinstatement')
+                  and (select count(*) = 1 from public.audit_log where target_user = 'aaaaaaa2-0000-0000-0000-000000000004' and action = 'approval'), 'actions are missing from the audit log');
 select pg_temp.check((select bool_and(admin_id = 'a8a8a8a8-0000-0000-0000-000000000001') from public.audit_log where action in ('removal', 'reinstatement', 'approval', 'warning') and target_user in ('aaaaaaa1-0000-0000-0000-000000000003', 'aaaaaaa2-0000-0000-0000-000000000004', 'a9a9a9a9-0000-0000-0000-000000000002')), 'an audit entry names the wrong admin');
 select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', $$delete from public.audit_log$$, 'a user deleted the audit log');
 select pg_temp.fails_admin('aal2', $$delete from public.audit_log$$, 'an admin deleted the audit log');
 select pg_temp.fails_admin('aal2', $$update public.audit_log set action = 'x'$$, 'an admin edited the audit log');
 
 -- two removed accounts that share a device: reinstating one must not lift the ban the other still needs
-insert into auth.users (id, phone, phone_confirmed_at) values ('aaaaaaa3-0000-0000-0000-000000000005', '201277600005', now());
-update public.profiles set first_name = 'Xan', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'aaaaaaa3-0000-0000-0000-000000000005';
+select pg_temp.new_user('aaaaaaa3-0000-0000-0000-000000000005', 'xan@example.com', 'owner');
+select pg_temp.activate('aaaaaaa3-0000-0000-0000-000000000005', 'Xan');
 insert into private.identity_fingerprints (kind, hash, user_id) values ('device', 'devhash-shared', 'aaaaaaa3-0000-0000-0000-000000000005'), ('device', 'devhash-shared', 'aaaaaaa1-0000-0000-0000-000000000003');
 select pg_temp.as_admin('aal2', $$select public.admin_take_action('aaaaaaa3-0000-0000-0000-000000000005', 'removal', 'Fraud', null, false, '[]', 'Removed')$$);
 select pg_temp.as_admin('aal2', $$select public.admin_take_action('aaaaaaa1-0000-0000-0000-000000000003', 'removal', 'Fraud', null, false, '[]', 'Removed')$$);
@@ -173,7 +203,7 @@ select pg_temp.check(pg_temp.as_admin('aal2', 'select count(*) from public.messa
 select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', $$select * from public.admin_report_messages('a0000000-0000-0000-0000-000000000001')$$, 'a user read a chat through the admin function');
 
 \echo '--- D7 appeals'
-select pg_temp.as_admin('aal2', $$select public.admin_take_action('aaaaaaa1-0000-0000-0000-000000000003', 'suspension', 'Keep payments in the app', null, true, '[]', 'Suspended')$$);
+select pg_temp.as_admin('aal2', $$select public.admin_take_action('aaaaaaa1-0000-0000-0000-000000000003', 'suspension', 'Keep chats respectful', null, true, '[]', 'Suspended')$$);
 insert into t_ids select 'act', id::text from public.enforcement_actions where user_id = 'aaaaaaa1-0000-0000-0000-000000000003' and action = 'suspension';
 insert into public.appeals (id, action_id, user_id, body) values ('a2000000-0000-0000-0000-000000000001', (select v::uuid from t_ids where k = 'act'), 'aaaaaaa1-0000-0000-0000-000000000003', 'I am sorry');
 select pg_temp.fails_as('authenticated', 'aaaaaaa1-0000-0000-0000-000000000003', $$select public.admin_decide_appeal('a2000000-0000-0000-0000-000000000001', true, 'ok')$$, 'a person decided their own appeal');
@@ -219,3 +249,5 @@ select pg_temp.check((select count(*) = 1 from public.audit_log where action = '
 select pg_temp.check((select admin_id is null and rule = 'suspension ended' from public.enforcement_actions where user_id = 'a9a9a9a9-0000-0000-0000-000000000002' and action = 'reinstatement'), 'the automatic reinstatement is not marked as the system');
 select pg_temp.check(private.lift_expired_suspensions() = 0, 'the timer lifted something twice');
 select pg_temp.fails_as('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', $$select private.lift_expired_suspensions()$$, 'a user ran the suspension timer');
+
+\echo 'admin assertions OK'

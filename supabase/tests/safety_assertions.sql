@@ -170,3 +170,5 @@ select pg_temp.fails_as('authenticated', 'f3f3f3f3-0000-0000-0000-000000000003',
 insert into storage.objects (bucket_id, name, created_at) values ('handovers', 'f1f1f1f1-0000-0000-0000-000000000001/old-unsaved.jpg', now() - interval '3 days');
 select pg_temp.check(exists (select 1 from public.list_unused_uploads() where name = 'f1f1f1f1-0000-0000-0000-000000000001/old-unsaved.jpg'), 'an unsaved handover photo was not listed');
 select pg_temp.check(not exists (select 1 from public.list_unused_uploads() where name = 'f2f2f2f2-0000-0000-0000-000000000002/d1.jpg'), 'a saved handover photo was listed as unused');
+
+\echo 'safety assertions OK'

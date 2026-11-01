@@ -37,7 +37,11 @@ let mockTables: Record<string, unknown[]> = {};
 let mockAcceptError: { code: string } | null = null;
 jest.mock('../src/lib/supabase', () => ({
   supabase: {
-    auth: mockAuth,
+    auth: {
+      getUser: () => mockAuth.getUser(), signUp: (...a: unknown[]) => mockAuth.signUp(...a), resend: (...a: unknown[]) => mockAuth.resend(...a),
+      signInWithPassword: (...a: unknown[]) => mockAuth.signInWithPassword(...a), resetPasswordForEmail: (...a: unknown[]) => mockAuth.resetPasswordForEmail(...a),
+      updateUser: (...a: unknown[]) => mockAuth.updateUser(...a),
+    },
     rpc: (...a: unknown[]) => mockRpc(...a),
     from: (table: string) => ({
       insert: async (row: unknown) => { mockCalls.push({ table, op: 'insert', row }); return { error: table === 'legal_acceptances' ? mockAcceptError : null }; },

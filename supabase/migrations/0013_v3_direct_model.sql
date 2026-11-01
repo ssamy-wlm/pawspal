@@ -262,8 +262,9 @@ begin
   end if;
   if v_role is null then
     -- Accounts made in the Supabase dashboard (the admins) carry no role: they must have been invited first.
-    if not exists (select 1 from private.admin_invites where email = v_email) then raise exception 'sign-up not allowed [E2]'; end if;
-    update private.admin_invites set user_id = new.id where email = v_email and user_id is null;
+    -- An invite works once: the first account made for it is tied to it, and nobody else can use it afterwards.
+    if not exists (select 1 from private.admin_invites where email = v_email and user_id is null) then raise exception 'sign-up not allowed [E2]'; end if;
+    update private.admin_invites set user_id = new.id where email = v_email;
     insert into public.profiles (id) values (new.id);
     insert into public.memberships (user_id) values (new.id);
     return new;
@@ -291,7 +292,8 @@ declare v_id uuid; v_confirmed timestamptz;
 begin
   select id, email_confirmed_at into v_id, v_confirmed from auth.users where lower(email) = lower(btrim(p_email));
   if v_id is null then return 'no_user'; end if;
-  if not exists (select 1 from private.admin_invites where email = lower(btrim(p_email))) then return 'no_invite'; end if;
+  -- The account must be the one the invite was used for (so nobody can ride on someone else's invite).
+  if not exists (select 1 from private.admin_invites where email = lower(btrim(p_email)) and user_id = v_id) then return 'no_invite'; end if;
   if v_confirmed is null then return 'not_confirmed'; end if;
   insert into public.admins (user_id) values (v_id) on conflict do nothing;
   insert into public.audit_log (admin_id, action, target_user, details)
