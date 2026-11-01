@@ -248,10 +248,11 @@ describe('post your dates', () => {
     await waitFor(() => expect(x.postTravel).toHaveBeenCalledWith('me', { pet_type: 'cat', starts_on: '2026-12-01', ends_on: '2026-12-05', budget_per_night: 150, note: 'Shy cat' }));
   });
 
-  it('lets someone who is both choose, and explains the open-post limit', async () => {
+  it('explains the open-post limit', async () => {
+    mockRole = 'owner';
     x.postTravel.mockRejectedValue(new Error('too_many'));
     await renderIn(wrap(<PostDates />));
-    await fireEvent.press(screen.getByText('I am travelling'));
+    expect(screen.queryByText('I am travelling')).toBeNull();                          // no switch any more: one role, one form
     await fireEvent.press(screen.getByLabelText('pick dates'));
     await fireEvent.press(screen.getByText('Post my dates'));
     await waitFor(() => expect(screen.getByText('You have too many open posts. Remove one first.')).toBeTruthy());
@@ -266,13 +267,22 @@ describe('calendar tab: your posts', () => {
     x.deleteAvailability.mockResolvedValue(undefined);
     await renderIn(wrap(<CalendarTab />));
     await waitFor(() => expect(screen.getByText('Hosting Dec 1 to Dec 9')).toBeTruthy());
-    expect(screen.getByText('Travelling Dec 20 to Dec 25')).toBeTruthy();
+    expect(screen.queryByText('Travelling Dec 20 to Dec 25')).toBeNull();               // a host sees hosting only
     const remove = screen.getAllByLabelText('Remove post')[0];
     await fireEvent.press(remove);
     expect(x.deleteAvailability).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByLabelText('Tap again to delete'));
     await waitFor(() => expect(x.deleteAvailability).toHaveBeenCalledWith('av1'));
     await waitFor(() => expect(screen.queryByText('Hosting Dec 1 to Dec 9')).toBeNull());
+  });
+
+  it('shows an owner their travel dates only', async () => {
+    mockRole = 'owner';
+    x.fetchAvailability.mockResolvedValue([{ id: 'av1', starts_on: '2026-12-01', ends_on: '2026-12-09', pets_accepted: ['dog'], offers: ['paid'], price_per_night: 200, negotiable: false }]);
+    x.fetchTravelPosts.mockResolvedValue([{ id: 'tp1', pet_type: 'dog', starts_on: '2026-12-20', ends_on: '2026-12-25', budget_per_night: null, note: null }]);
+    await renderIn(wrap(<CalendarTab />));
+    await waitFor(() => expect(screen.getByText('Travelling Dec 20 to Dec 25')).toBeTruthy());
+    expect(screen.queryByText('Hosting Dec 1 to Dec 9')).toBeNull();
   });
 });
 

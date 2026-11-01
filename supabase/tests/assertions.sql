@@ -3,19 +3,7 @@
 -- this file is what makes the important ones pass or fail. Add an assertion here for every new rule.
 \set ON_ERROR_STOP 1
 
-create function pg_temp.check(c boolean, m text) returns void language plpgsql as $$
-begin if c is not true then raise exception 'ASSERT FAILED: %', m; end if; end $$;
-
--- count rows a given user can see (runs as the "authenticated" role with that user's id)
-create function pg_temp.count_as(p_uid uuid, p_sql text) returns bigint language plpgsql as $$
-declare n bigint;
-begin
-  perform set_config('request.jwt.claim.sub', p_uid::text, true);
-  set local role authenticated;
-  execute p_sql into n;
-  reset role;
-  return n;
-end $$;
+\i supabase/tests/helpers.sql
 
 -- the statement must be refused (error), or the assertion fails
 create function pg_temp.must_fail(p_uid uuid, p_sql text, p_msg text) returns void language plpgsql as $$
@@ -32,23 +20,28 @@ begin
   raise exception 'ASSERT FAILED (should have been refused): %', p_msg;
 end $$;
 
-\echo '--- A1 contact details are masked before payment, kept after'
+\echo '--- A1 contact details are masked until the booking is confirmed, kept after'
 select pg_temp.check((select masked and body !~ '[0-9]' and body !~* 'insta|wa\.me|@' from (select * from public.messages order by id limit 1 offset 0) m), 'message 1: numbers, handles and payment apps masked');
 select pg_temp.check((select not masked and body like '%250 EGP%' from (select * from public.messages order by id limit 1 offset 1) m), 'message 2: dates and prices are not masked');
 select pg_temp.check((select masked and body !~ '[٠-٩]' from (select * from public.messages order by id limit 1 offset 2) m), 'message 3: Arabic-Indic digits masked');
-select pg_temp.check((select not masked and body like '%010 1234 5678%' from (select * from public.messages order by id limit 1 offset 3) m), 'message 4: unmasked after a paid booking');
+select pg_temp.check((select not masked and body like '%010 1234 5678%' from (select * from public.messages order by id limit 1 offset 3) m), 'message 4: unmasked after the booking was confirmed');
 select pg_temp.check((select count(*) = 4 from public.messages), 'exactly 4 messages were stored');
 
 \echo '--- A2 strangers see nothing, tampering is refused'
 select pg_temp.check(pg_temp.count_as('cccccccc-0000-0000-0000-000000000003', 'select count(*) from public.messages') = 0, 'stranger reads messages');
 select pg_temp.check(pg_temp.count_as('cccccccc-0000-0000-0000-000000000003', 'select count(*) from public.bookings') = 0, 'stranger reads bookings');
-insert into auth.users (id, phone, phone_confirmed_at) values ('77777777-0000-0000-0000-000000000007', '+201000000007', now());
+select pg_temp.new_user('77777777-0000-0000-0000-000000000007', 'seven-owner@example.com', 'owner');
 select pg_temp.check((select status = 'pending_verification' from public.profiles where id = '77777777-0000-0000-0000-000000000007'), 'new profile starts as pending_verification');
+select pg_temp.check((select paid_until is null from public.memberships where user_id = '77777777-0000-0000-0000-000000000007'), 'a new person starts with an unpaid membership');
+select pg_temp.check(not public.is_active('77777777-0000-0000-0000-000000000007'), 'a new person counts as active');
 select pg_temp.must_fail('77777777-0000-0000-0000-000000000007', $$update public.profiles set status = 'active' where id = auth.uid()$$, 'user set own status');
 select pg_temp.must_fail('77777777-0000-0000-0000-000000000007', $$update public.profiles set id_verified = true where id = auth.uid()$$, 'user set own verification flag');
-select pg_temp.must_fail('77777777-0000-0000-0000-000000000007', $$select public.set_verification(auth.uid(), true, true, true, null)$$, 'user called set_verification');
-select pg_temp.must_fail('77777777-0000-0000-0000-000000000007', $$select public.confirm_booking_payment(gen_random_uuid())$$, 'user called confirm_booking_payment');
-select pg_temp.must_fail('aaaaaaaa-0000-0000-0000-000000000001', $$update public.bookings set fee_status = 'paid'$$, 'user edited a booking directly');
+select pg_temp.must_fail('77777777-0000-0000-0000-000000000007', $$select public.admin_decide_verification(auth.uid(), true, true, null)$$, 'user approved their own verification');
+select pg_temp.must_fail('77777777-0000-0000-0000-000000000007', $$select public.admin_confirm_payment(gen_random_uuid(), true, null)$$, 'user confirmed a payment');
+select pg_temp.must_fail('77777777-0000-0000-0000-000000000007', $$update public.memberships set paid_until = current_date + 999 where user_id = auth.uid()$$, 'user extended their own membership');
+select pg_temp.must_fail('77777777-0000-0000-0000-000000000007', $$insert into public.payment_claims (user_id, kind, amount_egp, reference, status) values (auth.uid(), 'registration', 75, 'x', 'confirmed')$$, 'user wrote a payment claim directly');
+select pg_temp.must_fail('77777777-0000-0000-0000-000000000007', $$update public.app_settings set value = '1' where key = 'registration_fee_egp'$$, 'user changed a fee');
+select pg_temp.must_fail('aaaaaaaa-0000-0000-0000-000000000001', $$update public.bookings set status = 'confirmed'$$, 'user edited a booking directly');
 select pg_temp.must_fail('cccccccc-0000-0000-0000-000000000003', $$select * from private.locations$$, 'client read private.locations');
 select pg_temp.must_fail('cccccccc-0000-0000-0000-000000000003', $$select * from private.pet_care$$, 'client read private.pet_care');
 select pg_temp.check(pg_temp.count_as('cccccccc-0000-0000-0000-000000000003', 'select count(*) from public.admins') = 0, 'client can see the admin list');
@@ -95,6 +88,9 @@ select pg_temp.check((
   select (select count(*) from r) = 2
      and (select match_label from r order by match_score desc limit 1) = 'Exact match'
      and (select array_agg(first_name order by first_name) from r) = array['bbbbbbbb', 'eeeeeeee']
-), 'cat search returns the exact match first and excludes blocked and own listings');
+), 'cat search returns the exact match first and excludes blocked people');
+select set_config('request.jwt.claim.sub', 'bbbbbbbb-0000-0000-0000-000000000002', false) is not null as acting_as_host_b;
+select pg_temp.check((select count(*) = 0 from public.search_stays(current_date + 3, current_date + 10, 'cat', 0, null, '{}') where user_id = 'bbbbbbbb-0000-0000-0000-000000000002')
+                  and (select count(*) >= 1 from public.search_stays(current_date + 3, current_date + 10, 'cat', 0, null, '{}') where user_id = 'eeeeeeee-0000-0000-0000-000000000005'), 'a host sees their own listing in the search results');
 
 \echo 'assertions OK'
