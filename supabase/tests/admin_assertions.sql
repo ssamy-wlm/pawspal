@@ -76,6 +76,16 @@ delete from auth.users where id = 'a8a8a8a8-0000-0000-0000-000000000009';
 select pg_temp.fails($$insert into auth.users (id, phone, email, email_confirmed_at) values (gen_random_uuid(), '', 'nobody@example.com', now())$$, 'an uninvited email with an empty phone was accepted');
 select pg_temp.fails($$insert into auth.users (id, phone, email, email_confirmed_at) values (gen_random_uuid(), '   ', null, now())$$, 'a blank phone with no email was accepted');
 
+-- Refusals say why in the server log (a code, never an address or number), and still refuse.
+create or replace function pg_temp.refusal_of(p_sql text) returns text language plpgsql as $$
+begin execute p_sql; return 'accepted'; exception when others then return sqlerrm; end $$;
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at) values (gen_random_uuid(), 'stranger2@example.com', now())$$) = 'sign-up not allowed [E1]', 'an uninvited email did not get code E1');
+insert into private.admin_invites (email, user_id) values ('used@example.com', gen_random_uuid());
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at) values (gen_random_uuid(), 'used@example.com', now())$$) = 'sign-up not allowed [E2]', 'a used invite did not get code E2');
+delete from private.admin_invites where email = 'used@example.com';
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, phone, phone_confirmed_at) values (gen_random_uuid(), '14155550123', now())$$) = 'sign-up not allowed [E3]', 'a foreign phone did not get code E3');
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, phone, phone_confirmed_at) values (gen_random_uuid(), '', now())$$) = 'sign-up not allowed [E4]', 'no phone and no email did not get code E4');
+
 \echo '--- D3 admin rights need the authenticator code'
 select pg_temp.check(pg_temp.as_admin(null, 'select public.admin_status()') = 'needs_mfa', 'an admin without the code was not told to use it');
 select pg_temp.check(pg_temp.as_admin('aal1', 'select public.admin_status()') = 'needs_mfa', 'aal1 counted as admin');
