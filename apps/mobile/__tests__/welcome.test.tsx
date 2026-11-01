@@ -18,10 +18,11 @@ jest.mock('expo-router', () => {
 const renderWelcome = () => render(<ThemeProvider><Welcome /></ThemeProvider>);
 
 describe('Welcome screen', () => {
-  it('shows both ways to join and the legal links', async () => {
+  it('shows the two ways in: create an account and sign in', async () => {
     await renderWelcome();
-    expect(screen.getByText('I need a sitter')).toBeTruthy();
-    expect(screen.getByText('I want to sit')).toBeTruthy();
+    expect(screen.getByText('Create account')).toBeTruthy();
+    expect(screen.getByText('Sign in')).toBeTruthy();
+    expect(screen.queryByText('I need a sitter')).toBeNull();
   });
 
   it('links each legal document from the footer', async () => {
@@ -42,17 +43,15 @@ describe('Welcome screen', () => {
     }
   });
 
-  it('starts sign-up with the chosen role, never straight into Explore', async () => {
+  it('opens the account screen from Create account, never straight into Explore', async () => {
     await renderWelcome();
-    await fireEvent.press(screen.getByLabelText(/I need a sitter/));
-    expect(router.push).toHaveBeenCalledWith('/signup/phone?role=owner');
-    await fireEvent.press(screen.getByLabelText(/I want to sit/));
-    expect(router.push).toHaveBeenCalledWith('/signup/phone?role=sitter');
+    await fireEvent.press(screen.getByLabelText(/Create account/));
+    expect(router.push).toHaveBeenCalledWith('/signup/account');
   });
 
-  it('has a Log in button that opens the phone step', async () => {
+  it('opens the sign-in screen from Sign in', async () => {
     await renderWelcome();
-    await fireEvent.press(screen.getByText('Already have an account? Log in'));
-    expect(router.push).toHaveBeenCalledWith('/signup/phone');
+    await fireEvent.press(screen.getByLabelText(/Sign in/));
+    expect(router.push).toHaveBeenCalledWith('/signin');
   });
 });

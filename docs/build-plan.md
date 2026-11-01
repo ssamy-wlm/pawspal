@@ -59,3 +59,7 @@ Run one phase at a time with `/phase N`. A phase is done only when every accepta
 - Account deletion and data export, notifications, Sentry.
 - EAS builds, store listings, privacy labels (App Store) and data safety form (Google Play) matching the privacy policy.
 - **Accept:** the security checklist is fully ticked and the legal review is done.
+
+## Architecture v3 (the "direct" model), built after phase 8
+Owner or Host only; email sign-up; hand-checked identity; membership paid outside the app; no booking fee, Paymob or swaps; availability map; admin Verification, Payments and Settings pages. Full description and the database contract: `docs/ARCHITECTURE.md`. Migration `0013_v3_direct_model.sql`.
+- **Accept:** a paused account cannot search, message or book; the ID photo and payment screenshot are gone from storage after the decision; a booking is confirmed when both accept; contact details unlock only then; the disclaimer is shown at sign-up and recorded with the Terms version.

@@ -21,10 +21,10 @@ Written for a non-developer. Do the steps in order. Anything in `code style` is 
 | **Claude** (Pro or Max) | Claude Code builds the app | Now |
 | **Supabase** (supabase.com) | Database, sign-in, photos | Now |
 | **Expo** (expo.dev) | Running and building the app | Now |
-| **Twilio** (twilio.com) | SMS codes | Phase 2 |
-| **KYC provider** (to choose) | ID and selfie checks | Phase 2 |
-| **Google Cloud** | Maps | Phase 4–6 |
-| **Paymob** or **Fawry** | Booking fee | Phase 6 |
+| **A domain name** (any registrar) | Sending email from your own address | Now |
+| **Resend** (resend.com) | Sign-up, password-reset and reminder emails (see E5) | Now |
+| **MapTiler** (maptiler.com), optional | Map tiles once many people use the map (see E12) | Before launch |
+| **InstaPay and your bank** | Where people pay you the membership (nothing to install) | Now |
 | **Apple Developer** ($99/yr) and **Google Play** ($25) | Store release | Phase 9 |
 
 ## C. Install the tools (one time)
@@ -41,7 +41,7 @@ Written for a non-developer. Do the steps in order. Anything in `code style` is 
 2. In **Project Settings → API**, copy the **Project URL** and the **anon public** key.
 3. Copy `apps/mobile/.env.example` to `apps/mobile/.env.local` and paste both values in. This file is never uploaded (it's in `.gitignore`).
 4. **Never** copy the `service_role` key into the app, a chat or GitHub. It goes only into Supabase Edge Function secrets (phase 2 and later).
-5. In **Authentication → Providers**: turn **Phone** on. Twilio details come in phase 2. Phase 8 turns **Email** on too (see E10): it is only for the admin dashboard, and the database refuses any email sign-up that was not invited.
+5. In **Authentication → Providers**: turn **Email** on and keep **Confirm email** on. PawsPal people join with an email and password (see E5). Leave **Phone** off.
 
 ## E. Start building with Claude Code
 
@@ -85,25 +85,28 @@ The admin dashboard (`apps/admin`, built in phase 8; for now a one-page placehol
 
 Dependabot opens update PRs every week. The `dependabot-automerge` workflow merges each one that passes CI, so you do nothing. Packages that Expo manages are never offered, because they must move together (`npx expo install --fix`). Updates to GitHub Actions files are the one exception: GitHub does not let the built-in token merge changes to `.github/workflows`, so those PRs wait for Claude Code to merge them.
 
-## E5. Phone sign-up (phase 2)
+## E5. Email service (sign-up emails and reminders)
 
-Sign-up works today with **Supabase test phone numbers**, so no SMS company is needed yet. Nothing is sent; the code is fixed.
+People join with an email and password and must click a confirmation link. Supabase's built-in sender only works for a handful of emails an hour, so you connect a proper sending service. **My recommendation: Resend** (free for 3,000 emails a month and 100 a day, simple setup, works for both Supabase's sign-up emails and our reminder emails). Alternatives are Brevo (300 a day free) or Amazon SES (cheapest, more setup). You need a **domain name** you control (for example `pawspal.app`), because email from a free address like gmail is rejected as spam. If you have no domain yet, buy one first (about 10 to 15 USD a year).
 
-1. Supabase dashboard → Authentication → Providers → Phone: turn **Phone** on, and add test numbers under **Test Phone Numbers** (Egyptian numbers only, for example `201000000001=123456`). Local development already has four in `supabase/config.toml`.
-2. When you choose a real provider (an Egyptian SMS company, WhatsApp, or Twilio later), tell Claude Code which one. It is added as one small file. Then in Supabase: Authentication → Hooks → **Send SMS** → choose HTTPS, enter the URL of the `send-sms` function, copy the secret it shows into the `SEND_SMS_HOOK_SECRET` secret, and set `SMS_PROVIDERS` and the provider's own keys. The hook is the only place the code is sent from.
-3. ID and selfie checks use the setting `IDENTITY_PROVIDER`. Leave it empty on the live project until you choose a provider; the app then says "not available yet" and nobody can pass the check. For testing set `IDENTITY_PROVIDER=fake` (and, on a live project, also `ALLOW_FAKE_IDENTITY=true`). Never leave `fake` on once real people use the app.
+**Part 1: Resend**
+1. Go to **resend.com** and click **Sign up** (use the PawsPal email). Confirm your email.
+2. In the left menu click **Domains**, then **Add Domain**. Type a sending address under your domain, for example `mail.pawspal.app`, choose the region nearest your users, and click **Add**.
+3. Resend now shows a few **DNS records** (a table with Type, Name and Value). Open the website where you bought the domain, go to its **DNS settings**, and add each record exactly as shown (copy and paste the Name and Value). Go back to Resend and click **Verify DNS Records**. It can take a few minutes up to a few hours. Wait until the domain says **Verified**.
+4. In the left menu click **API Keys**, then **Create API Key**. Name it `pawspal`, permission **Sending access**, pick your domain, and click **Add**. **Copy the key now** (it is shown only once) and keep it in your password manager. Do not paste it in a chat.
 
-4. **SMS code expiry, 300 seconds (do this once on the live project).** Supabase dashboard → your PawsPal project → **Authentication** → **Sign In / Providers** → **Phone** → set **SMS OTP Expiry** to `300` → **Save**. (I could not do this for you: the only Supabase project my tools can see is a different one, so I did not touch it.)
-5. **Test phone numbers must be empty on the live project.** Same page (Authentication → Sign In / Providers → Phone): the **Test Phone Numbers and OTPs** list must have nothing in it. Three things protect you even if someone adds one by mistake: (a) test numbers are not in `supabase/config.toml` at all, only in `supabase/local/local-only.toml`, and CI (`scripts/check-config.py`) fails if they ever appear in `config.toml`; (b) the database refuses to create an account for a test-shaped number (`+20 10 0000 00xx` style) unless a developer's own local database has switched them on, which the live one never does (migration 0004); (c) local tests run through `scripts/local-supabase.sh`, which adds the test numbers only while the local stack starts.
-6. **CAPTCHA (Cloudflare Turnstile, free).** Cloudflare dashboard → **Turnstile** → **Add widget**: name `PawsPal`, hostname `pawspal.vercel.app` (or whichever address you set in `EXPO_PUBLIC_TURNSTILE_ORIGIN`), mode **Managed** → create, then copy the **Site Key** (public) and **Secret Key** (private). Then:
-   - Supabase → **Authentication** → **Attack Protection** → turn on **Enable CAPTCHA protection** → provider **Turnstile** → paste the Secret Key → Save. From then on Supabase itself refuses code requests without a valid token, even if someone skips our app.
-   - Supabase → **Edge Functions** → **Secrets**: add `CAPTCHA_PROVIDER` = `turnstile` and `CAPTCHA_SECRET` = the same Secret Key (used after two wrong codes).
-   - The app: set `EXPO_PUBLIC_TURNSTILE_SITE_KEY` to the Site Key (and `EXPO_PUBLIC_TURNSTILE_ORIGIN` if you did not use `pawspal.vercel.app`) wherever the app's public settings live (`apps/mobile/.env.local`, and as EAS environment variables for builds). Without a site key the app asks for no CAPTCHA, so do this together with turning Supabase's CAPTCHA on, or sign-up stops working. This adds a native module, so the next release is a store build, not only an over-the-air update.
-7. Attestation (App Check, Play Integrity, App Attest) is still worth adding before a big launch; the CAPTCHA and the per-number limits already stop the cheap abuse.
+**Part 2: tell Supabase to use it** (Supabase → your PawsPal project)
+5. **Authentication → Emails → SMTP Settings** (it may be named "SMTP Settings" or "Email Settings"). Switch **Enable custom SMTP** on and fill in: **Sender email** `no-reply@mail.pawspal.app` (your verified domain), **Sender name** `PawsPal`, **Host** `smtp.resend.com`, **Port** `465`, **Username** `resend`, **Password** the Resend API key. Click **Save**.
+6. **Authentication → Rate Limits**: set **Rate limit for sending emails** to about `30` per hour at first (Resend's free plan allows 100 a day).
+7. **Authentication → URL Configuration**: **Site URL** `https://pawspal.vercel.app`. Under **Redirect URLs** click **Add URL** and add both `pawspal://auth/callback` and `pawspal://auth/reset`, then **Save**. (These are how the confirmation and password-reset links open the app.)
+8. **Authentication → Emails → Templates**: open **Confirm sign up** and set the subject to `Confirm your PawsPal email` and the message to a short text with the link `{{ .ConfirmationURL }}` (for example: "Welcome to PawsPal. Tap the link to confirm your email: {{ .ConfirmationURL }}"). Do the same for **Reset password** (subject `Reset your PawsPal password`). Add the Arabic lines under the English ones if you like (a native speaker should check them).
+9. **Test it:** create an account in the app, check the confirmation email arrives (look in spam the first time), and tap the link.
 
-Running the local stack: `bash scripts/local-supabase.sh start` (never plain `supabase start`, which would have no test numbers), and `bash scripts/test-db-supabase.sh` to run the security tests against it.
+**Part 3: renewal reminder emails** (the `membership-reminders` function, 7 days before a membership ends)
+10. Supabase → **Edge Functions → Secrets**, add: `EMAIL_PROVIDER` = `resend`, `RESEND_API_KEY` = the same key, `EMAIL_FROM` = `PawsPal <no-reply@mail.pawspal.app>`, and `REMINDER_SECRET` = a long random value (at least 24 characters).
+11. Supabase → **Integrations → Cron → Create job**: name `membership-reminders`, schedule `0 8 * * *` (every day at 8 am), type **Supabase Edge Function**, function `membership-reminders`, method `POST`, and an HTTP header `x-reminder-secret` with the same value as `REMINDER_SECRET`. Save.
 
-The full list of settings is in `supabase/functions/README.md`.
+Running things on your own computer: `bash scripts/local-supabase.sh start` starts Supabase locally; sign-up emails then go to a local inbox (open http://127.0.0.1:54324 once Mailpit is running; the helper script excludes it by default, remove `mailpit` from the exclude list to use it). `bash scripts/test-db-supabase.sh` runs the security tests against it. The full list of function settings is in `supabase/functions/README.md`.
 
 ## E6. Photo clean-up (every night)
 
@@ -111,27 +114,23 @@ Photos that were uploaded but never saved (a pet photo you added and then left t
 
 1. Supabase → **Edge Functions** → **Secrets**: add `CLEANUP_SECRET` with a long random value (at least 24 characters; a password generator is fine).
 2. Supabase → **Integrations** → **Cron** (turn the Cron integration on if it asks) → **Create job**: name `cleanup-photos`, schedule `0 3 * * *` (3 am every day), type **Supabase Edge Function**, choose `cleanup-photos`, method `POST`, and add the header `x-cleanup-secret` with the same value as `CLEANUP_SECRET`.
-3. Nothing else. A raw upload still in `incoming` after an hour, and a clean photo that no pet or profile uses after a day, are deleted. It never touches a photo that a pet or profile points to, and it only looks in the four photo folders. If the secret is not set, the function refuses to run.
+3. Nothing else. A raw upload still in `incoming` after an hour, and a clean photo that no pet or profile uses after a day, are deleted. It never touches a photo that a pet or profile points to, and it looks only in the photo, ID and payment-screenshot folders. If the secret is not set, the function refuses to run.
 
-## E8. Payments (Paymob, test mode first)
+## E8. Reviewing people and taking membership payments (by hand)
 
-The booking fee is paid through Paymob. It works in **test mode** with a Paymob test account, so nobody is charged for real until you switch to live keys. Until these settings exist, the app says "Payment is not available yet" and nothing can be paid.
+There is no payment company in the app. People pay you **registration (75 EGP)** and **renewal (25 EGP every 6 months)** by InstaPay or bank transfer, then send you a reference number or a screenshot, and **you confirm it in the admin site**.
 
-1. **Account.** Sign up at Paymob (Egypt) and open the dashboard. In the dashboard find **Developers → Getting Integration Credentials**. You need five things: the **Secret key** and **Public key** (test ones start `egy_sk_test_` and `egy_pk_test_`), the **Integration ID** of a test card integration (and a wallet one if you want wallets), and the **HMAC secret**.
-2. **Settings.** Supabase → **Edge Functions** → **Secrets**, add:
-   - `PAYMENT_PROVIDER` = `paymob`
-   - `PAYMOB_SECRET_KEY`, `PAYMOB_PUBLIC_KEY`, `PAYMOB_HMAC_SECRET`
-   - `PAYMOB_INTEGRATION_IDS` = the integration id(s), separated by commas
-   - `PAYMOB_NOTIFICATION_URL` = `https://<your project ref>.supabase.co/functions/v1/paymob-webhook`
-3. **Tell Paymob where to report.** In the Paymob dashboard, set the **Transaction processed callback** to that same address. Every payment result reaches the app only this way, and a callback without a valid signature is refused.
-4. **Try it.** Make a booking with two test accounts, accept the terms on both, tap **Pay the booking fee**, and pay with one of Paymob's test cards (listed in their **Test credentials** page). The chat should jump to **Booking confirmed** by itself.
-5. **Going live later.** Replace the three keys and the integration id(s) with the live ones. Nothing else changes.
+**One-time: give people your payment details** (admin site → **Settings**)
+1. Open the admin site and sign in (E10). Click **Settings** in the left menu.
+2. Under **InstaPay**: paste your **InstaPay payment link** (it must start with `https://`) and, if you have a QR code image online, its `https://` address. Click **Save** next to each box.
+3. Under **Bank transfer**: fill **Bank name**, **Account name**, **Account number**, **IBAN**, and a **Payment note** (for example "Write your email in the transfer note"). Click **Save** next to each.
+4. Under **Fees** you can change 75, 25, 6 months and the 7-day reminder. People see the new amounts for their next payment.
+Until you fill these in, the app tells people "Payment details are coming soon".
 
-**The fee.** It is **75 EGP**. To change it: Supabase → **Table Editor** → `app_settings` → the row `booking_fee_egp` → change `value` and save (whole pounds, 1 to 10000). The refund charge kept when an owner cancels early (Terms of Service section 6, "[X] EGP") is the row `refund_processing_charge_egp`; it is 0 until your lawyer confirms the number.
-
-**Refunds.** When a booking is cancelled the database works out what comes back (Terms of Service section 6): the other person cancels, everything; the owner cancels more than 48 hours before the start, the fee minus the charge; within 48 hours, nothing. Refunds wait as "refund due" and are sent by the `process-refunds` function. Add a Supabase secret `REFUND_SECRET` (24+ random characters) and a **Cron** job (Integrations → Cron) that calls the `process-refunds` function every hour with the header `x-refund-secret`. No-shows and removals are decided by a person in the admin app (phase 8).
-
-**Things I could not check without a Paymob account** (please confirm when you open it): the exact refund request Paymob expects (a refund that Paymob does not confirm stays "refund due" and is tried again, then waits for a person), whether Paymob insists on a real phone number on each checkout (we send a placeholder so we do not pass phone numbers on), and that the callback arrives with the fields listed in their documentation. Who pays the fee: **the person who sent the request** (the owner, or whoever proposed a swap), one fee per booking.
+**Every working day (aim to finish within 1 business day, as the app promises)**
+- **Verification:** open it, look at each selfie and ID photo, tick "I checked that the person is 18 or older and that the photos match", then **Approve** or **Reject** (a rejection needs a reason the person will read). **The ID photo is deleted the moment you decide.**
+- **Payments:** check your bank or InstaPay app for the payment, then open **Payments** and **Confirm** it (or **Reject** with a reason). The screenshot is deleted when you decide. A confirmed registration starts six months of membership; a renewal adds six months to the date they already have.
+- If a renewal is not paid, the account **pauses by itself** on the day it ends (no searching, messaging or booking) until you confirm their payment.
 
 ## E7. Chat
 
@@ -149,7 +148,7 @@ Nothing to set up: no new accounts or secrets. What to know:
 The dashboard is the website in `apps/admin` (Vercel). Admin power needs **three things at once**: a password, a six digit code from an authenticator app, and a place in the admins list. The database checks the code on every request, so a stolen password alone opens nothing.
 
 **One-time settings**
-1. Supabase → **Authentication → Providers → Email**: switch it **on** and keep **Confirm email** on. It is only for admins: the database refuses every email sign-up that was not invited first (and an invite works once), and people still join with their phone only. Under **Authentication → Policies** (password strength): minimum length 12 with upper and lower case letters and digits. If your Supabase plan offers it, also set **Authentication → Sessions → inactivity timeout** (for example 1 hour): the site signs itself out after 30 minutes unused, but that is done in the browser.
+1. Supabase → **Authentication → Providers → Email**: **on**, with **Confirm email** on (this is also how normal people join, see E5). The admin account is an ordinary email account that you also invite and grant in the SQL Editor (below). Under **Authentication → Policies** (password strength): minimum length 12 with upper and lower case letters and digits. If your Supabase plan offers it, also set **Authentication → Sessions → inactivity timeout** (for example 1 hour): the site signs itself out after 30 minutes unused, but that is done in the browser.
 2. Same area: make sure **Multi-Factor (authenticator app / TOTP)** is enabled (it is by default).
 3. Vercel → your admin project → **Settings → Environment Variables** (all environments): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the same public values as the app) and `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (the same Cloudflare Turnstile site key as the app; add the admin site's address to that widget's allowed hostnames in Cloudflare). Supabase asks for the Turnstile check on every sign-in, so without the key the sign-in button stays off.
 
@@ -174,16 +173,16 @@ After each deploy, in Supabase → **SQL Editor** run `select count(*) from info
 |---|---|---|
 | Supabase URL and anon key | `apps/mobile/.env.local` (public values) | n/a |
 | Supabase service_role key | Supabase → Edge Functions → Secrets | In the app or Git |
-| SMS / WhatsApp provider key (whichever company you choose) | Supabase → Edge Functions → Secrets | In the app or Git |
+| Email provider key (`RESEND_API_KEY`) | Supabase → Authentication → SMTP password, and Edge Functions → Secrets | In the app or Git |
 | Photo clean-up secret (`CLEANUP_SECRET`) | Supabase → Edge Functions → Secrets, and the Cron job header | In the app or Git |
-| Paymob keys and HMAC secret | Supabase → Edge Functions → Secrets | In the app or Git |
-| Refund job secret (`REFUND_SECRET`) | Supabase → Edge Functions → Secrets, and the Cron job header | In the app or Git |
-| Send SMS hook secret | Supabase → Edge Functions → Secrets (`SEND_SMS_HOOK_SECRET`) | In the app or Git |
-| Paymob API key and HMAC secret | Supabase Edge Function secrets | In the app or Git |
-| KYC API key | Supabase Edge Function secrets | In the app or Git |
-| Google Maps keys | App config, **restricted** to your app IDs | Unrestricted |
+| Reminder job secret (`REMINDER_SECRET`) | Supabase → Edge Functions → Secrets, and the Cron job header (`x-reminder-secret`) | In the app or Git |
+| Map tile key (only if you use a paid or keyed tile provider) | App public settings (`EXPO_PUBLIC_MAP_TILE_URL`); keyed providers let you restrict it to your app | Unrestricted |
 
 If a secret ever leaks: rotate it straight away in the provider's dashboard, then tell Claude Code to update the secret.
+
+## E12. Map tiles (the availability map)
+
+The map uses free **OpenStreetMap** tiles by default, with the required credit "© OpenStreetMap contributors" shown on the map. OpenStreetMap's public servers are meant for **light use only**, so before many people use the app switch to a provider with a free plan, for example **MapTiler** (100,000 tile views a month free): sign up at maptiler.com, create a key, and set `EXPO_PUBLIC_MAP_TILE_URL` to the raster tile address they give you (it contains your key) and `EXPO_PUBLIC_MAP_ATTRIBUTION` to the credit text they require. These are public app settings (`apps/mobile/.env.local`, and the EAS environment variables for builds). Restrict the key to your app in the provider's dashboard.
 
 ## G. Before launch
 

@@ -24,7 +24,7 @@ const p = prof as jest.Mocked<typeof prof>;
 const a = api as jest.Mocked<typeof api>;
 const params = useLocalSearchParams as jest.Mock;
 
-const me: prof.PublicProfile = { id: 'me', first_name: 'Mona', role: 'both', bio: 'Dive instructor with a garden.', area: 'Masbat',
+const me: prof.PublicProfile = { id: 'me', first_name: 'Mona', role: 'sitter', bio: 'Dive instructor with a garden.', area: 'Masbat',
   card_illustration: 'cat-mango', card_background: 'circles_orange', rating_avg: 4.9, stays_count: 32, home_photo_path: 'me/home.jpg', home_tags: ['garden', 'pet_first_aid'] };
 const pet: prof.Pet = { id: 'pet-1', owner_id: 'me', name: 'Biscuit', type: 'dog', size: 'medium', age_years: 3, vaccinated: true, notes: 'Loves walks', photo_paths: ['me/p1.jpg'], locked: false };
 
@@ -51,8 +51,9 @@ describe('edit profile', () => {
     await renderIn(<EditProfile />);
     await waitFor(() => expect(screen.getByLabelText('First name')).toBeTruthy());
     expect(screen.getByDisplayValue('Mona')).toBeTruthy();
-    expect(screen.getByText('Looking for a sitter and hosting')).toBeTruthy();
-    expect(screen.getByText('Your role is fixed once your profile has been reviewed.')).toBeTruthy();
+    expect(screen.getByText('Host')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Owner' })).toBeNull();               // the role is shown, never switched
+    expect(screen.getByText('You chose your role when you signed up. It cannot be changed.')).toBeTruthy();
     expect(screen.getByLabelText('Mango the cat')).toBeTruthy();                       // the live preview is labelled
     await fireEvent.press(screen.getByText('Storm the husky'));
     await fireEvent.press(screen.getByText('Navy'));
@@ -307,7 +308,7 @@ describe('host profile', () => {
 
   it('shows tag chips (pets accepted and home tags), available dates and terms', async () => {
     ex.fetchAvailability.mockResolvedValue([
-      { id: 'av1', starts_on: '2026-12-01', ends_on: '2026-12-09', pets_accepted: ['dog', 'cat'], offers: ['paid', 'swap', 'food_provided'], price_per_night: 250, negotiable: true },
+      { id: 'av1', starts_on: '2026-12-01', ends_on: '2026-12-09', pets_accepted: ['dog', 'cat'], offers: ['paid', 'food_provided'], price_per_night: 250, negotiable: true },
     ]);
     params.mockReturnValue({ id: 'host-1' });
     await renderIn(<HostProfile />);
@@ -318,7 +319,6 @@ describe('host profile', () => {
     expect(screen.getByText('Dec 1 – Dec 9')).toBeTruthy();
     expect(screen.getByText('Terms')).toBeTruthy();
     expect(screen.getByText('250 EGP per night, negotiable')).toBeTruthy();
-    expect(screen.getByText('Swap welcome')).toBeTruthy();
     expect(screen.getByText('Food provided')).toBeTruthy();
   });
 

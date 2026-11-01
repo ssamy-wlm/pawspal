@@ -16,8 +16,8 @@ Food, water, walks, love and quick updates. Follow the owner's instructions. If 
 ### 2. Use real photos only
 Your own face as your profile photo, and your own pets. No filters, sunglasses, group shots, cartoons or stolen images.
 
-### 3. Keep chat and payments in the app until a booking is confirmed
-Don't ask for or share phone numbers, WhatsApp, Instagram, InstaPay, bank details or links before then. The app hides them automatically, and repeated attempts are a rule break.
+### 3. Keep chat in the app until a booking is confirmed
+Don't ask for or share phone numbers, WhatsApp, Instagram, InstaPay, bank details or links before then. The app hides them automatically, and repeated attempts are a rule break. Once you both accept the terms, contact details unlock and you can arrange payment directly with each other.
 
 ### 4. Be honest and kind
 In messages, listings and reviews. Describe your pet and your home truthfully. No harassment, threats, insults or discrimination.

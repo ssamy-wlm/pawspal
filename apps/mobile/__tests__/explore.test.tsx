@@ -12,18 +12,17 @@ import CalendarTab from '../app/(tabs)/calendar';
 import Shortlist from '../app/shortlist';
 import Travellers from '../app/travellers';
 import PostDates from '../app/post-dates';
-import { ResultsMap } from '../src/components/ResultsMap';
 import { CardArt, PawHeartPattern } from '../src/components/CardArt';
 import { BrowseCard, cardChips } from '../src/components/BrowseCard';
 import { LikeButton, PassButton } from '../src/components/SwipeButtons';
 import { ToastProvider } from '../src/components/Toast';
 
-let mockRole: 'owner' | 'sitter' | 'both' = 'both';
+let mockRole: 'owner' | 'sitter' = 'sitter';
 jest.mock('../src/lib/auth', () => ({ useAuth: () => ({ ready: true, session: { user: { id: 'me' } }, state: { status: 'active', role: mockRole }, refresh: jest.fn(), signOut: jest.fn() }) }));
 jest.mock('../src/lib/search', () => ({ ...jest.requireActual('../src/lib/search'), searchStays: jest.fn(), browseRandom: jest.fn() }));
 jest.mock('../src/lib/explore', () => ({
   saveToShortlist: jest.fn(), removeFromShortlist: jest.fn(), fetchShortlist: jest.fn(), postAvailability: jest.fn(), postTravel: jest.fn(),
-  fetchAvailability: jest.fn(), fetchTravelPosts: jest.fn(), deleteAvailability: jest.fn(), deleteTravelPost: jest.fn(), browseTravellers: jest.fn(),
+  fetchAvailability: jest.fn(), fetchTravelPosts: jest.fn(), deleteAvailability: jest.fn(), deleteTravelPost: jest.fn(), browseTravellers: jest.fn(), fetchMapAvailability: jest.fn(),
 }));
 jest.mock('../src/lib/profile', () => ({ ...jest.requireActual('../src/lib/profile'), fetchCard: jest.fn(), fetchPets: jest.fn() }));
 // The calendar is tested on its own; here a button picks fixed dates.
@@ -53,7 +52,7 @@ const host = (i: number, over: Partial<search.StayResult> = {}): search.StayResu
 const wrap = (ui: React.ReactElement) => <GestureHandlerRootView style={{ flex: 1 }}><ToastProvider>{ui}</ToastProvider></GestureHandlerRootView>;
 
 beforeEach(() => {
-  jest.clearAllMocks(); mockRole = 'both';
+  jest.clearAllMocks(); mockRole = 'sitter';
   s.searchStays.mockResolvedValue([host(1), host(2, { match_label: 'Close match' })]);
   s.browseRandom.mockResolvedValue([host(1), host(2)]);
   x.fetchShortlist.mockResolvedValue([]); x.fetchAvailability.mockResolvedValue([]); x.fetchTravelPosts.mockResolvedValue([]); x.browseTravellers.mockResolvedValue([]);
@@ -98,17 +97,35 @@ describe('Explore with real data', () => {
     expect(rowLayout(rows, 61).offset).toBe(rowLayout(rows, 60).offset + rowLayout(rows, 60).length + 12);   // the note sits at row 60
   });
 
-  it('switches the results to a map of areas and back', async () => {
+  it('switches to the availability map and back to the list', async () => {
+    x.fetchMapAvailability.mockResolvedValue([]);
     await renderIn(wrap(<Explore />));
     await searchNow();
     await waitFor(() => screen.getByText('Host1'));
     await fireEvent.press(screen.getByText('Map'));
-    expect(screen.getByText('Circles show each host’s area, not their home.')).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText('Host1, Masbat'));
-    await fireEvent.press(screen.getByText('View profile'));
-    expect(router.push).toHaveBeenCalledWith('/host/u1');
+    await waitFor(() => expect(x.fetchMapAvailability).toHaveBeenCalledWith(null));
+    await waitFor(() => expect(screen.getByText('No hosts are showing availability on the map yet.')).toBeTruthy());
+    await fireEvent.press(screen.getByText('Dogs'));
+    await waitFor(() => expect(x.fetchMapAvailability).toHaveBeenLastCalledWith('dog'));
     await fireEvent.press(screen.getByText('List'));
     expect(screen.getByLabelText(/^Host2\./)).toBeTruthy();
+  });
+
+  it('opens the map from the filters too, and says so when it cannot load', async () => {
+    x.fetchMapAvailability.mockRejectedValueOnce(new Error('network')).mockResolvedValue([]);
+    await renderIn(wrap(<Explore />));
+    await fireEvent.press(screen.getByText('Map'));
+    await waitFor(() => expect(screen.getByText('We could not load the map. Check your connection and try again.')).toBeTruthy());
+    await fireEvent.press(screen.getByText('Try again'));
+    await waitFor(() => expect(screen.getByText('No hosts are showing availability on the map yet.')).toBeTruthy());
+  });
+
+  it('has no swap filter, label or price anywhere', async () => {
+    await renderIn(wrap(<Explore />));
+    expect(screen.queryByText(/swap/i)).toBeNull();
+    expect(screen.getByText('Free')).toBeTruthy();
+    await renderIn(<BrowseCard r={host(1, { offers: ['volunteer'], price_per_night: null })} />);
+    expect(screen.getAllByText('Free').length).toBeGreaterThan(0);
   });
 
   it('saves a liked host to the shortlist, and says so', async () => {
@@ -281,12 +298,12 @@ describe('animated card backgrounds', () => {
 
 describe('browse card chips', () => {
   it('shows who lives there, the pets welcome, what is offered and what the home has', () => {
-    const labels = cardChips(host(1, { pet_name: 'Rex', pets_accepted: ['dog', 'cat'], offers: ['paid', 'food_provided', 'swap'], home_tags: ['garden', 'pet_first_aid', 'near_beach', 'quiet_home'] })).map((x) => x.label);
-    expect(labels).toEqual(['Rex lives here', 'Dogs', 'Cats', 'Food provided', 'Swap welcome', 'Garden', 'Pet first aid']);
+    const labels = cardChips(host(1, { pet_name: 'Rex', pets_accepted: ['dog', 'cat'], offers: ['paid', 'food_provided'], home_tags: ['garden', 'pet_first_aid', 'near_beach', 'quiet_home'] })).map((x) => x.label);
+    expect(labels).toEqual(['Rex lives here', 'Dogs', 'Cats', 'Food provided', 'Garden', 'Pet first aid', 'Quiet home']);
   });
   it('says "Pet-friendly home" when no pet lives there, ignores unknown tags, and never shows more than seven', () => {
     expect(cardChips(host(1, { pet_name: null, offers: ['paid'], pets_accepted: ['dog'], home_tags: ['made_up'] })).map((x) => x.label)).toEqual(['Pet-friendly home', 'Dogs']);
-    expect(cardChips(host(1, { pets_accepted: ['dog', 'cat', 'other'], offers: ['food_provided', 'swap', 'volunteer', 'stay_at_my_place'], home_tags: ['garden'] }))).toHaveLength(7);
+    expect(cardChips(host(1, { pets_accepted: ['dog', 'cat', 'other'], offers: ['food_provided', 'volunteer', 'stay_at_my_place'], home_tags: ['garden'] }))).toHaveLength(7);
   });
   it('draws the chips on the full card but not on the list row', async () => {
     const full = await renderIn(<BrowseCard r={host(1, { pet_name: 'Rex', home_tags: ['garden'] })} />);
@@ -321,13 +338,6 @@ describe('typing numbers', () => {
   it('keeps only digits, including Arabic ones, at most six', () => {
     expect(digitsOnly('٢٥٠ EGP')).toBe('250');
     expect(digitsOnly('1234567890')).toBe('123456');
-  });
-});
-
-describe('results map', () => {
-  it('says so when there is nothing to show, and never plots hosts without an area', async () => {
-    await renderIn(<ResultsMap results={[host(1, { approx_lat: null, approx_lng: null })]} onOpen={jest.fn()} />);
-    expect(screen.getByText('No hosts to show on the map.')).toBeTruthy();
   });
 });
 

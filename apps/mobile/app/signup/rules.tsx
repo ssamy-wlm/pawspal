@@ -9,13 +9,12 @@ import { supabase } from '../../src/lib/supabase';
 import { fontFamily, useTheme } from '../../src/theme';
 import { isRTL, Key, t as tr } from '../../src/i18n';
 
-const DOCS: { doc: 'terms' | 'privacy' | 'guidelines'; slug: string; label: Key }[] = [
-  { doc: 'terms', slug: 'termsOfService', label: 'legal.terms' },
-  { doc: 'privacy', slug: 'privacyPolicy', label: 'legal.privacy' },
+// The Terms and the Privacy Policy were accepted when the account was created; only the Community Guidelines are left.
+const DOCS: { doc: 'guidelines'; slug: string; label: Key }[] = [
   { doc: 'guidelines', slug: 'communityGuidelines', label: 'legal.guidelines' },
 ];
 
-/** Step 6: accept Terms, Privacy and Community Guidelines (the version current today), then send for review. */
+/** Step 5: accept the Community Guidelines (the version current today), then send the profile for review. */
 export default function RulesStep() {
   const { refresh } = useAuth();
   const c = useTheme(true).color;
@@ -30,7 +29,7 @@ export default function RulesStep() {
     try {
       const { data: u } = await supabase.auth.getUser();
       const uid = u.user?.id;
-      const versions = await supabase.from('legal_documents').select('doc, current_version');
+      const versions = await supabase.from('legal_documents').select('doc, current_version').eq('doc', 'guidelines');
       if (!uid || versions.error) throw new Error('not ready');
       for (const v of versions.data) {
         const r = await supabase.from('legal_acceptances').insert({ user_id: uid, doc: v.doc, version: v.current_version });
@@ -44,7 +43,7 @@ export default function RulesStep() {
   };
 
   return (
-    <StepScreen step={6} title={tr('signup.rules.title')} sub={tr('signup.rules.sub')}
+    <StepScreen step={5} total={5} title={tr('signup.rules.title')} sub={tr('signup.rules.sub')}
       footer={<Button navy title={tr('signup.rules.submit')} disabled={!all || busy} onPress={() => { submit().catch(() => {}); }} />}>
       {DOCS.map((d) => {
         const on = !!ticked[d.doc];

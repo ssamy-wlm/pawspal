@@ -1,5 +1,6 @@
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TrustScreen } from '../src/components/TrustScreen';
 import { Illustration } from '../src/components/Illustration';
@@ -24,13 +25,15 @@ async function loadDecision(userId: string): Promise<Decision | null> {
   return { id: action.id, message: action.message, appealed: (ap.data?.length ?? 0) > 0 };
 }
 
-/** Shown to everyone who is not active yet: waiting for review, or an account that has been suspended or removed. */
+/** The status hub for everyone who is not active yet: waiting for review, a photo check that needs redoing, the registration fee, or an account that was suspended or removed. */
 export default function Pending() {
   const { state, session, signOut, refresh } = useAuth();
   const c = useTheme(true).color;
   const rtl = isRTL();
   const insets = useSafeAreaInsets();
   const stopped = state?.status === 'suspended' || state?.status === 'removed';
+  const verification = state?.verification;
+  const membership = state?.membership;
   const userId = session?.user.id;
   const [decision, setDecision] = React.useState<Decision | null>(null);
   const [body, setBody] = React.useState('');
@@ -69,9 +72,30 @@ export default function Pending() {
             {stopped ? tr('pending.stoppedTitle') : tr('pending.title')}
           </Text>
           <Text style={{ color: c.textMuted, fontSize: 16, lineHeight: 23, textAlign: 'center', fontFamily: fontFamily('regular', rtl) }}>
-            {stopped ? tr('pending.suspended') : tr('pending.body')}
+            {stopped ? tr(state?.status === 'removed' ? 'pending.removed' : 'pending.suspended') : tr('pending.reviewBody')}
           </Text>
         </View>
+
+        {!stopped ? (
+          <View style={{ gap: 4 }}>
+            {verification?.status === 'rejected' ? (
+              <>
+                <CheckRow done={false} title={tr('verify.rejected')} description={verification.note ?? undefined} />
+                <Button navy title={tr('pending.verification.again')} onPress={() => router.replace('/signup/selfie')} />
+              </>
+            ) : verification?.status === 'pending' ? (
+              <CheckRow title={tr('pending.verification.pending')} />
+            ) : null}
+            {membership?.state === 'unpaid' && membership.claim_status === 'pending' ? (
+              <CheckRow title={tr('membership.claimPending')} />
+            ) : membership?.state === 'unpaid' ? (
+              <>
+                <CheckRow done={false} title={tr('pending.membership.unpaid', { amount: membership.amount_egp })} description={tr('membership.byHand')} />
+                <Button navy title={tr('pending.membership.pay')} onPress={() => router.push('/membership')} />
+              </>
+            ) : null}
+          </View>
+        ) : null}
 
         {stopped && decision ? (
           <View style={{ gap: 12 }}>

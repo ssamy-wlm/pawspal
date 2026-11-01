@@ -39,7 +39,7 @@ const c = chat as jest.Mocked<typeof chat>;
 const params = useLocalSearchParams as jest.Mock;
 const wrap = (ui: React.ReactElement) => <ToastProvider>{ui}</ToastProvider>;
 const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
-const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: day(-3), ends_on: day(-1), stay_location: 'sitter_home', cost_type: 'volunteer', price_per_night: null, food_provided: false, status: 'in_progress', fee_status: 'paid', owner_accepted_at: 'x', sitter_accepted_at: 'y', swap_group: null, terms_version: 1, opened_by: 'me', ...over });
+const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: day(-3), ends_on: day(-1), stay_location: 'sitter_home', cost_type: 'volunteer', price_per_night: null, food_provided: false, status: 'in_progress', owner_accepted_at: 'x', sitter_accepted_at: 'y', terms_version: 1, ...over });
 
 beforeEach(() => {
   jest.clearAllMocks();

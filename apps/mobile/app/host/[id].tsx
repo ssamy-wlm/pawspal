@@ -38,7 +38,7 @@ function Tag({ label, strong }: { label: string; strong?: boolean }) {
 }
 
 const PET_LABEL: Record<string, Key> = { dog: 'pet.dogs', cat: 'pet.cats', other: 'pet.others' };
-const OFFER_LABEL: Record<string, Key> = { volunteer: 'offer.volunteer', swap: 'offer.swap', food_provided: 'offer.food_provided', stay_at_my_place: 'offer.stay_at_my_place' };
+const OFFER_LABEL: Record<string, Key> = { volunteer: 'offer.volunteer', food_provided: 'offer.food_provided', stay_at_my_place: 'offer.stay_at_my_place' };
 
 /** A host's public profile (mockup 03): card art, name, area, stats, about, their pets and home, and the Message and Request booking buttons. */
 export default function HostProfile() {
@@ -158,7 +158,7 @@ export default function HostProfile() {
     {session && id !== session.user.id ? (
       <View style={{ flexDirection: 'row', gap: 12, padding: 16, paddingBottom: insets.bottom + 16, backgroundColor: c.background }}>
         <View style={{ flex: 1 }}><Button variant="secondary" title={tr('booking.message')} disabled={busy} onPress={() => { open('chat').catch(() => {}); }} /></View>
-        {p.role !== 'owner' && auth?.role !== 'sitter' ? <View style={{ flex: 1 }}><Button title={tr('booking.request')} disabled={busy} onPress={() => { open('booking').catch(() => {}); }} /></View> : null}
+        {p.role === 'sitter' && auth?.role === 'owner' ? <View style={{ flex: 1 }}><Button title={tr('booking.request')} disabled={busy} onPress={() => { open('booking').catch(() => {}); }} /></View> : null}
       </View>
     ) : null}
     </View>

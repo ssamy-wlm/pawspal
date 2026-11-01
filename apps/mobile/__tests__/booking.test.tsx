@@ -8,9 +8,9 @@ import * as prof from '../src/lib/profile';
 import BookingScreen from '../app/booking/[id]';
 import { ToastProvider } from '../src/components/Toast';
 
-let mockRole: 'owner' | 'sitter' | 'both' = 'both';
+let mockRole: 'owner' | 'sitter' = 'owner';
 jest.mock('../src/lib/auth', () => ({ useAuth: () => ({ ready: true, session: { user: { id: 'me' } }, state: { status: 'active', role: mockRole }, refresh: jest.fn(), signOut: jest.fn() }) }));
-jest.mock('../src/lib/bookings', () => ({ ...jest.requireActual('../src/lib/bookings'), fetchBooking: jest.fn(), requestBooking: jest.fn(), requestSwap: jest.fn(), proposeTerms: jest.fn() }));
+jest.mock('../src/lib/bookings', () => ({ ...jest.requireActual('../src/lib/bookings'), fetchBooking: jest.fn(), requestBooking: jest.fn(), proposeTerms: jest.fn() }));
 jest.mock('../src/lib/profile', () => ({ ...jest.requireActual('../src/lib/profile'), fetchCard: jest.fn(), fetchPets: jest.fn() }));
 // The calendar has its own tests: here each calendar is a button that picks fixed dates (the second one picks later dates).
 jest.mock('../src/components/CalendarRange', () => {
@@ -28,15 +28,15 @@ const p = prof as jest.Mocked<typeof prof>;
 const params = useLocalSearchParams as jest.Mock;
 const wrap = (ui: React.ReactElement) => <ToastProvider>{ui}</ToastProvider>;
 const pet = (id: string, name: string, owner: string): prof.Pet => ({ id, owner_id: owner, name, type: 'dog', size: 'small', age_years: 2, vaccinated: true, notes: null, photo_paths: ['x'], locked: false });
-const card = (role: 'owner' | 'sitter' | 'both'): prof.PublicProfile => ({ id: 'them', first_name: 'Hana', role, bio: null, area: null, card_illustration: 'cat-mango', card_background: 'pattern', rating_avg: null, stays_count: 0, home_photo_path: null, home_tags: [] });
-const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: '2026-12-01', ends_on: '2026-12-05', stay_location: 'sitter_home', cost_type: 'paid', price_per_night: 250, food_provided: true, status: 'requested', fee_status: 'unpaid', owner_accepted_at: null, sitter_accepted_at: null, swap_group: null, terms_version: 1, opened_by: 'me', ...over });
+const card = (role: 'owner' | 'sitter'): prof.PublicProfile => ({ id: 'them', first_name: 'Hana', role, bio: null, area: null, card_illustration: 'cat-mango', card_background: 'pattern', rating_avg: null, stays_count: 0, home_photo_path: null, home_tags: [] });
+const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: '2026-12-01', ends_on: '2026-12-05', stay_location: 'sitter_home', cost_type: 'paid', price_per_night: 250, food_provided: true, status: 'requested', owner_accepted_at: null, sitter_accepted_at: null, terms_version: 1, ...over });
 
 beforeEach(() => {
-  jest.clearAllMocks(); mockRole = 'both';
+  jest.clearAllMocks(); mockRole = 'owner';
   params.mockReturnValue({ id: 'new', other: 'them' });
   p.fetchCard.mockResolvedValue(card('sitter'));
   p.fetchPets.mockImplementation(async (owner: string) => (owner === 'me' ? [pet('mine1', 'Biscuit', 'me'), pet('mine2', 'Rex', 'me')] : [pet('their1', 'Mango', 'them')]));
-  k.requestBooking.mockResolvedValue('b9'); k.requestSwap.mockResolvedValue('g9'); k.proposeTerms.mockResolvedValue(undefined);
+  k.requestBooking.mockResolvedValue('b9'); k.proposeTerms.mockResolvedValue(undefined);
 });
 afterEach(() => setLocaleForTests('en'));
 
@@ -115,38 +115,42 @@ describe('request a stay', () => {
   });
 });
 
-describe('request a swap', () => {
-  it('is offered only when both of you host and own pets', async () => {
-    p.fetchCard.mockResolvedValue(card('sitter'));
-    const first = await renderIn(wrap(<BookingScreen />));
-    await waitFor(() => screen.getByText('Send request'));
-    expect(screen.queryByText('A swap')).toBeNull();
-    await first.unmount();
-    p.fetchCard.mockResolvedValue(card('both')); mockRole = 'owner';
-    const second = await renderIn(wrap(<BookingScreen />));
-    await waitFor(() => screen.getByText('Send request'));
-    expect(screen.queryByText('A swap')).toBeNull();
-    await second.unmount();
-    mockRole = 'both';
+describe('no swaps', () => {
+  it('has no swap option, whoever you and they are', async () => {
     await renderIn(wrap(<BookingScreen />));
-    await waitFor(() => expect(screen.getByText('A swap')).toBeTruthy());
+    await waitFor(() => screen.getByText('Send request'));
+    expect(screen.queryByText(/swap/i)).toBeNull();
+    expect(screen.queryByText('Their pet')).toBeNull();
+    expect(screen.getAllByLabelText('pick dates')).toHaveLength(1);
   });
+});
 
-  it('sends two pets and two sets of dates as one swap', async () => {
-    p.fetchCard.mockResolvedValue(card('both'));
+describe('who may ask', () => {
+  it('lets an owner ask a host only', async () => {
+    p.fetchCard.mockResolvedValue(card('owner'));
     await renderIn(wrap(<BookingScreen />));
-    await waitFor(() => screen.getByText('A swap'));
-    await fireEvent.press(screen.getByText('A swap'));
-    expect(screen.getByText('Their pet')).toBeTruthy();
-    expect(screen.queryByText('Paid')).toBeNull();                                         // a swap has no price
-    const calendars = screen.getAllByLabelText('pick dates');
-    expect(calendars).toHaveLength(2);
+    await waitFor(() => screen.getByText('Send request'));
+    await fireEvent.press(screen.getByLabelText('pick dates'));
     await fireEvent.press(screen.getByText('Send request'));
-    expect(k.requestSwap).not.toHaveBeenCalled();                                          // the dates are not both chosen
-    for (const cal of calendars) await fireEvent.press(cal);
-    await fireEvent.press(screen.getByText('Mango'));
+    expect(k.requestBooking).not.toHaveBeenCalled();
+  });
+  it('does not let a host ask', async () => {
+    mockRole = 'sitter';
+    await renderIn(wrap(<BookingScreen />));
+    await waitFor(() => screen.getByText('Send request'));
+    await fireEvent.press(screen.getByLabelText('pick dates'));
     await fireEvent.press(screen.getByText('Send request'));
-    await waitFor(() => expect(k.requestSwap).toHaveBeenCalledWith({ otherId: 'them', myPetId: 'mine1', theirPetId: 'their1', myStarts: '2026-12-01', myEnds: '2026-12-05', theirStarts: '2026-12-01', theirEnds: '2026-12-05', food: false }));
+    expect(k.requestBooking).not.toHaveBeenCalled();
+  });
+});
+
+describe('the disclaimer and the terms lines', () => {
+  it('says payment is their own arrangement and links to the Terms', async () => {
+    await renderIn(wrap(<BookingScreen />));
+    await waitFor(() => screen.getByText('Send request'));
+    expect(screen.getByText('Payment between you and the other person is your own arrangement. PawsPal never handles that money.')).toBeTruthy();
+    await fireEvent.press(screen.getByText('PawsPal does not vet or guarantee anyone. Read the Terms.'));
+    expect(router.push).toHaveBeenCalledWith('/legal/termsOfService');
   });
 });
 
@@ -162,17 +166,6 @@ describe('change the terms', () => {
     await fireEvent.press(screen.getByText('Save changes'));
     await waitFor(() => expect(k.proposeTerms).toHaveBeenCalledWith('b1', { starts_on: '2026-12-01', ends_on: '2026-12-05', location: 'owner_home', cost: 'paid', price: 300, food: true }));
     expect(router.back).toHaveBeenCalled();
-  });
-
-  it('keeps a swap leg a swap: only dates and food can change', async () => {
-    params.mockReturnValue({ id: 'l1', other: 'them' });
-    k.fetchBooking.mockResolvedValue(booking({ id: 'l1', cost_type: 'swap', price_per_night: null, swap_group: 'g' }));
-    await renderIn(wrap(<BookingScreen />));
-    await waitFor(() => expect(screen.getByText('Save changes')).toBeTruthy());
-    expect(screen.queryByText('Paid')).toBeNull();
-    expect(screen.queryByText('At the host’s home')).toBeNull();
-    await fireEvent.press(screen.getByText('Save changes'));
-    await waitFor(() => expect(k.proposeTerms).toHaveBeenCalledWith('l1', expect.objectContaining({ cost: 'swap', price: null, location: 'sitter_home' })));
   });
 
   it('refuses to open a booking that is confirmed or cancelled', async () => {

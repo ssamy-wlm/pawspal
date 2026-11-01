@@ -2,29 +2,29 @@ import React from 'react';
 import { router, useSegments } from 'expo-router';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { routeFor, SignupState } from './gate';
+import { AccountState, routeFor } from './gate';
 
 interface AuthValue {
   ready: boolean;
   session: Session | null;
-  state: SignupState | null;
-  refresh: () => Promise<SignupState | null>;
+  state: AccountState | null;
+  refresh: () => Promise<AccountState | null>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = React.createContext<AuthValue>({ ready: false, session: null, state: null, refresh: async () => null, signOut: async () => {} });
 export const useAuth = () => React.useContext(AuthContext);
 
-/** Keeps the session and the person's sign-up state, and sends them to the right screen. */
+/** Keeps the session and the person's account state, and sends them to the right screen. */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = React.useState(false);
   const [session, setSession] = React.useState<Session | null>(null);
-  const [state, setState] = React.useState<SignupState | null>(null);
+  const [state, setState] = React.useState<AccountState | null>(null);
   const segments = useSegments();
 
   const refresh = React.useCallback(async () => {
-    const { data, error } = await supabase.rpc('my_signup_state');
-    const next = error ? null : (data as SignupState);
+    const { data, error } = await supabase.rpc('my_account_state');
+    const next = error ? null : (data as AccountState);
     setState(next);
     return next;
   }, []);
@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!userId) return;
     let live = true;
-    supabase.rpc('my_signup_state').then(({ data, error }) => { if (live) setState(error ? null : (data as SignupState)); }, () => {});
+    supabase.rpc('my_account_state').then(({ data, error }) => { if (live) setState(error ? null : (data as AccountState)); }, () => {});
     return () => { live = false; };
   }, [userId]);
 

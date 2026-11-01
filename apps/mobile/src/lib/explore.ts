@@ -79,3 +79,15 @@ export async function browseTravellers(petType: PetType | null): Promise<Travell
   if (error) throw error;
   return (data ?? []) as Traveller[];
 }
+
+/** One open availability post of an active host, with an approximate position (about 300 m of fuzz, never a home). */
+export interface MapAvailability {
+  availability_id: string; user_id: string; first_name: string | null; area: string | null; approx_lat: number | null; approx_lng: number | null;
+  price_per_night: number | null; offers: Offer[]; starts_on: string; ends_on: string; pets_accepted: PetType[];
+}
+
+export async function fetchMapAvailability(petType: PetType | null, limit = 200): Promise<MapAvailability[]> {
+  const { data, error } = await supabase.rpc('map_availability', { p_pet_type: petType, p_limit: limit });
+  if (error) throw error;
+  return (data ?? []) as MapAvailability[];
+}

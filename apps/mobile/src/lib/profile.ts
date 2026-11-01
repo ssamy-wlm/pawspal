@@ -4,7 +4,7 @@ import React from 'react';
 import { supabase } from './supabase';
 import type { CardBackground, CardIllustration } from '../components/CardArt';
 
-export type Role = 'owner' | 'sitter' | 'both';
+export type Role = 'owner' | 'sitter';
 export type PetType = 'dog' | 'cat' | 'other';
 export type PetSize = 'small' | 'medium' | 'large';
 

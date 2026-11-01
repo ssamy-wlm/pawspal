@@ -1,12 +1,16 @@
 -- Security behaviour tests. Run with: bash scripts/test-db.sh
 -- Every line marked "expect ERROR" must fail. If one succeeds, a rule is broken: stop and fix it.
 \set ON_ERROR_STOP 0
-insert into auth.users (id, phone, phone_confirmed_at) values
- ('aaaaaaaa-0000-0000-0000-000000000001','+201000000001',now()),
- ('bbbbbbbb-0000-0000-0000-000000000002','+201000000002',now()),
- ('cccccccc-0000-0000-0000-000000000003','+201000000003',now()),
- ('dddddddd-0000-0000-0000-000000000004','+201000000004',now());
-update public.profiles set first_name = split_part(id::text,'-',1), status='active', face_verified=true, id_verified=true, is_adult=true;
+\i supabase/tests/helpers.sql
+-- Five people, made the way email sign-up makes them (the real handle_new_user trigger runs), then approved and paid up.
+-- A owns a pet, B hosts, C hosts, D hosts and is an admin.
+do $$ begin
+  perform pg_temp.new_user('aaaaaaaa-0000-0000-0000-000000000001', 'a-owner@example.com', 'owner');
+  perform pg_temp.new_user('bbbbbbbb-0000-0000-0000-000000000002', 'b-host@example.com', 'sitter');
+  perform pg_temp.new_user('cccccccc-0000-0000-0000-000000000003', 'c-host@example.com', 'sitter');
+  perform pg_temp.new_user('dddddddd-0000-0000-0000-000000000004', 'd-admin@example.com', 'sitter');
+  perform pg_temp.activate(id, split_part(id::text, '-', 1)) from public.profiles;
+end $$;
 insert into public.admins values ('dddddddd-0000-0000-0000-000000000004');
 -- Processed pet photos (as process-upload would leave them): a pet may only point at real files in its owner's folder.
 insert into storage.objects (bucket_id, name) values ('pets', 'aaaaaaaa-0000-0000-0000-000000000001/1.jpg'), ('pets', 'aaaaaaaa-0000-0000-0000-000000000001/2.jpg');
@@ -40,12 +44,13 @@ insert into public.messages (conversation_id, sender_id, body) values
  (:'conv', auth.uid(), 'رقمي ٠١٠١٢٣٤٥٦٧٨ واتساب');
 select masked, body from public.messages order by id;
 
-\echo '--- T5 location before payment (expect ERROR)'
+\echo '--- T5 location before the booking is confirmed (expect ERROR)'
 select * from public.get_booking_location(:'booking');
-\echo '--- T6 user calls the payment-confirm function directly (expect ERROR)'
-select public.confirm_booking_payment(:'booking');
+\echo '--- T6 user confirms a payment or extends their own membership directly (expect ERROR)'
+select public.admin_confirm_payment(gen_random_uuid(), true, null);
+update public.memberships set paid_until = current_date + 999 where user_id = auth.uid();
 \echo '--- T7 user tries to edit booking directly (expect ERROR)'
-update public.bookings set fee_status='paid', status='confirmed' where id = :'booking';
+update public.bookings set status='confirmed' where id = :'booking';
 reset role;
 
 \echo '--- T8 stranger cannot read the conversation or post into it (expect ERROR)'
@@ -55,20 +60,19 @@ insert into public.messages (conversation_id, sender_id, body) values (:'conv', 
 select count(*) as stranger_sees_bookings from public.bookings;
 reset role;
 
-\echo '--- T9 both accept terms, webhook confirms payment'
+\echo '--- T9 both accept the terms: the booking is confirmed'
 set role authenticated; set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select public.accept_terms(:'booking', (select terms_version from public.bookings where id = :'booking'));
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
 select public.accept_terms(:'booking', (select terms_version from public.bookings where id = :'booking'));
 reset role;
-set role service_role; select public.confirm_booking_payment(:'booking'); reset role;
 
 \echo '--- T10 owner gets the sitter exact pin; stranger cannot'
 set role authenticated; set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select * from public.get_booking_location(:'booking');
 \echo '--- T11 pet now locked (expect 0 rows updated)'
 update public.pets set name = 'Other cat' where id='11111111-0000-0000-0000-000000000001';
-\echo '--- T12 after payment numbers are no longer masked'
+\echo '--- T12 after confirmation numbers are no longer masked'
 insert into public.messages (conversation_id, sender_id, body) values (:'conv', auth.uid(), 'My number 010 1234 5678');
 select masked, body from public.messages order by id desc limit 1;
 \echo '--- T13 review before stay completes (expect ERROR)'
@@ -96,7 +100,7 @@ select first_name from public.profile_cards order by 1;
 \echo '--- T17 non-admin enforcement (expect ERROR), then admin'
 select public.admin_take_action('aaaaaaaa-0000-0000-0000-000000000001','warning','x',null,false,'[]','x');
 set request.jwt.claim.sub = 'dddddddd-0000-0000-0000-000000000004'; set request.jwt.claims = '{"aal":"aal2"}';
-select public.admin_take_action('cccccccc-0000-0000-0000-000000000003','suspension','Keep payments in the app',null,true,'["Stop asking for off-app payment"]','Please keep payments in the app') is not null as action_ok;
+select public.admin_take_action('cccccccc-0000-0000-0000-000000000003','suspension','Keep chats respectful',null,true,'["Stop rude messages"]','Please keep payments in the app') is not null as action_ok;
 select action, target_user is not null as has_target from public.audit_log;
 reset role; set request.jwt.claims = '';
 select first_name, status from public.profiles where first_name='cccccccc';
@@ -107,9 +111,13 @@ select public.start_conversation('bbbbbbbb-0000-0000-0000-000000000002');
 reset role;
 \echo '--- T19 security events logged'
 select kind, count(*) from public.security_events group by 1 order by 1;
-\echo '--- T20 banned phone cannot sign up (expect ERROR)'
-insert into public.banned_identifiers values ('phone', encode(extensions.digest('+201099999999','sha256'),'hex'));
-insert into auth.users (phone) values ('+201099999999');
+\echo '--- T20 a banned email and a banned device cannot sign up (expect ERROR)'
+insert into public.banned_identifiers values ('email', private.email_hash('banned@example.com'));
+insert into auth.users (id, email, email_confirmed_at, created_at, raw_user_meta_data)
+  values (gen_random_uuid(), 'Banned@Example.com', now(), now(), jsonb_build_object('role', 'owner', 'terms_version', (select current_version from public.legal_documents where doc = 'terms')));
+insert into public.banned_identifiers values ('device', private.device_hash('device-banned-1'));
+insert into auth.users (id, email, email_confirmed_at, created_at, raw_user_meta_data)
+  values (gen_random_uuid(), 'fresh-face@example.com', now(), now(), jsonb_build_object('role', 'owner', 'device_id', 'device-banned-1', 'terms_version', (select current_version from public.legal_documents where doc = 'terms')));
 
 -- ================= search (migration 0002) =================
 \echo '=== SEARCH TESTS ==='
@@ -118,13 +126,12 @@ update public.profiles set status='active' where first_name='cccccccc';
 insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers, price_per_night, negotiable) values
  ('bbbbbbbb-0000-0000-0000-000000000002', current_date+1, current_date+20, '{cat,dog}', '{paid,food_provided}', 250, false),
  ('cccccccc-0000-0000-0000-000000000003', current_date+5, current_date+8,  '{cat}',     '{paid}', 330, true),
- ('dddddddd-0000-0000-0000-000000000004', current_date+2, current_date+12, '{dog}',     '{volunteer,swap}', null, false),
- ('aaaaaaaa-0000-0000-0000-000000000001', current_date+1, current_date+30, '{cat}',     '{swap}', null, false);
+ ('dddddddd-0000-0000-0000-000000000004', current_date+2, current_date+12, '{dog}',     '{volunteer}', null, false);
 \echo '--- owner A searches cats, 3..10 days out, budget 200-300, wants food'
 set role authenticated; set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select first_name, covers_dates, in_budget, price_per_night, match_score, match_label, distance_km
   from public.search_stays(current_date+3, current_date+10, 'cat', 200, 300, '{food_provided}', false, 28.495, 34.513, 25);
-\echo '--- free only (volunteer/swap) for dogs'
+\echo '--- free only (volunteer) for dogs'
 select first_name, offers, match_label from public.search_stays(current_date+3, current_date+10, 'dog', 0, null, '{}', true);
 \echo '--- random browse'
 select count(*) as random_rows from public.browse_random(null, 30);
@@ -133,8 +140,8 @@ reset role;
 set role anon;
 select * from public.search_stays(current_date+3, current_date+10, 'cat');
 reset role;
-insert into auth.users (id, phone, phone_confirmed_at) values ('eeeeeeee-0000-0000-0000-000000000005','+201000000005',now());
-update public.profiles set first_name='eeeeeeee', status='active' where id='eeeeeeee-0000-0000-0000-000000000005';
+select pg_temp.new_user('eeeeeeee-0000-0000-0000-000000000005', 'e-host@example.com', 'sitter');
+select pg_temp.activate('eeeeeeee-0000-0000-0000-000000000005', 'eeeeeeee');
 insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers, price_per_night, negotiable) values
  ('eeeeeeee-0000-0000-0000-000000000005', current_date+6, current_date+15, '{cat}', '{paid,food_provided}', 340, true),
  ('eeeeeeee-0000-0000-0000-000000000005', current_date+40, current_date+45, '{cat}', '{paid}', 100, false);
@@ -145,8 +152,8 @@ select first_name, starts_on - current_date as from_day, covers_dates, in_budget
 -- ================= fixes from the first Claude Code review =================
 reset role;
 \echo '--- T21 public point uses a secret random offset, kept when the pin moves'
-insert into auth.users (id, phone, phone_confirmed_at) values ('ffffffff-0000-0000-0000-000000000006','+201000000006',now());
-update public.profiles set first_name='ffffffff', status='active' where id='ffffffff-0000-0000-0000-000000000006';
+select pg_temp.new_user('ffffffff-0000-0000-0000-000000000006', 'f-owner@example.com', 'owner');
+select pg_temp.activate('ffffffff-0000-0000-0000-000000000006', 'ffffffff');
 set role authenticated; set request.jwt.claim.sub = 'ffffffff-0000-0000-0000-000000000006';
 select public.set_my_location(28.49512, 34.51345);   -- same exact point as user A
 reset role;
@@ -161,14 +168,14 @@ reset role;
 select off_lat = (select v from public.test_scratch where k='f_off_before') as offset_kept_after_move from private.locations where user_id='ffffffff-0000-0000-0000-000000000006';
 
 \echo '--- T22 photos of people awaiting review are hidden from others'
-insert into auth.users (id, phone, phone_confirmed_at) values ('99999999-0000-0000-0000-000000000009','+201000000009',now());
+select pg_temp.new_user('99999999-0000-0000-0000-000000000009', 'nine-owner@example.com', 'owner');     -- signed up, not yet approved
 insert into storage.objects (bucket_id, name) values ('faces', '99999999-0000-0000-0000-000000000009/selfie.jpg');
 set role authenticated; set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
 select count(*) as pending_face_visible_to_others from storage.objects where bucket_id='faces';
 set request.jwt.claim.sub = '99999999-0000-0000-0000-000000000009';
 select count(*) as own_face_visible_to_self from storage.objects where bucket_id='faces';
 reset role;
-update public.profiles set status='active' where id='99999999-0000-0000-0000-000000000009';
+select pg_temp.activate('99999999-0000-0000-0000-000000000009');
 set role authenticated; set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
 select count(*) as approved_face_visible_to_others from storage.objects where bucket_id='faces';
 reset role;
@@ -181,7 +188,6 @@ select public.accept_terms(:'b2', (select terms_version from public.bookings whe
 set request.jwt.claim.sub = 'bbbbbbbb-0000-0000-0000-000000000002';
 select public.accept_terms(:'b2', (select terms_version from public.bookings where id = :'b2'));
 reset role;
-set role service_role; select public.confirm_booking_payment(:'b2'); reset role;
 select locked as locked_after_confirm from public.pets where id='22222222-0000-0000-0000-000000000002';
 set role authenticated; set request.jwt.claim.sub = 'aaaaaaaa-0000-0000-0000-000000000001';
 select public.cancel_booking(:'b2', 'plans changed');

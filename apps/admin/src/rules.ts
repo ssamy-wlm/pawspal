@@ -94,3 +94,60 @@ export function confirmLabel(f: Pick<ActionForm, 'action' | 'length'>): string {
 
 /** A database value as words: "in_progress" becomes "in progress". */
 export const nice = (v: string | null | undefined) => (v ?? '').replace(/_/g, ' ');
+
+// ---- Membership, waiting time and settings (architecture v3, sections 4 and 9) ----
+
+export type MembershipState = 'unpaid' | 'active' | 'due_soon' | 'paused';
+const toDay = (d: string | Date) => (typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10));
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Where a person stands: never paid, paid, paid but ending within reminderDays, or past the paid-until date. */
+export function membershipState(paidUntil: string | null | undefined, today: string | Date, reminderDays = 7): MembershipState {
+  if (!paidUntil) return 'unpaid';
+  const left = Math.round((Date.parse(toDay(paidUntil)) - Date.parse(toDay(today))) / DAY_MS);
+  return left < 0 ? 'paused' : left <= reminderDays ? 'due_soon' : 'active';
+}
+export const MEMBERSHIP_LABEL: Record<MembershipState, string> = { unpaid: 'Unpaid', active: 'Active', due_soon: 'Due soon', paused: 'Paused' };
+
+/** Whole hours since an ISO time (never negative). */
+export function hoursWaiting(iso: string, now: number | Date = Date.now()): number {
+  const t = typeof now === 'number' ? now : now.getTime();
+  return Math.max(0, Math.floor((t - Date.parse(iso)) / (60 * 60 * 1000)));
+}
+/** "waiting 3 hours", "waiting 2 days". */
+export function waitingText(hours: number): string {
+  if (hours < 1) return 'waiting less than an hour';
+  if (hours < 48) return `waiting ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+  const d = Math.floor(hours / 24);
+  return `waiting ${d} days`;
+}
+export const OVERDUE_HOURS = 24;
+
+export const NUMBER_SETTINGS = { registration_fee_egp: [1, 100000], renewal_fee_egp: [1, 100000], membership_months: [1, 60], reminder_days: [1, 60] } as const;
+export const TEXT_SETTINGS = ['instapay_link', 'instapay_qr_url', 'bank_name', 'bank_account_name', 'bank_account_number', 'bank_iban', 'payment_note'] as const;
+export type SettingKey = keyof typeof NUMBER_SETTINGS | (typeof TEXT_SETTINGS)[number];
+export const isNumberSetting = (key: string): key is keyof typeof NUMBER_SETTINGS => key in NUMBER_SETTINGS;
+
+/** Null when the value is fine, otherwise the sentence to show. Numbers are positive whole numbers within range. */
+export function validateSetting(key: string, raw: string): string | null {
+  const v = raw.trim();
+  if (isNumberSetting(key)) {
+    const [min, max] = NUMBER_SETTINGS[key];
+    if (!/^\d+$/.test(v)) return 'Enter a whole number.';
+    const n = Number(v);
+    if (n < min || n > max) return `Enter a number from ${min} to ${max}.`;
+    return null;
+  }
+  if ((TEXT_SETTINGS as readonly string[]).includes(key)) {
+    if (v.length > 500) return 'This is too long (500 characters at most).';
+    if ((key === 'instapay_link' || key === 'instapay_qr_url') && v !== '' && !/^https:\/\/\S+$/i.test(v)) return 'Use a full link that starts with https://';
+    return null;
+  }
+  return 'Unknown setting.';
+}
+
+/** Filter used by the Users page (?membership=expiring|paused|unpaid). */
+export function matchesMembership(filter: string, paidUntil: string | null | undefined, today: string | Date, reminderDays = 7): boolean {
+  if (!filter) return true;
+  const s = membershipState(paidUntil, today, reminderDays);
+  return filter === 'expiring' ? s === 'due_soon' : filter === 'paused' ? s === 'paused' : filter === 'unpaid' ? s === 'unpaid' : true;
+}

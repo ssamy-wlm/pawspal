@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
 export type PetType = 'dog' | 'cat' | 'other';
-export type Offer = 'volunteer' | 'swap' | 'paid' | 'food_provided' | 'stay_at_my_place';
+export type Offer = 'volunteer' | 'paid' | 'food_provided' | 'stay_at_my_place';
 
 export interface SearchFilters {
   start: string;            // YYYY-MM-DD
@@ -10,7 +10,7 @@ export interface SearchFilters {
   budgetMin: number;        // EGP per night
   budgetMax: number | null; // null = any
   offers: Offer[];          // soft preferences: matching ones rank higher
-  freeOnly: boolean;        // volunteer or swap stays only
+  freeOnly: boolean;        // volunteer (free) stays only
   near?: { lat: number; lng: number };
   maxKm: number;
 }

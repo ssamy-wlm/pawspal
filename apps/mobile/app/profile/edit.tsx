@@ -14,7 +14,7 @@ import { fetchMyProfile, HOME_TAGS, HomeTag, MAX_HOME_TAGS, PublicProfile, saveM
 import { fontFamily, useTheme } from '../../src/theme';
 import { isRTL, Key, t as tr } from '../../src/i18n';
 
-const ROLE_LABEL: Record<PublicProfile['role'], Key> = { owner: 'profile.role.owner', sitter: 'profile.role.sitter', both: 'profile.role.both' };
+const ROLE_LABEL: Record<PublicProfile['role'], Key> = { owner: 'profile.role.owner', sitter: 'profile.role.sitter' };
 
 /** Edit your name, about text, area and the look of your card (picture and background, with a live preview). */
 export default function EditProfile() {
@@ -23,7 +23,7 @@ export default function EditProfile() {
   const c = useTheme().color;
   const toast = useToast();
   const [loaded, setLoaded] = React.useState<'loading' | 'ready' | 'failed'>('loading');
-  const [role, setRole] = React.useState<PublicProfile['role']>('both');
+  const [role, setRole] = React.useState<PublicProfile['role']>('owner');
   const [name, setName] = React.useState('');
   const [bio, setBio] = React.useState('');
   const [area, setArea] = React.useState('');

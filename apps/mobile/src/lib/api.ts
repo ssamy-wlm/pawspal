@@ -1,4 +1,5 @@
-// Talks to the Edge Functions. The app never sends a phone number or a device id anywhere else.
+// Talks to the Edge Functions and holds the plain-sentence error mapping. The device id (a random id made on this phone)
+// goes only to sign-up; the server stores a one-way hash of it.
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import { supabase } from './supabase';
@@ -12,13 +13,26 @@ export class ApiError extends Error {
 
 /** Which sentence to show for each error code the functions can return. */
 const ERROR_KEYS: Record<string, Key> = {
-  invalid_phone: 'err.invalid_phone', phone_limit: 'err.phone_limit', device_limit: 'err.device_limit',
-  too_many_attempts: 'err.too_many_attempts', captcha_required: 'err.too_many_attempts', too_soon: 'err.too_soon',
-  send_failed: 'err.send_failed', invalid_code: 'err.invalid_code', try_again_later: 'err.try_again_later',
-  not_configured: 'err.not_configured', identity_refused: 'err.identity_refused', invalid_image: 'err.invalid_image',
-  network: 'err.network', captcha_failed: 'err.captcha_failed', request_new_code: 'err.request_new_code',
+  try_again_later: 'err.try_again_later', invalid_image: 'err.invalid_image', network: 'err.network',
 };
 export const errorKey = (e: unknown): Key => (e instanceof ApiError ? ERROR_KEYS[e.code] : undefined) ?? 'err.generic';
+
+interface AuthLikeError { code?: string; status?: number; name?: string; message?: string }
+
+/** Which sentence to show for an error from Supabase Auth (sign-up, sign-in, reset). Never includes the person's details. */
+export function authErrorKey(e: unknown): Key {
+  const err = (e ?? {}) as AuthLikeError;
+  const code = err.code ?? '';
+  const msg = (err.message ?? '').toLowerCase();
+  if (err.name === 'AuthRetryableFetchError' || err.status === 0 || /network|failed to fetch/.test(msg)) return 'err.network';
+  if (code === 'user_already_exists' || code === 'email_exists' || /already (been )?registered|already exists/.test(msg)) return 'err.emailTaken';
+  if (code === 'weak_password' || /password.*(weak|at least|short)/.test(msg)) return 'err.weakPassword';
+  if (code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit' || err.status === 429) return 'err.rateLimited';
+  if (code === 'email_not_confirmed' || /not confirmed/.test(msg)) return 'err.emailNotConfirmed';
+  if (code === 'validation_failed' || code === 'email_address_invalid') return 'err.emailInvalid';
+  if (/database error saving new user|unexpected_failure/.test(msg) || code === 'unexpected_failure') return 'err.signupRefused';
+  return 'err.generic';
+}
 
 const DEVICE_KEY = 'pawspal.device';
 let cachedDevice: string | null = null;
@@ -58,19 +72,7 @@ async function accessToken(): Promise<string> {
   return data.session.access_token;
 }
 
-export async function requestOtp(phone: string, captchaToken?: string): Promise<{ resend_after_seconds: number }> {
-  return call('request-otp', { phone, device_id: await deviceId(), ...(captchaToken ? { captcha_token: captchaToken } : {}) });
-}
-
-/** Checks the code and signs the person in on this phone. */
-export async function verifyOtp(phone: string, token: string, captchaToken?: string): Promise<void> {
-  const s = await call<{ access_token: string; refresh_token: string }>('verify-otp',
-    { phone, token, device_id: await deviceId(), ...(captchaToken ? { captcha_token: captchaToken } : {}) });
-  const { error } = await supabase.auth.setSession({ access_token: s.access_token, refresh_token: s.refresh_token });
-  if (error) throw new ApiError('try_again_later', 0);
-}
-
-export type UploadKind = 'face' | 'pet' | 'home' | 'handover';
+export type UploadKind = 'face' | 'id' | 'payment' | 'pet' | 'home' | 'handover';
 
 /**
  * Sends a photo to the private "incoming" folder, then asks the server to clean it (all hidden data, including GPS,
@@ -90,17 +92,6 @@ export async function uploadPhoto(kind: UploadKind, uri: string): Promise<string
   return done.path;
 }
 
-/** Face step needs the cleaned selfie's path; the ID step needs nothing from the app (the provider looks at the ID). */
-export async function verifyFace(facePath: string): Promise<boolean> {
-  const r = await call<{ ok: boolean }>('verify-identity', { step: 'face', face_path: facePath, device_id: await deviceId() }, await accessToken());
-  return r.ok;
-}
-
-/** Asks the server for a checkout page for the booking fee. The amount is the server's; the app never sends one. */
-export async function createFeePayment(bookingId: string): Promise<{ url: string; payment_id: string; amount_egp: number }> {
-  return call('create-fee-payment', { booking_id: bookingId }, await accessToken());
-}
-
 /** A link (good for a minute) to a handover photo of a booking I am in. The server checks I am in it. */
 export async function handoverPhotoUrl(photoId: string): Promise<string> {
   return (await call<{ url: string }>('handover-photo-url', { photo_id: photoId }, await accessToken())).url;
@@ -110,9 +101,4 @@ export async function handoverPhotoUrl(photoId: string): Promise<string> {
 export async function sendEmergency(bookingId: string, note: string | null): Promise<'sent' | 'already_sent'> {
   const r = await call<{ status: 'sent' | 'already_sent' }>('emergency', { booking_id: bookingId, ...(note ? { note } : {}) }, await accessToken());
   return r.status;
-}
-
-export async function verifyId(): Promise<{ ok: boolean; adult: boolean }> {
-  const r = await call<{ ok: boolean; adult?: boolean }>('verify-identity', { step: 'id', device_id: await deviceId() }, await accessToken());
-  return { ok: r.ok, adult: r.adult !== false };
 }

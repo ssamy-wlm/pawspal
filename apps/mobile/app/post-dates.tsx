@@ -16,7 +16,7 @@ import { isRTL, Key, t as tr } from '../src/i18n';
 
 const PETS: { key: PetType; label: Key }[] = [{ key: 'dog', label: 'pet.dogs' }, { key: 'cat', label: 'pet.cats' }, { key: 'other', label: 'pet.others' }];
 const OFFERS: { key: Offer; label: Key }[] = [
-  { key: 'volunteer', label: 'offer.volunteer' }, { key: 'swap', label: 'offer.swap' }, { key: 'paid', label: 'offer.paid' },
+  { key: 'volunteer', label: 'offer.volunteer' }, { key: 'paid', label: 'offer.paid' },
   { key: 'food_provided', label: 'offer.food_provided' }, { key: 'stay_at_my_place', label: 'offer.stay_at_my_place' },
 ];
 const digits = (v: string) => v.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/\D/g, '').slice(0, 6);
@@ -25,11 +25,11 @@ const digits = (v: string) => v.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0
 export default function PostDates() {
   const { session, state } = useAuth();
   const userId = session?.user.id ?? '';
-  const role = state?.role ?? 'both';
+  const role = state?.role;
   const c = useTheme().color;
   const rtl = isRTL();
   const toast = useToast();
-  const [kind, setKind] = React.useState<'host' | 'travel'>(role === 'owner' ? 'travel' : 'host');
+  const kind: 'host' | 'travel' = role === 'owner' ? 'travel' : 'host';        // owners post their travel, hosts post availability
   const [start, setStart] = React.useState<string | null>(null);
   const [end, setEnd] = React.useState<string | null>(null);
   const [pets, setPets] = React.useState<PetType[]>(['dog', 'cat']);
@@ -65,12 +65,6 @@ export default function PostDates() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ padding: 24, gap: 16, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
-        {role === 'both' ? (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Chip label={tr('post.host')} selected={kind === 'host'} onPress={() => setKind('host')} />
-            <Chip label={tr('post.travel')} selected={kind === 'travel'} onPress={() => setKind('travel')} />
-          </View>
-        ) : null}
         <Heading>{tr('post.dates')}</Heading>
         <View style={{ padding: 16, borderRadius: 24, backgroundColor: c.surface }}>
           <CalendarRange start={start} end={end} onChange={(s, e) => { setStart(s); setEnd(e); }} />

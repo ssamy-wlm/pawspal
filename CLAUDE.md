@@ -1,9 +1,9 @@
 # CLAUDE.md: instructions for Claude Code
 
-You are building **PawsPal Dahab**, a pet-sitting and pet-swapping app for Dahab, Egypt. Read `HANDOVER.md` first, then the doc for the area you are working on.
+You are building **PawsPal Dahab**, a pet-sitting app (owners and hosts) for Dahab, Egypt. Read `docs/ARCHITECTURE.md` (the current model, v3) and `HANDOVER.md` (v2 history; ARCHITECTURE wins where they differ) first, then the doc for the area you are working on.
 
 ## Map of the repo
-- `HANDOVER.md`: what to build (v2). `docs/build-plan.md`: phases and acceptance checks.
+- `docs/ARCHITECTURE.md`: what is built now (v3) and the database contract. `HANDOVER.md`: the v2 plan. `docs/build-plan.md`: phases and acceptance checks.
 - `docs/design-system.md`, `docs/motion.md`, `design/tokens.json`: look and motion (shared with social media).
 - `docs/security.md`: threat model and non-negotiable rules. `docs/legal/`: legal texts shown in the app.
 - `apps/mobile`: Expo app. `apps/admin`: admin web app (phase 8). `supabase/`: migrations, tests, edge functions.
@@ -12,7 +12,8 @@ You are building **PawsPal Dahab**, a pet-sitting and pet-swapping app for Dahab
 ## Commands
 - App: `cd apps/mobile && npm start` | `npm run typecheck` | `npm run lint` | `npm test`
 - Shared files: `node scripts/sync-shared.mjs` (runs before every start)
-- Local Supabase: `bash scripts/local-supabase.sh start` (adds the local-only test phone numbers while it starts; never put them in `supabase/config.toml`, CI fails if you do: `python3 scripts/check-config.py`)
+- Config guard: `python3 scripts/check-config.py` (CI fails if `supabase/config.toml` holds a plain-text secret, a local hook or weaker admin/sign-in settings)
+- Local Supabase: `bash scripts/local-supabase.sh start` (email sign-up needs no test numbers; sign-up emails go to the local inbox)
 - Database: `supabase db reset` (local), `bash scripts/test-db.sh` (security tests on plain Postgres, also what CI runs), `bash scripts/test-db-supabase.sh` (the same tests on the real local Supabase; run it whenever you change a migration)
 - Slash commands: `/phase N`, `/security-review`, `/design-check`, `/new-migration <name>`
 
@@ -25,7 +26,7 @@ You are building **PawsPal Dahab**, a pet-sitting and pet-swapping app for Dahab
 6. **Language:** every user-facing string goes through `t()` with English and Arabic entries. Use `start`/`end`, not `left`/`right`, for layout that must mirror.
 7. **Accessibility:** 44 pt touch targets, labels on icon buttons, AA contrast (tokens are pre-checked).
 8. **Copy:** warm, short and plain, as in the posts. No exclamation marks except "Booking confirmed".
-9. **Privacy:** collect only what HANDOVER lists. Never log message text, codes, ID data or exact locations.
+9. **Privacy:** collect only what docs/ARCHITECTURE.md section 8 lists. Never log message text, codes, ID data or exact locations.
 10. Before saying a phase is done: run typecheck, lint, tests and the DB security tests, and check the phase's acceptance list. Then follow "How work ships" below.
 
 ## When unsure

@@ -23,16 +23,3 @@ export function bearerToken(req: Request): string | null {
   const h = req.headers.get('authorization') ?? '';
   return h.toLowerCase().startsWith('bearer ') ? h.slice(7).trim() || null : null;
 }
-
-export interface OtpDecision {
-  allowed: boolean;
-  reason: string | null;
-  retry_after_seconds: number;
-  captcha_required: boolean;
-}
-
-export function asDecision(data: unknown): OtpDecision | null {
-  const d = data as Partial<OtpDecision> | null;
-  if (!d || typeof d.allowed !== 'boolean') return null;
-  return { allowed: d.allowed, reason: d.reason ?? null, retry_after_seconds: Number(d.retry_after_seconds ?? 0), captcha_required: !!d.captcha_required };
-}

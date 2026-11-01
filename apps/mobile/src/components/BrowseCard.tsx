@@ -7,7 +7,7 @@ import { HOME_TAGS } from '../lib/profile';
 import type { StayResult } from '../lib/search';
 
 const PET_LABEL: Record<string, Key> = { dog: 'pet.dogs', cat: 'pet.cats', other: 'pet.others' };
-const OFFER_CHIP: Record<string, Key> = { food_provided: 'offer.food_provided', stay_at_my_place: 'offer.stay_at_my_place', swap: 'offer.swap', volunteer: 'offer.volunteer' };
+const OFFER_CHIP: Record<string, Key> = { food_provided: 'offer.food_provided', stay_at_my_place: 'offer.stay_at_my_place', volunteer: 'offer.volunteer' };
 
 /** The chips under a browse card: who lives there, which pets are welcome, what is offered, and what the home has. */
 export function cardChips(r: StayResult): { label: string; strong?: boolean }[] {
@@ -22,7 +22,7 @@ export function cardChips(r: StayResult): { label: string; strong?: boolean }[] 
 export const priceLabel = (r: StayResult) =>
   r.offers.includes('paid') && r.price_per_night != null
     ? tr('price.egp', { amount: r.price_per_night })
-    : r.offers.includes('swap') ? tr('price.swap') : tr('price.free');
+    : tr('price.free');
 
 /** The browse card from the mockups and Instagram posts. `compact` is the list-row version for search results. */
 export function BrowseCard({ r, compact }: { r: StayResult; compact?: boolean }) {

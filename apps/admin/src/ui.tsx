@@ -3,6 +3,7 @@ import React from 'react';
 import Link from 'next/link';
 import tokens from './tokens.json';
 import { supabase } from './supabase';
+import { MEMBERSHIP_LABEL, membershipState } from './rules';
 
 export const C = { ...tokens.color.light, navy: tokens.color.brand.navy, dark: tokens.color.dark, tint: tokens.color.tint, brand: tokens.color.brand };
 const font = tokens.font.size;
@@ -84,7 +85,7 @@ export function useLoad<T>(fn: () => Promise<T>, deps: React.DependencyList) {
 }
 
 /** A photo from a private bucket. The admin's own sign-in (with the code) is what allows the link. */
-export function Photo({ bucket, path, size = 140, alt }: { bucket: 'faces' | 'pets' | 'homes'; path: string | null | undefined; size?: number; alt: string }) {
+export function Photo({ bucket, path, size = 140, alt }: { bucket: 'faces' | 'pets' | 'homes' | 'ids' | 'payments'; path: string | null | undefined; size?: number; alt: string }) {
   const [url, setUrl] = React.useState<string | null>(null);
   React.useEffect(() => {
     if (!path) return;
@@ -105,4 +106,11 @@ export function PersonLink({ id, name }: { id: string; name: string | null | und
 export function Status({ l }: { l: { loading: boolean; error: string | null; reload: () => void } }) {
   if (l.error) return <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}><Err>{l.error}</Err><Btn kind="secondary" onClick={l.reload}>Try again</Btn></div>;
   return l.loading ? <p role="status" style={{ margin: 0, color: C.textMuted, fontSize: font.small }}>Loading</p> : null;
+}
+
+const MEMBERSHIP_TONE = { unpaid: 'warn', active: 'good', due_soon: 'warn', paused: 'bad' } as const;
+/** Unpaid, Active, Due soon or Paused, from the paid-until date. */
+export function MembershipBadge({ paidUntil, reminderDays = 7 }: { paidUntil: string | null | undefined; reminderDays?: number }) {
+  const s = membershipState(paidUntil, new Date(), reminderDays);
+  return <Badge tone={MEMBERSHIP_TONE[s]}>{MEMBERSHIP_LABEL[s]}</Badge>;
 }

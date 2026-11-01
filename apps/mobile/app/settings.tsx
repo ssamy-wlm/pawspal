@@ -1,6 +1,9 @@
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { Button } from '../src/components/Button';
 import { Chip } from '../src/components/Chip';
+import { useAuth } from '../src/lib/auth';
 import { hapticsEnabled, onHapticsChange, setHapticsEnabled } from '../src/lib/haptics';
 import { fontFamily, ThemeMode, useTheme, useThemeMode } from '../src/theme';
 import { isRTL, Key, locale, Locale, switchLanguage, t as tr } from '../src/i18n';
@@ -15,9 +18,10 @@ const LANGS: { code: Locale; label: Key }[] = [
   { code: 'ar', label: 'lang.ar' },
 ];
 
-/** Appearance (System, Light, Navy) and language (English, Arabic). Changing language restarts the app. */
+/** Appearance (System, Light, Navy), language (English, Arabic), vibration, and the account: membership and sign out. Changing language restarts the app. */
 export default function Settings() {
   const c = useTheme().color;
+  const { session, signOut } = useAuth();
   const { mode, setMode } = useThemeMode();
   const rtl = isRTL();
   const [haptics, setHaptics] = React.useState(hapticsEnabled());
@@ -48,6 +52,13 @@ export default function Settings() {
         </View>
         <Text style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('regular', rtl) }}>{tr('settings.hapticsNote')}</Text>
       </View>
+      {session ? (
+        <View style={{ gap: 12 }}>
+          {title('settings.account')}
+          <Button variant="secondary" title={tr('profile.membership')} onPress={() => router.push('/membership')} />
+          <Button variant="secondary" title={tr('pending.signout')} onPress={() => { signOut().catch(() => {}); }} />
+        </View>
+      ) : null}
     </ScrollView>
   );
 }

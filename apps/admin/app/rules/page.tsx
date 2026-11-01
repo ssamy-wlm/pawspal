@@ -17,7 +17,7 @@ export default function Rules() {
       <H2>Zero tolerance</H2>
       <Card>
         <ul style={{ margin: 0, paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 6 }}>{ZERO_TOLERANCE.map((r) => <li key={r}>{r}</li>)}</ul>
-        <Muted>These can go straight to removal. A removed person&apos;s phone number, ID document and device are blocked so they cannot return.</Muted>
+        <Muted>These can go straight to removal. A removed person&apos;s email and device are blocked so they cannot return.</Muted>
       </Card>
     </div>
   );

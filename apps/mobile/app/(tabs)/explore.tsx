@@ -10,7 +10,7 @@ import { BrowseCard, priceLabel } from '../../src/components/BrowseCard';
 import { SwipeDeck, SwipeDirection } from '../../src/components/SwipeDeck';
 import { HeartBurst, HeartBurstHandle } from '../../src/components/HeartBurst';
 import { LikeButton, PassButton } from '../../src/components/SwipeButtons';
-import { ResultsMap } from '../../src/components/ResultsMap';
+import { AvailabilityMap } from '../../src/components/AvailabilityMap';
 import { useToast } from '../../src/components/Toast';
 import { useAuth } from '../../src/lib/auth';
 import { saveToShortlist } from '../../src/lib/explore';
@@ -32,7 +32,6 @@ const BUDGETS: { label: Key; min: number; max: number | null; free?: boolean }[]
 const OFFERS: { key: Offer; label: Key }[] = [
   { key: 'food_provided', label: 'offer.food_provided' },
   { key: 'stay_at_my_place', label: 'offer.stay_at_my_place' },
-  { key: 'swap', label: 'offer.swap' },
   { key: 'volunteer', label: 'offer.volunteer' },
 ];
 const PETS: PetType[] = ['dog', 'cat', 'other'];
@@ -128,11 +127,12 @@ export default function Explore() {
     );
   };
 
-  const role = state?.role ?? 'both';
+  const role = state?.role;
   const actions = () => (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
       <Chip label={tr('explore.shortlist')} onPress={() => router.push('/shortlist' as never)} />
       <Chip label={tr('explore.post')} onPress={() => router.push('/post-dates' as never)} />
+      {mode === 'search' ? <Chip label={tr('explore.view.map')} onPress={() => setView('map')} /> : null}
       {role !== 'owner' ? <Chip label={tr('explore.travellers')} onPress={() => router.push('/travellers' as never)} /> : null}
     </View>
   );
@@ -183,6 +183,20 @@ export default function Explore() {
     );
   }
 
+  // ---------- Map of host availability (own filter chips; the list stays one tap away)
+  if (mode === 'search' && view === 'map') {
+    return (
+      <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ padding: 20, gap: 14, paddingBottom: 48 }}>
+        {segment()}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Chip label={tr('explore.view.list')} selected={false} onPress={() => setView('list')} />
+          <Chip label={tr('explore.view.map')} selected onPress={() => setView('map')} />
+        </View>
+        <AvailabilityMap onOpen={(userId) => { router.push(`/host/${userId}` as never); }} />
+      </ScrollView>
+    );
+  }
+
   // ---------- Results (search list, or search + swipe)
   if (results) {
     const n = start && end ? nights(start, end) : 0;
@@ -197,15 +211,8 @@ export default function Explore() {
         </Pressable>
         {mode === 'both' ? (
           <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}>{deck(results)}</ScrollView>
-        ) : view === 'map' ? (
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40, gap: 12 }}>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Chip label={tr('explore.view.list')} selected={false} onPress={() => setView('list')} />
-              <Chip label={tr('explore.view.map')} selected onPress={() => setView('map')} />
-            </View>
-            <ResultsMap results={[...exact, ...close]} onOpen={openHost} />
-          </ScrollView>
         ) : (
+
           <FlatList
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
             data={rows}

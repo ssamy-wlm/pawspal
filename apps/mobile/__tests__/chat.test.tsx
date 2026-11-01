@@ -11,7 +11,7 @@ import ChatScreen from '../app/chat/[id]';
 import HostProfile from '../app/host/[id]';
 import { ToastProvider } from '../src/components/Toast';
 
-let mockRole: 'owner' | 'sitter' | 'both' = 'both';
+let mockRole: 'owner' | 'sitter' = 'owner';
 jest.mock('../src/lib/auth', () => ({ useAuth: () => ({ ready: true, session: { user: { id: 'me' } }, state: { status: 'active', role: mockRole }, refresh: jest.fn(), signOut: jest.fn() }) }));
 jest.mock('../src/lib/chat', () => ({
   fetchConversations: jest.fn(), startConversation: jest.fn(), fetchMessages: jest.fn(), sendMessage: jest.fn(), markRead: jest.fn(), listenToMessages: jest.fn(), listenToActivity: jest.fn(), PAGE_SIZE: 40,
@@ -28,8 +28,8 @@ const wrap = (ui: React.ReactElement) => <ToastProvider>{ui}</ToastProvider>;
 
 const conv = (over: Partial<chat.Conversation> = {}): chat.Conversation => ({ id: 'c1', other_id: 'them', first_name: 'Hana', card_illustration: 'cat-mango', card_background: 'pattern', last_body: 'See you soon', last_at: '2026-10-01T10:00:00Z', last_mine: false, unread: 2, ...over });
 const msg = (id: number, sender: string, body: string, masked = false): chat.Message => ({ id, conversation_id: 'c1', sender_id: sender, body, masked, created_at: '2026-10-01T10:00:00Z' });
-const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: '2026-12-01', ends_on: '2026-12-05', stay_location: 'sitter_home', cost_type: 'paid', price_per_night: 250, food_provided: false, status: 'requested', fee_status: 'unpaid', owner_accepted_at: null, sitter_accepted_at: null, swap_group: null, terms_version: 4, opened_by: 'me', ...over });
-const card = (role: 'owner' | 'sitter' | 'both' = 'sitter'): prof.PublicProfile => ({ id: 'them', first_name: 'Hana', role, bio: null, area: null, card_illustration: 'cat-mango', card_background: 'pattern', rating_avg: null, stays_count: 0, home_photo_path: null, home_tags: [] });
+const booking = (over: Partial<bk.Booking> = {}): bk.Booking => ({ id: 'b1', owner_id: 'me', sitter_id: 'them', pet_id: 'p1', starts_on: '2026-12-01', ends_on: '2026-12-05', stay_location: 'sitter_home', cost_type: 'paid', price_per_night: 250, food_provided: false, status: 'requested', owner_accepted_at: null, sitter_accepted_at: null, terms_version: 4, ...over });
+const card = (role: 'owner' | 'sitter' = 'sitter'): prof.PublicProfile => ({ id: 'them', first_name: 'Hana', role, bio: null, area: null, card_illustration: 'cat-mango', card_background: 'pattern', rating_avg: null, stays_count: 0, home_photo_path: null, home_tags: [] });
 
 let pushMessage: (m: chat.Message) => void = () => {};
 let pushActivity: () => void = () => {};
@@ -37,7 +37,7 @@ const stopMessages = jest.fn();
 const stopActivity = jest.fn();
 
 beforeEach(() => {
-  jest.clearAllMocks(); mockRole = 'both';
+  jest.clearAllMocks(); mockRole = 'owner';
   c.fetchConversations.mockResolvedValue([conv()]);
   c.fetchMessages.mockResolvedValue([msg(2, 'them', 'Sure, those dates work'), msg(1, 'me', 'Hi, can you host my dog?')]);
   c.sendMessage.mockImplementation(async (_id, _me, body) => msg(3, 'me', body));
@@ -97,7 +97,7 @@ describe('conversation', () => {
   it('sends a message, shows what the server returns, and tells people contact details are hidden', async () => {
     await renderIn(wrap(<ChatScreen />));
     await waitFor(() => screen.getByLabelText('Message'));
-    expect(screen.getByText('Phone numbers, links and handles stay hidden until a booking is confirmed.')).toBeTruthy();
+    expect(screen.getByText('Phone numbers, links and handles unlock when the booking is confirmed.')).toBeTruthy();
     expect(screen.getByLabelText('Send')).toBeDisabled();                                 // nothing typed yet
     await fireEvent.changeText(screen.getByLabelText('Message'), '  Call me on •••  ');
     await fireEvent.press(screen.getByLabelText('Send'));
@@ -134,7 +134,7 @@ describe('conversation', () => {
 });
 
 describe('booking in the conversation', () => {
-  it('offers "Request booking" when I need a sitter and they host', async () => {
+  it('offers "Request booking" when I am an owner and they host', async () => {
     await renderIn(wrap(<ChatScreen />));
     await waitFor(() => screen.getByText('Request booking'));
     await fireEvent.press(screen.getByText('Request booking'));
@@ -190,9 +190,27 @@ describe('booking in the conversation', () => {
     k.fetchBookingsBetween.mockResolvedValue([booking()]);
     await renderIn(wrap(<ChatScreen />));
     await waitFor(() => screen.getByText('Waiting for both of you to accept'));
-    k.fetchBookingsBetween.mockResolvedValue([booking({ status: 'terms_agreed', owner_accepted_at: 'x', sitter_accepted_at: 'y' })]);
+    k.fetchBookingsBetween.mockResolvedValue([booking({ status: 'confirmed', owner_accepted_at: 'x', sitter_accepted_at: 'y' })]);
     await act(async () => { pushActivity(); });
-    await waitFor(() => expect(screen.getByText('You both agreed. Paying the booking fee comes next.')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Booking confirmed')).toBeTruthy());
+  });
+
+  it('confirms the booking the moment the second person accepts, with no fee or payment step', async () => {
+    k.fetchBookingsBetween.mockResolvedValue([booking({ sitter_accepted_at: 'y' })]);
+    k.acceptTerms.mockResolvedValue('confirmed');
+    await renderIn(wrap(<ChatScreen />));
+    await waitFor(() => screen.getByLabelText('Accept terms'));
+    expect(screen.getByText('Payment between you and the other person is your own arrangement. PawsPal never handles that money.')).toBeTruthy();
+    expect(screen.getByText('When you both accept, your contact details and the exact address unlock.')).toBeTruthy();
+    k.fetchBookingsBetween.mockResolvedValue([booking({ status: 'confirmed', owner_accepted_at: 'x', sitter_accepted_at: 'y' })]);
+    await fireEvent.press(screen.getByLabelText('Accept terms'));
+    await waitFor(() => expect(k.acceptTerms).toHaveBeenCalledWith('b1', 4));
+    await waitFor(() => expect(screen.getByText('Booking confirmed')).toBeTruthy());
+    await fireEvent.press(screen.getByText('View booking'));
+    expect(router.push).toHaveBeenCalledWith('/booking/done/b1');
+    expect(screen.queryByText(/fee/i)).toBeNull();
+    expect(screen.queryByText(/refund/i)).toBeNull();
+    expect(screen.queryByText(/^Pay/)).toBeNull();
   });
 
   it('cancels a request after a second tap', async () => {
@@ -206,27 +224,25 @@ describe('booking in the conversation', () => {
     await waitFor(() => expect(k.cancelBooking).toHaveBeenCalledWith('b1'));
   });
 
-  it('shows a confirmed booking without the cancel button or the hidden-details hint', async () => {
-    k.fetchBookingsBetween.mockResolvedValue([booking({ status: 'confirmed', fee_status: 'paid', owner_accepted_at: 'x', sitter_accepted_at: 'y' })]);
+  it('cancels a confirmed booking after a second tap, with no word about refunds', async () => {
+    k.fetchBookingsBetween.mockResolvedValue([booking({ status: 'confirmed', owner_accepted_at: 'x', sitter_accepted_at: 'y' })]);
+    k.cancelBooking.mockResolvedValue(undefined);
     await renderIn(wrap(<ChatScreen />));
     await waitFor(() => expect(screen.getByText('Booking confirmed')).toBeTruthy());
-    expect(screen.queryByText('Cancel request')).toBeNull();
-    expect(screen.queryByText('Phone numbers, links and handles stay hidden until a booking is confirmed.')).toBeNull();
+    expect(screen.queryByText('Phone numbers, links and handles unlock when the booking is confirmed.')).toBeNull();
+    expect(screen.queryByText(/refund/i)).toBeNull();
+    await fireEvent.press(screen.getByText('Cancel booking'));
+    expect(k.cancelBooking).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('Tap again to cancel'));
+    await waitFor(() => expect(k.cancelBooking).toHaveBeenCalledWith('b1'));
   });
 
-  it('shows both legs of a swap, accepted together', async () => {
-    k.fetchBookingsBetween.mockResolvedValue([
-      booking({ id: 'l1', cost_type: 'swap', price_per_night: null, swap_group: 'g' }),
-      booking({ id: 'l2', owner_id: 'them', sitter_id: 'me', pet_id: 'p2', cost_type: 'swap', price_per_night: null, swap_group: 'g', starts_on: '2026-12-20', ends_on: '2026-12-24' }),
-    ]);
-    k.acceptTerms.mockResolvedValue('requested');
+  it('has no swap anywhere in the conversation', async () => {
+    k.fetchBookingsBetween.mockResolvedValue([booking()]);
     await renderIn(wrap(<ChatScreen />));
-    await waitFor(() => expect(screen.getByText('Your pet’s stay')).toBeTruthy());
-    expect(screen.getByText('Their pet’s stay')).toBeTruthy();
-    expect(screen.getAllByText('Swap')).toHaveLength(2);
-    expect(screen.getByText('Dec 20 – Dec 24')).toBeTruthy();
-    await fireEvent.press(screen.getAllByLabelText('Accept terms')[0]);
-    await waitFor(() => expect(k.acceptTerms).toHaveBeenCalledTimes(1));
+    await waitFor(() => screen.getByText('Proposed terms'));
+    expect(screen.queryByText(/swap/i)).toBeNull();
+    expect(screen.getAllByText('Proposed terms')).toHaveLength(1);
   });
 });
 
@@ -241,7 +257,7 @@ describe('host profile buttons', () => {
     await waitFor(() => expect(router.push).toHaveBeenCalledWith('/booking/new?other=them'));
     expect(c.startConversation).toHaveBeenCalledWith('them');
   });
-  it('has no buttons on your own profile, and no request button for someone who only owns pets', async () => {
+  it('has no buttons on your own profile, and no request button for someone who only owns pets or when I host', async () => {
     params.mockReturnValue({ id: 'me' });
     p.fetchCard.mockResolvedValue({ ...card(), id: 'me' });
     const first = await renderIn(wrap(<HostProfile />));
@@ -250,6 +266,11 @@ describe('host profile buttons', () => {
     await first.unmount();
     params.mockReturnValue({ id: 'them' });
     p.fetchCard.mockResolvedValue(card('owner'));
+    const second = await renderIn(wrap(<HostProfile />));
+    await waitFor(() => screen.getByText('Message'));
+    expect(screen.queryByText('Request booking')).toBeNull();
+    await second.unmount();
+    p.fetchCard.mockResolvedValue(card('sitter')); mockRole = 'sitter';
     await renderIn(wrap(<HostProfile />));
     await waitFor(() => screen.getByText('Message'));
     expect(screen.queryByText('Request booking')).toBeNull();

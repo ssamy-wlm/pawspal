@@ -5,7 +5,7 @@ import { actionsFor, confirmLabel, LADDER, needsReason, RULES, validateAction, Z
 import { Btn, C, Card, Err, Field, H2, inputStyle, Muted } from './ui';
 
 const removedNote = (status: AccountStatus, action: ActionKind) =>
-  status === 'removed' && action === 'reinstatement' ? <Muted>Reinstating a removed person also lifts the ban on their phone number, ID document and device.</Muted> : null;
+  status === 'removed' && action === 'reinstatement' ? <Muted>Reinstating a removed person also lifts the bans on their email and device that no one else still needs.</Muted> : null;
 
 const LABEL: Record<ActionKind, string> = { reminder: 'Reminder', warning: 'Warning', suspension: 'Suspension', removal: 'Removal', reinstatement: 'Reinstate', approval: 'Approve' };
 
@@ -65,7 +65,7 @@ export function ActionPanel({ userId, status, onDone, only }: { userId: string; 
           <textarea style={{ ...inputStyle, minHeight: 70 }} value={form.checklist} onChange={(e) => set({ checklist: e.target.value })} />
         </Field>
       ) : null}
-      {form.action === 'removal' ? <Muted>Removing a person also bans their phone number, ID document and device so they cannot return.</Muted> : null}
+      {form.action === 'removal' ? <Muted>Removing a person also bans their email and device so they cannot return.</Muted> : null}
       <Err>{error}</Err>
       {removedNote(status, form.action)}
       {sure ? <Muted>Please check: {LABEL[form.action]}{form.action === 'suspension' ? ` (${form.length === 'fixed' ? 'until fixed' : `${form.length} days`})` : ''}. This is written to the audit log and the person will see your message.</Muted> : null}

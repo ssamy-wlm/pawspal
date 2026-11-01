@@ -157,11 +157,11 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "https://pawspal.vercel.app"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = ["pawspal://auth/callback", "pawspal://auth/reset"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -198,8 +198,6 @@ password_requirements = "lower_upper_letters_digits"
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
 email_sent = 2
-# Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
-sms_sent = 30
 # Number of anonymous sign-ins that can be made per hour per IP address. Requires enable_anonymous_sign_ins = true.
 anonymous_users = 30
 # Number of sessions that can be refreshed in a 5 minute interval per IP address.
@@ -211,15 +209,8 @@ token_verifications = 30
 # Number of Web3 logins that can be made in a 5 minute interval per IP address.
 web3 = 30
 
-# Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
-# [auth.captcha]
-# enabled = true
-# provider = "hcaptcha"
-# secret = ""
-
 [auth.email]
-# PawsPal people sign up by phone only (docs/security.md). The email provider is on so invited admins can sign in with a
-# password and an authenticator code. The database refuses every email sign-up that was not invited (handle_new_user).
+# PawsPal people sign up with email, a password and a confirmation link (docs/ARCHITECTURE.md section 3).
 enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
@@ -235,15 +226,16 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
+# Custom SMTP for the confirmation and reset emails on the live project (the hosted steps are in SETUP.md).
+# Left commented out: locally, emails go to the test inbox.
 # [auth.email.smtp]
 # enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# host = "smtp.resend.com"
+# port = 465
+# user = "resend"
+# pass = "env(RESEND_API_KEY)"
+# admin_email = "hello@your-domain"
+# sender_name = "PawsPal"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
@@ -257,20 +249,9 @@ otp_expiry = 3600
 # content_path = "./supabase/templates/password_changed_notification.html"
 
 [auth.sms]
-# Phone sign-in is the only way in. The SMS provider (Twilio Verify) is added in phase 2.
-enable_signup = true
-# If enabled, users need to confirm their phone number before signing in.
+# Phone sign-in is off: PawsPal uses email only. No test numbers, no SMS provider, no SMS hook.
+enable_signup = false
 enable_confirmations = false
-# Template for sending OTP to users
-template = "Your code is {{ .Code }}"
-# Controls the minimum amount of time that must pass before sending another sms otp.
-max_frequency = "60s"
-
-# Test phone numbers (a fixed code, no SMS) are NEVER kept in this file: the live project can receive this file, and
-# anyone who knows a test number's code could sign in as it. Local test numbers live in supabase/local/local-only.toml
-# and are added only while the local stack starts (scripts/local-supabase.sh). scripts/check-config.py fails CI if
-# anything here could reach the live project.
-[auth.sms.test_otp]
 
 # Configure logged in session timeouts.
 # [auth.sessions]
@@ -289,14 +270,6 @@ max_frequency = "60s"
 # enabled = true
 # uri = "pg-functions://<database>/<schema>/<hook_name>"
 
-# Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
-[auth.sms.twilio]
-enabled = false
-account_sid = ""
-message_service_sid = ""
-# DO NOT commit your Twilio auth token to git. Use environment variable substitution instead:
-auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
-
 # Multi-factor-authentication is available to Supabase Pro plan.
 [auth.mfa]
 # Control how many MFA factors can be enrolled at once per user.
@@ -307,14 +280,6 @@ max_enrolled_factors = 10
 # Admins sign in with an authenticator-app code (the dashboard and is_admin() both require it).
 enroll_enabled = true
 verify_enabled = true
-
-# Configure MFA via Phone Messaging
-[auth.mfa.phone]
-enroll_enabled = false
-verify_enabled = false
-otp_length = 6
-template = "Your code is {{ .Code }}"
-max_frequency = "5s"
 
 # Configure MFA via WebAuthn
 # [auth.mfa.web_authn]
@@ -418,28 +383,12 @@ enabled = true
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
 
-# Edge Functions. The sign-in functions are called before anyone has a session, so they cannot require one:
-# request-otp and verify-otp limit and log every call themselves; send-sms checks Supabase's signature instead.
-[functions.request-otp]
-verify_jwt = false
-
-[functions.verify-otp]
-verify_jwt = false
-
-[functions.send-sms]
-verify_jwt = false
-
+# Edge Functions.
 [functions.cleanup-photos]
 verify_jwt = false      # called by a timer, not by a person; it proves itself with CLEANUP_SECRET
 
-[functions.create-fee-payment]
-verify_jwt = true
-
-[functions.paymob-webhook]
-verify_jwt = false      # Paymob calls this, not a person; every call is checked with Paymob's HMAC signature
-
-[functions.process-refunds]
-verify_jwt = false      # called by a timer; it proves itself with REFUND_SECRET
+[functions.membership-reminders]
+verify_jwt = false      # called by a timer, proves itself with REMINDER_SECRET
 
 [functions.process-upload]
 verify_jwt = true
@@ -448,7 +397,4 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.emergency]
-verify_jwt = true
-
-[functions.verify-identity]
 verify_jwt = true

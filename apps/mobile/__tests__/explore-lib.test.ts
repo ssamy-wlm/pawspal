@@ -1,5 +1,5 @@
 import { supabase } from '../src/lib/supabase';
-import { postAvailability, postTravel, saveToShortlist } from '../src/lib/explore';
+import { fetchMapAvailability, postAvailability, postTravel, saveToShortlist } from '../src/lib/explore';
 import { removePhotoFiles } from '../src/lib/profile';
 
 type Reply = { error: { code?: string; message: string } | null };
@@ -43,5 +43,20 @@ describe('removePhotoFiles', () => {
   it('never throws, even when storage does', async () => {
     jest.spyOn(supabase.storage, 'from').mockReturnValue({ remove: jest.fn(async () => { throw new Error('offline'); }) } as never);
     await expect(removePhotoFiles('homes', ['u/a.jpg'])).resolves.toBeUndefined();
+  });
+});
+
+describe('map availability', () => {
+  it('asks for the pet type and a limit, and returns the rows', async () => {
+    const spy = jest.spyOn(supabase, 'rpc').mockResolvedValue({ data: [{ availability_id: 'a' }], error: null } as never);
+    await expect(fetchMapAvailability('dog')).resolves.toEqual([{ availability_id: 'a' }]);
+    expect(spy).toHaveBeenCalledWith('map_availability', { p_pet_type: 'dog', p_limit: 200 });
+    await fetchMapAvailability(null, 50);
+    expect(spy).toHaveBeenLastCalledWith('map_availability', { p_pet_type: null, p_limit: 50 });
+  });
+  it('turns nothing into an empty list and throws on an error', async () => {
+    jest.spyOn(supabase, 'rpc').mockResolvedValueOnce({ data: null, error: null } as never).mockResolvedValueOnce({ data: null, error: { message: 'denied' } } as never);
+    await expect(fetchMapAvailability(null)).resolves.toEqual([]);
+    await expect(fetchMapAvailability(null)).rejects.toBeTruthy();
   });
 });

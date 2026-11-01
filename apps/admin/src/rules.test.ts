@@ -71,3 +71,50 @@ test('the accent button is brand orange with navy text (docs/design-system.md)',
   const [a, b] = [lum(tokens.color.light.accent), lum(tokens.color.light.onAccent)];
   assert.ok((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= 4.5, 'navy on orange must pass AA');
 });
+
+import { hoursWaiting, matchesMembership, membershipState, validateSetting, waitingText } from './rules.ts';
+
+test('membership state from the paid-until date', () => {
+  assert.equal(membershipState(null, '2026-11-01'), 'unpaid');
+  assert.equal(membershipState('2026-10-31', '2026-11-01'), 'paused');
+  assert.equal(membershipState('2026-11-01', '2026-11-01'), 'due_soon');
+  assert.equal(membershipState('2026-11-08', '2026-11-01'), 'due_soon');
+  assert.equal(membershipState('2026-11-09', '2026-11-01'), 'active');
+  assert.equal(membershipState('2026-11-09', '2026-11-01', 10), 'due_soon');
+  assert.equal(membershipState('2026-11-01', new Date('2026-11-01T22:00:00Z')), 'due_soon');
+});
+
+test('waiting time in hours and words', () => {
+  const now = Date.parse('2026-11-01T12:00:00Z');
+  assert.equal(hoursWaiting('2026-11-01T09:30:00Z', now), 2);
+  assert.equal(hoursWaiting('2026-11-01T13:00:00Z', now), 0);
+  assert.equal(waitingText(3), 'waiting 3 hours');
+  assert.equal(waitingText(1), 'waiting 1 hour');
+  assert.equal(waitingText(0), 'waiting less than an hour');
+  assert.equal(waitingText(72), 'waiting 3 days');
+});
+
+test('settings are checked before they are sent', () => {
+  assert.equal(validateSetting('registration_fee_egp', '75'), null);
+  assert.match(validateSetting('registration_fee_egp', '0')!, /1 to 100000/);
+  assert.match(validateSetting('renewal_fee_egp', '100001')!, /1 to 100000/);
+  assert.match(validateSetting('membership_months', '61')!, /1 to 60/);
+  assert.match(validateSetting('reminder_days', '-3')!, /whole number/);
+  assert.match(validateSetting('reminder_days', '2.5')!, /whole number/);
+  assert.match(validateSetting('reminder_days', '')!, /whole number/);
+  assert.equal(validateSetting('membership_months', ' 12 '), null);
+  assert.equal(validateSetting('instapay_link', ''), null);
+  assert.equal(validateSetting('instapay_link', 'https://ipn.eg/S/pawspal'), null);
+  assert.match(validateSetting('instapay_link', 'javascript:alert(1)')!, /https/);
+  assert.match(validateSetting('payment_note', 'x'.repeat(501))!, /too long/);
+  assert.equal(validateSetting('bank_iban', 'EG00 0000'), null);
+  assert.equal(validateSetting('something_else', '1'), 'Unknown setting.');
+});
+
+test('the users filter for membership', () => {
+  assert.equal(matchesMembership('', null, '2026-11-01'), true);
+  assert.equal(matchesMembership('unpaid', null, '2026-11-01'), true);
+  assert.equal(matchesMembership('expiring', '2026-11-05', '2026-11-01'), true);
+  assert.equal(matchesMembership('expiring', '2026-12-05', '2026-11-01'), false);
+  assert.equal(matchesMembership('paused', '2026-10-01', '2026-11-01'), true);
+});

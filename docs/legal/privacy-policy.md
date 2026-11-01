@@ -1,12 +1,12 @@
 ---
 title: Privacy Policy
-version: 1.0.0-draft
+version: 2.0.0-draft
 effective: [DATE]
 ---
 
 # Privacy Policy
 
-**PawsPal Dahab** ("PawsPal", "we", "us") helps pet owners and sitters in Dahab, Egypt find each other. This policy explains what personal data we collect, why, who we share it with, and the choices you have.
+**PawsPal Dahab** ("PawsPal", "we", "us") connects pet owners and hosts in Dahab, Egypt. This policy explains what personal data we collect, why, who we share it with, and the choices you have.
 
 PawsPal is operated by **[COMPANY LEGAL NAME]**, [REGISTERED ADDRESS], Egypt. Contact: **[PRIVACY EMAIL]**. Data protection officer: **[NAME / CONTACT, if required]**.
 
@@ -18,19 +18,21 @@ Everyone who uses the PawsPal app or website. You must be **18 or older** to use
 
 | Data | Why | Where it comes from |
 |---|---|---|
-| Phone number | Sign-in, one account per person, security alerts | You, verified by SMS code |
-| Face selfie | Your profile photo, and to confirm you are a real person | You, taken live in the app |
-| ID document check result | To confirm your identity and age. **We do not keep a copy of your ID**; our verification partner checks it and tells us only whether it passed | You, through our verification partner |
+| Email address and password | Sign-in, one account per person, service emails. **We never store your password**: it is kept as a one-way hash by our sign-in service | You |
+| Face selfie | Your profile photo, and for our team to confirm you are a real person | You, taken in the app |
+| **Photo of your ID document** (passport or national ID) | A person at PawsPal checks your identity and that you are 18 or older. **It is visible only to our reviewer and is deleted as soon as we have decided** (normally within 1 business day). We keep no copy of it and no ID number | You |
 | Name, bio, area, home photo | Your public profile | You |
-| Pet details and photos | Pet profiles that sitters and owners see | You |
-| Approximate location | Showing your area on the map (a shaded circle, never your exact spot) | Your map pin, rounded |
-| Exact location (map pin) | Shared **only** with the person you have a confirmed and paid booking with, if you allow it | You |
-| Availability, terms and prices | Listings | You |
+| Pet details and photos | Pet profiles that hosts and owners see | You |
+| Approximate location | Showing your area on the map (a shaded area, never your exact spot) | Your map pin, rounded |
+| Exact location (map pin) | Shared **only** with the person you have a confirmed booking with, if you allow it | You |
+| Availability, terms and prices | Listings and the map of availability | You |
 | Messages | In-app chat between users | You |
-| Bookings, fees and payment status | Running bookings | You and our payment provider. **We never see or store your full card number** |
+| Bookings and the terms you agreed | Running bookings | You |
+| Membership payments: **payment reference and screenshot** | A person at PawsPal confirms your registration or renewal payment. **The screenshot is deleted as soon as we have decided.** We keep the amount, the date and the reference. Payments themselves happen outside the app, through InstaPay or your bank, which we do not control | You |
+| Payments between users | **We do not see or store them.** Owners and hosts pay each other directly | |
 | Reviews, reports and moderation records | Trust and safety | You, other users and our moderators |
 | Handover photos | Proof of the pet's condition at drop-off and pick-up | You and the other party |
-| Device and usage data | Security, fraud prevention, fixing crashes | Your device |
+| Device and usage data | Security, fraud prevention, fixing crashes. We keep a one-way fingerprint of your device identifier | Your device |
 
 We do not collect your contacts, and we do not use your location in the background.
 
@@ -38,11 +40,12 @@ We do not collect your contacts, and we do not use your location in the backgrou
 
 We process your data with your **consent**, which you give when you sign up and which you can withdraw at any time, and where it is needed to provide the service you asked for. We use it to:
 
-- create and verify your account and keep one account per person
+- create your account, review your identity by hand and keep one account per person
+- confirm your membership payments and remind you before they end
 - show your profile and listings to other users
-- run chats, bookings, fees, reviews and handovers
+- run chats, bookings, reviews and handovers
 - keep the community safe: detect fake accounts, off-app payment requests and abuse, and act on reports
-- send service messages (codes, booking updates, safety notices)
+- send service messages (confirmation links, booking updates, membership reminders, safety notices)
 - meet legal obligations
 
 We do **not** sell your data. We do not use your face or ID data for advertising.
@@ -50,8 +53,8 @@ We do **not** sell your data. We do not use your face or ID data for advertising
 ## 4. Who can see what
 
 - **Other users** see your public profile: first name, face photo, area (approximate), bio, pets, listings, ratings and reviews.
-- **Your booking partner** additionally sees your exact pin and the contact details you choose to share, **after** the booking is confirmed and the booking fee is paid.
-- **Nobody else** sees your phone number, ID result, exact location or private messages, except our moderators when investigating a report, and only as far as needed.
+- **Your booking partner** additionally sees your exact pin and the contact details you choose to share, **after** the booking is confirmed (both of you accepted the terms).
+- **Nobody else** sees your ID photo, your payment screenshot, your exact location or your private messages. Our reviewer sees your ID photo and payment screenshot until the decision. Our moderators may read a reported conversation, and each such reading is recorded.
 
 ## 5. Service providers
 
@@ -59,11 +62,9 @@ We share data only with providers that help us run PawsPal, under contracts that
 
 | Provider type | Data | Provider |
 |---|---|---|
-| Hosting and database | All account data | [Supabase / hosting provider and region] |
-| SMS verification | Phone number | [Twilio / provider] |
-| Identity verification | Selfie, ID images (processed by them, not kept by us) | [KYC provider] |
-| Maps | Map pin, map display | Google Maps |
-| Payments | Booking fee and payment status | [Paymob / Fawry] |
+| Hosting, database and sign-in | All account data | [Supabase / hosting provider and region] |
+| Email sending (confirmation links, password reset, reminders) | Your email address and the message | [Resend / email provider] |
+| Maps | Approximate areas shown on a map; the map tiles are requested from the map provider, which sees your device's address | OpenStreetMap contributors (tile servers) [OR THE TILE PROVIDER WE USE] |
 | Crash reporting | Device and crash data | [Sentry / provider] |
 
 We may also disclose data if Egyptian law requires it, or to protect someone's safety (for example, a pet or a person in danger).
@@ -79,11 +80,12 @@ Some providers store or process data outside Egypt. We only transfer personal da
 | Account and profile | While your account is open |
 | Messages and bookings | [24] months after the booking ends, then deleted or anonymised |
 | Exact location | Until you change it or delete your account |
-| Verification result | While your account is open, plus [12] months to prevent banned users returning |
+| ID photo | Deleted when we decide (normally within 1 business day) |
+| Payment screenshot | Deleted when we decide. The payment record (amount, date, reference) is kept as required by tax and accounting law |
+| Verification result | While your account is open |
 | Moderation and audit records | [36] months |
-| Payment records | As required by tax and accounting law |
 
-When you delete your account we delete or anonymise your data within [30] days, except what we must keep by law or to prevent a banned user from re-registering. In that case we keep the minimum, such as a one-way fingerprint of your phone number.
+When you delete your account we delete or anonymise your data within [30] days, except what we must keep by law or to prevent a banned user from re-registering. In that case we keep the minimum: a one-way fingerprint of your email address and of your device.
 
 ## 8. Your rights
 
@@ -100,7 +102,7 @@ We answer requests within [the period set by law].
 
 ## 9. Security
 
-We use encryption in transit and at rest, strict access rules in our database, and limited staff access with audit logs. Exact locations are stored separately and only released under the booking rules above. No system is perfect, so please also protect your phone and never share your SMS code.
+We use encryption in transit and at rest, strict access rules in our database, and limited staff access with audit logs. Exact locations are stored separately and only released under the booking rules above. No system is perfect, so please also protect your phone and your password, and never share them.
 
 ## 10. Messages and safety scanning
 

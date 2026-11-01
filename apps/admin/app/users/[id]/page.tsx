@@ -2,9 +2,9 @@
 import { useParams } from 'next/navigation';
 import React from 'react';
 import { ActionPanel } from '../../../src/action-panel';
-import { getProfile, getUserCase } from '../../../src/data';
+import { getProfile, getSettings, getUserClaims, getUserCase, getVerificationHistory } from '../../../src/data';
 import { REPORT_REASONS, nice } from '../../../src/rules';
-import { Badge, Card, Err, H1, H2, Muted, pageStyle, Photo, PersonLink, statusTone, Table, Td, useLoad, when } from '../../../src/ui';
+import { Badge, MembershipBadge, Card, Err, H1, H2, Muted, pageStyle, Photo, PersonLink, statusTone, Table, Td, useLoad, when, day } from '../../../src/ui';
 
 const Check = ({ ok, label }: { ok: boolean; label: string }) => <Badge tone={ok ? 'good' : 'warn'}>{ok ? '✓' : '·'} {label}</Badge>;
 
@@ -12,8 +12,11 @@ export default function UserCase() {
   const { id } = useParams<{ id: string }>();
   const profile = useLoad(() => getProfile(id), [id]);
   const kase = useLoad(() => getUserCase(id), [id]);
+  const claims = useLoad(() => getUserClaims(id), [id]);
+  const verifications = useLoad(() => getVerificationHistory(id), [id]);
+  const settings = useLoad(getSettings, []);
   const p = profile.data;
-  const reload = () => { profile.reload(); kase.reload(); };
+  const reload = () => { profile.reload(); kase.reload(); claims.reload(); verifications.reload(); };
   if (profile.error) return <div style={pageStyle}><Err>{profile.error}</Err></div>;
   if (!p) return <div style={pageStyle}><Muted>{profile.data === null && !profile.error ? 'Loading…' : 'No such user.'}</Muted></div>;
   const k = kase.data;
@@ -25,8 +28,9 @@ export default function UserCase() {
         <Card style={{ flex: '1 1 380px' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Badge tone={statusTone(p.status)}>{nice(p.status)}</Badge><Badge>{nice(p.role)}</Badge>
-            <Check ok={p.phone_verified} label="Phone" /><Check ok={p.face_verified} label="Face" /><Check ok={p.id_verified} label="ID" /><Check ok={p.is_adult} label="Adult" />
+            <Check ok={p.face_verified} label="Face" /><Check ok={p.id_verified} label="ID" /><Check ok={p.is_adult} label="Adult" />
           </div>
+          <span>Membership: <MembershipBadge paidUntil={p.membership?.paid_until} reminderDays={Number(settings.data?.reminder_days) || 7} /> {p.membership?.paid_until ? `paid until ${day(p.membership.paid_until)}` : 'never paid'}</span>
           <Muted>Joined {when(p.created_at)} · {p.stays_count} stays · rating {p.rating_avg ?? 'none yet'} · {strikes} strike(s)</Muted>
           {p.area ? <span>Area: {p.area}</span> : null}
           {p.bio ? <p style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{p.bio}</p> : null}
@@ -40,6 +44,29 @@ export default function UserCase() {
         </div>
       </div>
       <Err>{kase.error}</Err>
+      <H2>Payment claims</H2>
+      <Card>
+        <Err>{claims.error}</Err>
+        {claims.data && claims.data.length === 0 ? <Muted>None.</Muted> : (
+          <Table head={['Sent', 'Kind', 'Amount', 'Reference', 'Result', 'Note']}>
+            {(claims.data ?? []).map((c) => (
+              <tr key={c.id}><Td>{when(c.created_at)}</Td><Td>{nice(c.kind)}</Td><Td>{c.amount_egp} EGP</Td><Td wide>{c.reference ?? ''}</Td>
+                <Td><Badge tone={statusTone(c.status)}>{nice(c.status)}</Badge></Td><Td wide>{c.note ?? ''}</Td></tr>
+            ))}
+          </Table>
+        )}
+      </Card>
+      <H2>Verification history</H2>
+      <Card>
+        <Err>{verifications.error}</Err>
+        {verifications.data && verifications.data.length === 0 ? <Muted>None.</Muted> : (
+          <Table head={['Sent', 'Result', 'Decided', 'Note']}>
+            {(verifications.data ?? []).map((v) => (
+              <tr key={v.id}><Td>{when(v.submitted_at)}</Td><Td><Badge tone={statusTone(v.status === 'approved' ? 'active' : v.status)}>{nice(v.status)}</Badge></Td><Td>{when(v.decided_at)}</Td><Td wide>{v.note ?? ''}</Td></tr>
+            ))}
+          </Table>
+        )}
+      </Card>
       <H2>Strike history</H2>
       <Card>
         {k && k.actions.length === 0 ? <Muted>No actions yet.</Muted> : (

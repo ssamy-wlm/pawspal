@@ -20,10 +20,10 @@ Fill in every `[SQUARE BRACKET]` placeholder before launch.
    - Whether PawsPal needs a licence or permit from the Personal Data Protection Center to collect and process data.
    - Whether a Data Protection Officer is required.
    - What records of processing must be kept.
-2. **Sensitive data.** Face images, ID documents and precise location are processed. Confirm the consent wording and whether the verification provider is a processor or a separate controller.
-3. **Data leaving Egypt.** The backend (Supabase), SMS, verification and maps providers may store data outside Egypt. Cross-border transfer needs a licence or permit and an adequate level of protection, so confirm what is needed, or choose hosting that keeps data in Egypt.
+2. **Sensitive data.** Face images, ID document photos (kept only until the founder's decision, then deleted) and precise location are processed. Confirm the consent wording, the deletion timing, and that checking IDs by hand needs no extra licence.
+3. **Data leaving Egypt.** The backend (Supabase), email and maps providers may store data outside Egypt. Cross-border transfer needs a licence or permit and an adequate level of protection, so confirm what is needed, or choose hosting that keeps data in Egypt.
 4. **Breach notification.** The regulations add mandatory breach notification. Confirm the deadlines and fill in section 11 of the privacy policy.
 5. **Marketplace liability.** Confirm the limitation-of-liability clause is enforceable in Egypt, and whether consumer protection law (Law No. 181 of 2018) affects refunds and fees.
-6. **Payments.** Confirm the fee and refund wording with the payment provider's terms (Paymob or Fawry).
+6. **Membership payments.** PawsPal collects a registration fee (75 EGP) and a renewal (25 EGP every 6 months) outside the app (InstaPay or bank transfer). Confirm the wording on fees, refunds and invoices or receipts, and the tax treatment. The disclaimer in Terms section 6 (and shown at sign-up) must be checked by the lawyer.
 7. **Animal welfare.** Confirm any local rules on pet boarding for money (licensing or veterinary requirements).
 8. **Arabic version.** An official Arabic translation is needed; decide which language prevails if the two differ.

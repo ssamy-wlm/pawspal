@@ -13,7 +13,7 @@ import { formatDay, isRTL, t as tr } from '../../src/i18n';
 export default function CalendarTab() {
   const { session, state } = useAuth();
   const userId = session?.user.id;
-  const role = state?.role ?? 'both';
+  const role = state?.role;
   const c = useTheme().color;
   const rtl = isRTL();
   const [hosting, setHosting] = React.useState<Availability[]>([]);

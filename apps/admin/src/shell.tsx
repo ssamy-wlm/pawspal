@@ -8,8 +8,8 @@ import { Btn, C, Card, Err, Field, inputStyle } from './ui';
 import tokens from './tokens.json';
 
 const NAV: [string, string][] = [
-  ['/', 'Overview'], ['/reports', 'Reports'], ['/users', 'Users'], ['/approvals', 'Approvals'], ['/appeals', 'Appeals'],
-  ['/bookings', 'Bookings'], ['/photos', 'Photo review'], ['/rules', 'Rules'], ['/audit', 'Audit log'],
+  ['/', 'Overview'], ['/verification', 'Verification'], ['/payments', 'Payments'], ['/reports', 'Reports'], ['/users', 'Users'],
+  ['/appeals', 'Appeals'], ['/bookings', 'Bookings'], ['/photos', 'Photo review'], ['/settings', 'Settings'], ['/rules', 'Rules'], ['/audit', 'Audit log'],
 ];
 
 function Centered({ children }: { children: React.ReactNode }) {

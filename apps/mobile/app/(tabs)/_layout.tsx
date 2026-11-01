@@ -1,5 +1,9 @@
 import React from 'react';
+import { View } from 'react-native';
 import { Tabs } from 'expo-router';
+import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MembershipBanner, bannerText } from '../../src/components/MembershipBanner';
+import { useAuth } from '../../src/lib/auth';
 import { Icon, IconName } from '../../src/components/Icon';
 import { fontFamily, useTheme } from '../../src/theme';
 import { isRTL, Key, t as tr } from '../../src/i18n';
@@ -11,11 +15,14 @@ const TABS: { name: string; title: Key; icon: IconName }[] = [
   { name: 'profile', title: 'tab.profile', icon: 'profile' },
 ];
 
-/** The four main tabs. Order follows the layout direction, so Arabic reads right to left. */
+/** The four main tabs, with a renewal banner on top when the membership is due soon or paused. Order follows the layout direction, so Arabic reads right to left. */
 export default function TabsLayout() {
   const t = useTheme();
   const c = t.color;
-  return (
+  const { state } = useAuth();
+  const insets = useSafeAreaInsets();
+  const banner = bannerText(state?.membership) !== null;
+  const tabs = (
     <Tabs screenOptions={{
       headerStyle: { backgroundColor: c.background },
       headerTintColor: c.text,
@@ -35,5 +42,12 @@ export default function TabsLayout() {
         }} />
       ))}
     </Tabs>
+  );
+  // With the banner showing, it takes the top safe area and the tab headers below it do not add it again.
+  return (
+    <View style={{ flex: 1, paddingTop: banner ? insets.top : 0, backgroundColor: c.background }}>
+      <MembershipBanner />
+      <SafeAreaInsetsContext.Provider value={banner ? { ...insets, top: 0 } : insets}>{tabs}</SafeAreaInsetsContext.Provider>
+    </View>
   );
 }

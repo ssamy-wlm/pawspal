@@ -1,34 +1,25 @@
-# Edge functions (built in phases 2–8)
+# Edge functions
 
 | Function | Phase | Does | Secrets |
 |---|---|---|---|
-| `request-otp` | 2 | Asks Supabase Auth to text a code. Per-device limit, hides banned numbers (same answer as for everyone else) | anon key, service role |
-| `verify-otp` | 2 | Checks the code with Supabase Auth, counts wrong tries (CAPTCHA or 10 minute wait after two), returns the session | anon key, service role |
-| `send-sms` | 2 | The Supabase **Send SMS hook**: Auth calls it with the code, it sends through the providers named in `SMS_PROVIDERS` (in order, with fallback) | hook secret, provider keys |
-| `process-upload` | 2 | Takes a raw photo from `incoming/<uid>/`, strips all metadata (EXIF, GPS), saves the clean copy under a random name in `faces`, `pets`, `homes` or `handovers`, deletes the raw file | service role |
-| `cleanup-photos` | 5 | Nightly: deletes photo files nobody uses (raw uploads left in `incoming` after an hour; clean photos no pet or profile points to after a day). Called by Supabase Cron with the `x-cleanup-secret` header. Never logs file names | `CLEANUP_SECRET`, service role |
-| `verify-identity` | 2 | Face and ID checks through the provider named in `IDENTITY_PROVIDER`; stores only the result and a hash of the document, never an ID image; calls `record_verification()` (service role only) | provider key, service role |
-| `paymob-webhook` | 6 | Verifies Paymob's HMAC signature, checks the amount and the order id, then calls `complete_fee_payment` (which confirms the booking). A forged callback is refused with 401 | Paymob HMAC secret, service role |
-| `create-fee-payment` | 6 | Starts a payment for a `terms_agreed` booking: the database makes the payment row with the fee from `app_settings`, Paymob makes the checkout page. The app never sends an amount | Paymob secret key, service role |
-| `process-refunds` | 6 | Hourly: asks Paymob to refund the payments the database marked "refund due" (Terms section 6). Secret protected | `REFUND_SECRET`, Paymob secret key, service role |
+| `process-upload` | 2 | Takes a raw photo from `incoming/<uid>/`, strips all metadata (EXIF, GPS), saves the clean copy under a random name in `faces`, `ids`, `payments`, `pets`, `homes` or `handovers` (kinds `face`, `id`, `payment`, `pet`, `home`, `handover`), deletes the raw file. Only `home` is attached to the profile | service role |
+| `cleanup-photos` | 5 | Nightly: deletes photo files nobody uses (raw uploads left in `incoming`; clean photos in `pets`, `homes`, `faces`, `handovers`, `ids` and `payments` that nothing points to). Called by Supabase Cron with the `x-cleanup-secret` header. Never logs file names | `CLEANUP_SECRET`, service role |
 | `handover-photo-url` | 7 | Gives the booking partner a link (valid 60 seconds) to the other side's handover photo; the database checks they are in the booking | service role |
 | `emergency` | 7 | Either person in a running booking can raise it: the other person gets an in-app alert and a high-priority report opens for the team. Text message or push alerts come later (phase 9) | service role |
+| `membership-reminders` | v3 | Daily: asks the database who is due (`list_due_reminders`), sends one plain text email each (English or Arabic) through the email provider, and calls `mark_reminded` only after the email went out. Called by a timer with the `x-reminder-secret` header. Returns only `{sent, failed}`; never logs or returns emails or names | `REMINDER_SECRET`, email key, service role |
 | `export-my-data`, `delete-my-account` | 9 | Privacy rights from the policy (section 8) | service role |
 
 Every function: verify the user's JWT, validate input, rate-limit, and never log personal data.
 
-## Phase 2 settings
+## Settings
 
 Everything is a setting, so a provider can be swapped without changing code. Put them in Supabase → Edge Functions → Secrets (hosted) or `supabase/functions/.env` (local; see `.env.example`).
 
 | Setting | Meaning |
 |---|---|
-| `SMS_PROVIDERS` | Comma list, tried in order: `whatsapp-cloud`, `generic-http`. Empty means the hook refuses to send (it never pretends). Test phone numbers need no provider. |
-| `SMS_HTTP_URL`, `SMS_HTTP_METHOD`, `SMS_HTTP_HEADERS`, `SMS_HTTP_BODY`, `SMS_HTTP_FORMAT` | `generic-http`: describe any SMS company's HTTPS API with settings only (placeholders `{{to}}`, `{{to_digits}}`, `{{message}}`, `{{code}}`). |
-| `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANG` | `whatsapp-cloud`: sends the code as an approved WhatsApp template. |
-| `SMS_MESSAGE` | Text with `{{code}}`. Default is Arabic and English. |
-| `SEND_SMS_HOOK_SECRET` | The secret Supabase shows when you enable the Send SMS hook (`v1,whsec_...`). Requests with a wrong signature or an old timestamp are refused. |
-| `IDENTITY_PROVIDER` | `fake` (testing only) or a real provider once chosen. Unset means the ID and selfie steps answer "not available yet". `fake` also needs `ALLOW_FAKE_IDENTITY=true` when `PAWSPAL_ENV=production`, so it cannot be switched on by accident. |
-| `CAPTCHA_PROVIDER`, `CAPTCHA_SECRET` | Turnstile CAPTCHA (free). Supabase Auth itself also checks it on every code request (Authentication, Attack Protection), so `request-otp` only passes the app's `captcha_token` along. These two settings are used after two wrong codes. Without them the person waits 10 minutes. |
+| `CLEANUP_SECRET` | Shared secret for `cleanup-photos` (24 characters or more). Too short or missing means the function refuses everyone. |
+| `REMINDER_SECRET` | The same for `membership-reminders`. |
+| `EMAIL_PROVIDER` | Which email company sends the reminders. Default `resend`. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Resend key and the sender address, for example `PawsPal <hello@your-domain>`. Missing means `membership-reminders` answers 503 and sends nothing. |
 
-To add a provider, write one file in `_shared/sms/` or `_shared/identity/`, register it on one line in that folder's `index.ts`, and add tests. Unit tests: `node --experimental-strip-types --test supabase/functions/_shared/*.test.ts`. Type check: `apps/mobile/node_modules/.bin/tsc -p supabase/functions/tsconfig.json`. Both run in CI.
+To add an email provider, write one file in `_shared/email/`, register it on one line in `_shared/email/index.ts`, and add tests. Unit tests: `node --experimental-strip-types --test supabase/functions/_shared/*.test.ts`. Type check: `apps/mobile/node_modules/.bin/tsc -p supabase/functions/tsconfig.json`. Both run in CI.

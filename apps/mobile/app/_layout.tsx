@@ -10,11 +10,13 @@ import { initI18n, isRTL, t as tr } from '../src/i18n';
 import { initHaptics } from '../src/lib/haptics';
 import { ToastProvider } from '../src/components/Toast';
 import { AuthProvider } from '../src/lib/auth';
+import { useAuthLinks } from '../src/lib/authLinks';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function Nav() {
   const t = useTheme();
+  useAuthLinks();
   return (
     <>
       <StatusBar style={t.name === 'navy' ? 'light' : 'dark'} />
@@ -27,7 +29,13 @@ function Nav() {
       }}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="signup" options={{ headerShown: false }} />
+        <Stack.Screen name="signin" options={{ headerShown: false }} />
+        <Stack.Screen name="forgot" options={{ headerShown: false }} />
+        <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/reset" options={{ headerShown: false }} />
         <Stack.Screen name="pending" options={{ headerShown: false }} />
+        <Stack.Screen name="membership" options={{ title: tr('membership.title') }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: tr('settings.title') }} />
         <Stack.Screen name="profile/edit" options={{ title: tr('edit.title') }} />

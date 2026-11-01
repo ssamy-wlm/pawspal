@@ -5,7 +5,6 @@
 set -euo pipefail
 LOG=${LOG:-$(mktemp)}
 bash scripts/local-supabase.sh db reset --local >/dev/null
-PGPASSWORD=postgres psql -q -h 127.0.0.1 -p 54322 -U postgres -d postgres -c "insert into private.local_switches values ('allow_test_numbers') on conflict do nothing"
 PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
   -f supabase/tests/security_test.sql > "$LOG" 2>&1 || true
 cat "$LOG"
@@ -15,7 +14,7 @@ PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres
 PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/profile_assertions.sql
 PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/explore_assertions.sql
 PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/chat_assertions.sql
-PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/payment_assertions.sql
+PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/membership_assertions.sql
 PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/safety_assertions.sql
 PGPASSWORD=postgres psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres -f supabase/tests/admin_assertions.sql
 python3 scripts/check-legal-versions.py "env PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres"

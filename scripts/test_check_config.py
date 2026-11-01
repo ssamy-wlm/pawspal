@@ -27,7 +27,7 @@ class CheckConfig(unittest.TestCase):
 
 
     def test_clean(self):
-        self.assertEqual(p('[auth.sms.test_otp]\n[auth.sms.twilio]\nenabled = false\nauth_token = "env(X_TOKEN)"\n'), [])
+        self.assertEqual(p('[auth.sms]\nenable_signup = false\n[auth.sms.test_otp]\n'), [])
 
     def test_test_numbers(self):
         self.assertTrue(p('[auth.sms.test_otp]\n201000000001 = "123456"\n'))
@@ -35,25 +35,22 @@ class CheckConfig(unittest.TestCase):
     def test_remote_test_numbers(self):
         self.assertTrue(p('[remotes.production.auth.sms.test_otp]\n201000000001 = "123456"\n'))
 
+    def test_phone_signup_is_off(self):
+        self.assertTrue(p('[auth.sms]\nenable_signup = true\n'))
+
     def test_local_hook(self):
         self.assertTrue(p('[auth.hook.send_sms]\nuri = "http://host.docker.internal:54321/functions/v1/send-sms"\n'))
-        self.assertTrue(p('[auth.hook.send_sms]\nuri = "http://127.0.0.1:54321/x"\n'))
-        self.assertEqual(p('[auth.hook.send_sms]\nuri = "https://abc.supabase.co/functions/v1/send-sms"\n'), [])
-
-    def test_placeholder_provider(self):
-        self.assertTrue(p('[auth.sms.twilio]\nenabled = true\naccount_sid = "local-placeholder"\n'))
+        self.assertTrue(p('[auth.hook.before_user_created]\nuri = "http://127.0.0.1:54321/x"\n'))
+        self.assertEqual(p('[auth.hook.send_sms]\nuri = "https://abc.supabase.co/functions/v1/x"\n'), [])
 
     def test_plain_text_secret(self):
-        self.assertTrue(p('[auth.captcha]\nsecret = "0x4AAAAAAA"\n'))
-        self.assertEqual(p('[auth.captcha]\nsecret = "env(TURNSTILE_SECRET)"\n'), [])
+        self.assertTrue(p('[auth.email.smtp]\npass = "re_123"\napi_key = "abc"\n'))
+        self.assertTrue(p('[auth.external.apple]\nsecret = "abc"\n'))
+        self.assertEqual(p('[auth.external.apple]\nsecret = "env(APPLE_SECRET)"\n'), [])
 
-    def test_local_merge_is_caught(self):
-        import os, shutil, tempfile
-        d = tempfile.mkdtemp()
-        shutil.copy('supabase/config.toml', d + '/c.toml')
-        cc.apply_local(d + '/c.toml', 'supabase/local/local-only.toml')
-        with open(d + '/c.toml', 'rb') as f:
-            self.assertTrue(cc.problems(tomllib.load(f)), 'the local settings must trip the check if they ever reach config.toml')
+    def test_repo_config_is_clean(self):
+        with open('supabase/config.toml', 'rb') as f:
+            self.assertEqual(cc.problems(tomllib.load(f)), [])
 
 
 if __name__ == '__main__':

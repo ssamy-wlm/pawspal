@@ -10,7 +10,7 @@ import { nextStep } from '../../src/lib/gate';
 import { supabase } from '../../src/lib/supabase';
 import { t as tr } from '../../src/i18n';
 
-/** Step 5: drop a pin. The server keeps the exact point private and shows neighbours only an approximate one. */
+/** Step 4: drop a pin. The server keeps the exact point private and shows neighbours only an approximate one. */
 export default function LocationStep() {
   const { refresh } = useAuth();
   const [area, setArea] = React.useState('');
@@ -38,7 +38,7 @@ export default function LocationStep() {
   };
 
   return (
-    <StepScreen step={5} title={tr('signup.location.title')} sub={tr('signup.location.sub')}
+    <StepScreen step={4} total={5} title={tr('signup.location.title')} sub={tr('signup.location.sub')}
       footer={pinned
         ? <Button navy title={tr('common.continue')} onPress={() => { next().catch(() => {}); }} />
         : <Button navy title={busy ? tr('common.loading') : tr('signup.location.use')} disabled={busy} onPress={() => { drop().catch(() => {}); }} />}>

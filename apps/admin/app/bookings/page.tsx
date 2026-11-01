@@ -19,12 +19,12 @@ export default function Bookings() {
       <Status l={list} />
       <Card>
         {!list.loading && list.data && list.data.length === 0 ? <Muted>No bookings.</Muted> : (
-          <Table head={['Dates', 'Pet', 'Owner', 'Sitter', 'Type', 'Status', 'Fee']}>
+          <Table head={['Dates', 'Pet', 'Owner', 'Sitter', 'Type', 'Status']}>
             {(list.data ?? []).map((b) => (
               <tr key={b.id}>
                 <Td>{day(b.starts_on)} – {day(b.ends_on)}</Td><Td>{b.pet?.name ?? ''}</Td>
                 <Td>{b.owner ? <PersonLink id={b.owner.id} name={b.owner.first_name} /> : ''}</Td><Td>{b.sitter ? <PersonLink id={b.sitter.id} name={b.sitter.first_name} /> : ''}</Td>
-                <Td>{nice(b.cost_type)}</Td><Td><Badge tone={statusTone(b.status)}>{nice(b.status)}</Badge></Td><Td>{nice(b.fee_status)}</Td>
+                <Td>{nice(b.cost_type)}</Td><Td><Badge tone={statusTone(b.status)}>{nice(b.status)}</Badge></Td>
               </tr>
             ))}
           </Table>

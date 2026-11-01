@@ -18,10 +18,13 @@ export const refusal = (e: unknown) => {
     : /pets_photo_paths_check/.test(m) ? 'This is the pet\'s only photo, and a pet needs one. Send the owner a warning from their page instead.'
     : /photo not found/.test(m) ? 'That photo is already gone.'
     : /no open appeal/.test(m) ? 'This appeal was already decided.'
+    : /note is required|reason is required|needs a note/.test(m) ? 'A note is required.'
+    : /already decided|not pending|no pending/.test(m) ? 'This was already decided. Reload the page.'
+    : /adult/.test(m) ? 'Confirm that the person is 18 or older first.'
     : 'That did not work. Try again.';
 };
 
-export interface Overview { active_users: number; new_this_week: number; open_reports: number; high_priority: number; suspended: number; pending_approvals: number; open_appeals: number; actions_this_month: number }
+export interface Overview { active_users: number; new_this_week: number; open_reports: number; high_priority: number; suspended: number; pending_verifications: number; pending_payments: number; expiring_soon: number; paused: number; open_appeals: number; actions_this_month: number }
 export const getOverview = async () => must(await supabase().rpc('admin_overview')) as Overview;
 
 export interface Person { id: string; first_name: string | null }
@@ -44,26 +47,92 @@ export async function getReportChat(reportId: string): Promise<ChatLine[]> {
   return must(await supabase().rpc('admin_report_messages', { p_report: reportId })) as ChatLine[];
 }
 
+export interface Membership { paid_until: string | null }
 export interface Profile {
   id: string; first_name: string | null; role: string; bio: string | null; area: string | null; status: AccountStatus;
-  phone_verified: boolean; face_verified: boolean; id_verified: boolean; is_adult: boolean; face_photo_path: string | null;
+  face_verified: boolean; id_verified: boolean; is_adult: boolean; face_photo_path: string | null;
   home_photo_path: string | null; rating_avg: number | null; stays_count: number; created_at: string;
+  membership: Membership | null;
 }
-const PROFILE_COLS = 'id, first_name, role, bio, area, status, phone_verified, face_verified, id_verified, is_adult, face_photo_path, home_photo_path, rating_avg, stays_count, created_at';
+const PROFILE_BASE = 'id, first_name, role, bio, area, status, face_verified, id_verified, is_adult, face_photo_path, home_photo_path, rating_avg, stays_count, created_at';
+const PROFILE_COLS = `${PROFILE_BASE}, memberships(paid_until)`;
+/** The embed comes back as an object (one row per person) or a list, depending on how PostgREST reads the key. */
+function withMembership(row: Record<string, unknown>): Profile {
+  const m = row.memberships;
+  const one = (Array.isArray(m) ? m[0] : m) as Membership | null | undefined;
+  const { memberships: _drop, ...rest } = row; void _drop;
+  return { ...rest, membership: one ?? null } as unknown as Profile;
+}
 export async function searchUsers(query: string, status: string): Promise<Profile[]> {
   let q = supabase().from('profiles').select(PROFILE_COLS);
   const text = query.trim();
   if (/^[0-9a-f-]{36}$/i.test(text)) q = q.eq('id', text);
   else if (text) q = q.ilike('first_name', `%${text.replace(/[%_\\]/g, '')}%`);
   if (status) q = q.eq('status', status);
-  return must(await q.order('created_at', { ascending: false }).limit(50)) as unknown as Profile[];
+  const rows = must(await q.order('created_at', { ascending: false }).limit(200)) as unknown as Record<string, unknown>[];
+  return rows.map(withMembership);
 }
 export async function getProfile(id: string): Promise<Profile | null> {
   const { data, error } = await supabase().from('profiles').select(PROFILE_COLS).eq('id', id).maybeSingle();
   if (error) throw error;
-  return data as unknown as Profile | null;
+  return data ? withMembership(data as unknown as Record<string, unknown>) : null;
 }
-export const getPending = async () => must(await supabase().from('profiles').select(PROFILE_COLS).eq('status', 'pending_review').order('created_at').limit(50)) as unknown as Profile[];
+
+// ---- Verification (architecture section 4.3) ----
+export interface VerificationRow {
+  id: string; user_id: string; face_path: string; id_path: string | null; status: string; note: string | null;
+  submitted_at: string; decided_at: string | null;
+  profile: { id: string; first_name: string | null; role: string; area: string | null; bio: string | null } | null;
+}
+const VERIFICATION_COLS = 'id, user_id, face_path, id_path, status, note, submitted_at, decided_at, profile:profiles!user_id(id, first_name, role, area, bio)';
+export const getPendingVerifications = async () => must(await supabase().from('verification_requests').select(VERIFICATION_COLS).eq('status', 'pending').order('submitted_at').limit(50)) as unknown as VerificationRow[];
+export const getVerificationHistory = async (userId: string) => must(await supabase().from('verification_requests').select('id, user_id, face_path, id_path, status, note, submitted_at, decided_at').eq('user_id', userId).order('submitted_at', { ascending: false }).limit(20)) as unknown as VerificationRow[];
+/** Result of a decision: the files to delete are removed right away; a failed removal is only a warning. */
+export interface DecisionResult { fileLeft: boolean }
+async function removeFile(bucket: 'ids' | 'payments', path: unknown): Promise<DecisionResult> {
+  if (typeof path !== 'string' || path === '') return { fileLeft: false };
+  try {
+    const { error } = await supabase().storage.from(bucket).remove([path]);
+    return { fileLeft: !!error };
+  } catch { return { fileLeft: true }; }
+}
+export async function decideVerification(userId: string, approve: boolean, adult: boolean, note: string): Promise<DecisionResult> {
+  const { data, error } = await supabase().rpc('admin_decide_verification', { p_user: userId, p_approve: approve, p_adult: adult, p_note: note.trim() || null });
+  if (error) throw error;
+  return removeFile('ids', data);
+}
+/** People who have waited more than hours for a verification decision. */
+export async function countVerificationsOlderThan(hours: number): Promise<number> {
+  const cutoff = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+  const { count, error } = await supabase().from('verification_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending').lt('submitted_at', cutoff);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+// ---- Payments ----
+export interface PaymentClaim {
+  id: string; user_id: string; kind: string; amount_egp: number; reference: string | null; screenshot_path: string | null;
+  status: string; note: string | null; created_at: string; decided_at: string | null; user: { id: string; first_name: string | null; role: string } | null;
+}
+const CLAIM_COLS = 'id, user_id, kind, amount_egp, reference, screenshot_path, status, note, created_at, decided_at, user:profiles!user_id(id, first_name, role)';
+export const getPendingClaims = async () => must(await supabase().from('payment_claims').select(CLAIM_COLS).eq('status', 'pending').order('created_at').limit(50)) as unknown as PaymentClaim[];
+export const getDecidedClaims = async () => must(await supabase().from('payment_claims').select(CLAIM_COLS).in('status', ['confirmed', 'rejected']).order('decided_at', { ascending: false }).limit(20)) as unknown as PaymentClaim[];
+export const getUserClaims = async (userId: string) => must(await supabase().from('payment_claims').select(CLAIM_COLS).eq('user_id', userId).order('created_at', { ascending: false }).limit(20)) as unknown as PaymentClaim[];
+export async function decidePayment(claim: string, confirm: boolean, note: string): Promise<DecisionResult> {
+  const { data, error } = await supabase().rpc('admin_confirm_payment', { p_claim: claim, p_confirm: confirm, p_note: note.trim() || null });
+  if (error) throw error;
+  return removeFile('payments', data);
+}
+
+// ---- Settings ----
+export async function getSettings(): Promise<Record<string, string>> {
+  const rows = must(await supabase().from('app_settings').select('key, value')) as unknown as { key: string; value: string }[];
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
+export async function setSetting(key: string, value: string) {
+  const { error } = await supabase().rpc('admin_set_setting', { p_key: key, p_value: value.trim() });
+  if (error) throw error;
+}
 
 export interface ActionRow { id: string; action: string; rule: string | null; duration_days: number | null; until_fixed: boolean; message: string | null; created_at: string; ends_at: string | null }
 export interface AppealRow { id: string; body: string; status: string; created_at: string; user_id: string; action: { action: string; rule: string | null; message: string | null; created_at: string } | null; user: { first_name: string | null } | null }
@@ -90,9 +159,9 @@ export async function decideAppeal(id: string, upheld: boolean, message: string)
   if (error) throw error;
 }
 
-export interface BookingRow { id: string; starts_on: string; ends_on: string; status: string; fee_status: string; cost_type: string; created_at: string; owner: Person | null; sitter: Person | null; pet: { name: string } | null }
+export interface BookingRow { id: string; starts_on: string; ends_on: string; status: string; cost_type: string; created_at: string; owner: Person | null; sitter: Person | null; pet: { name: string } | null }
 export async function getBookings(status: string): Promise<BookingRow[]> {
-  let q = supabase().from('bookings').select('id, starts_on, ends_on, status, fee_status, cost_type, created_at, owner:profiles!owner_id(id, first_name), sitter:profiles!sitter_id(id, first_name), pet:pets!pet_id(name)');
+  let q = supabase().from('bookings').select('id, starts_on, ends_on, status, cost_type, created_at, owner:profiles!owner_id(id, first_name), sitter:profiles!sitter_id(id, first_name), pet:pets!pet_id(name)');
   if (status) q = q.eq('status', status);
   return must(await q.order('created_at', { ascending: false }).limit(100)) as unknown as BookingRow[];
 }

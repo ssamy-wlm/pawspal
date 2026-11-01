@@ -1,4 +1,6 @@
-# PawsPal Dahab: project handover (v2)
+# PawsPal Dahab: project handover (v2, amended by v3)
+
+> **v3 notice.** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) describes the current model and **overrides this file** wherever they differ: two account types (Owner or Host, no "both", no swaps); email + password sign-up with a confirmation link (no phone, SMS or Cloudflare); identity checked by hand by the founder (selfie + ID photo, the ID photo deleted right after the decision); a 75 EGP registration fee and 25 EGP every 6 months paid **outside the app** and confirmed by hand; no booking fee and no Paymob; owners and hosts pay each other directly; a map of host availability with prices; the disclaimer at sign-up and in the Terms. Sections 1 to 4 and 12 to 13 below still contain v2 text; read them with this notice in mind.
 
 This is the single plan for building PawsPal with Claude Code. It replaces v1 (`docs/handover/HANDOVER-v1.md`, kept for reference). It combines the original planning chat with the branding, social media, motion and safety work done afterwards. Section 14 lists every error fixed from v1.
 
@@ -105,11 +107,11 @@ Added in v2 (build from the design system):
 |---|---|---|
 | Mobile app | **Expo (React Native) + TypeScript + Expo Router** | One codebase for iPhone and Android; easy store builds with EAS |
 | Animation | **Reanimated 4 + Gesture Handler + react-native-svg** | Smooth 60 fps motion matching the video |
-| Backend | **Supabase** (Postgres, Auth, Storage, Edge Functions) | Rules enforced in the database (row-level security); phone sign-in built in |
-| SMS | Supabase Auth with **Twilio Verify** | Reliable OTP in Egypt; WhatsApp channel as a backup |
-| Identity and liveness | A KYC provider **(Open: choose one)** | ID images never touch our servers |
-| Maps | Google Maps SDK and Places | Pins, area circles, directions |
-| Payments | Paymob **(suggested)** | Egyptian cards and wallets; signed webhooks |
+| Backend | **Supabase** (Postgres, Auth, Storage, Edge Functions) | Rules enforced in the database (row-level security); email + password sign-in built in |
+| Email | **Resend** (custom SMTP for Supabase Auth, API for reminders) | Confirmation links, password reset, renewal reminders |
+| Identity | Checked **by hand** by the founder in the admin site | The ID photo is deleted right after the decision |
+| Maps | **MapLibre GL JS in a WebView + OpenStreetMap tiles** (tile URL configurable) | Free, no native module; approximate areas only |
+| Payments to PawsPal | **None in the app**: InstaPay or bank transfer, confirmed by hand | Registration 75 EGP, renewal 25 EGP every 6 months |
 | Admin | **Next.js** web app in `apps/admin` | Same Supabase backend |
 | Monitoring | Sentry | Crash reports without personal data |
 
@@ -132,11 +134,11 @@ Phases 0–9 with acceptance tests: `docs/build-plan.md`. In Claude Code, run `/
 
 1. **Legal review, urgent.** Egypt's data protection law has a compliance deadline commentators put at **1 November 2026**. You may need a licence or permit, and possibly a data protection officer; data stored outside Egypt needs approval. See `docs/legal/README.md`.
 2. Company legal name, address and support/privacy emails (placeholders in the legal docs).
-3. Booking fee amount; whether in-app payment of the stay price launches on day one.
-4. KYC provider; whether Paymob or Fawry can take wallets and InstaPay.
+3. (v3) Your InstaPay link / QR and bank details (Admin site > Settings); the membership refund policy; whether receipts are needed.
+4. (v3) The sending domain for email (Resend) and the tile provider before real traffic.
 5. Hosting region (data location) after the legal answer.
 6. Arabic copy: a native speaker must review every string and the legal translations.
-7. Cancellation fee numbers in Terms section 6.
+7. (v3) Terms sections 5 and 6 (membership and the disclaimer): lawyer to confirm.
 8. Launch scope: Dahab only (the map bounds are already set to Egypt; search distance defaults to 10 km).
 
 ## 14. What changed from v1 (errors fixed)

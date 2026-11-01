@@ -1,9 +1,9 @@
 'use client';
 import Link from 'next/link';
 import React from 'react';
-import { getOpenAppeals, getOverview, getReports } from '../src/data';
+import { countVerificationsOlderThan, getOpenAppeals, getOverview, getReports } from '../src/data';
 import { Badge, Card, C, Err, H1, H2, Muted, pageStyle, PersonLink, Table, Td, useLoad, when } from '../src/ui';
-import { REPORT_REASONS, nice } from '../src/rules';
+import { OVERDUE_HOURS, REPORT_REASONS, nice } from '../src/rules';
 
 function Stat({ label, value, href, tone }: { label: string; value: number | undefined; href?: string; tone?: boolean }) {
   const inner = (
@@ -19,6 +19,7 @@ export default function Overview() {
   const o = useLoad(getOverview, []);
   const reports = useLoad(() => getReports(true, 8), []);
   const appeals = useLoad(getOpenAppeals, []);
+  const late = useLoad(() => countVerificationsOlderThan(OVERDUE_HOURS), []);
   const d = o.data ?? undefined;
   return (
     <div style={pageStyle}>
@@ -29,11 +30,15 @@ export default function Overview() {
         <Stat label="New this week" value={d?.new_this_week} />
         <Stat label="Open reports" value={d?.open_reports} href="/reports" tone={(d?.high_priority ?? 0) > 0} />
         <Stat label="High priority" value={d?.high_priority} href="/reports" tone={(d?.high_priority ?? 0) > 0} />
-        <Stat label="Waiting for approval" value={d?.pending_approvals} href="/approvals" />
+        <Stat label="Waiting for verification" value={d?.pending_verifications} href="/verification" tone={(late.data ?? 0) > 0} />
+        <Stat label="Payments to confirm" value={d?.pending_payments} href="/payments" />
+        <Stat label="Renewals due soon" value={d?.expiring_soon} href="/users?membership=expiring" />
+        <Stat label="Paused" value={d?.paused} href="/users?membership=paused" />
         <Stat label="Open appeals" value={d?.open_appeals} href="/appeals" />
         <Stat label="Suspended" value={d?.suspended} href="/users?status=suspended" />
         <Stat label="Actions this month" value={d?.actions_this_month} href="/audit" />
       </div>
+      {late.data && late.data > 0 ? <p role="status" style={{ margin: 0, fontWeight: 600 }}>Review promise: within 1 business day. {late.data === 1 ? '1 person has' : `${late.data} people have`} waited longer than 24 hours on the <Link href="/verification" style={{ color: C.link }}>Verification page</Link>.</p> : null}
       <H2>Reports queue</H2>
       <Card>
         <Err>{reports.error}</Err>

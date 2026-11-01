@@ -42,8 +42,8 @@ describe.each(COMBOS)('every screen in $mode theme, $locale', ({ mode, locale })
 
   it('Welcome', async () => {
     await r(<Welcome />);
-    expect(screen.getByText(words['welcome.needSitter'])).toBeTruthy();
-    expect(screen.getByText(words['welcome.wantSit'])).toBeTruthy();
+    expect(screen.getByText(words['welcome.create'])).toBeTruthy();
+    expect(screen.getByText(words['welcome.signin'])).toBeTruthy();
     expect(screen.getByText(words['legal.privacy'])).toBeTruthy();
   });
 

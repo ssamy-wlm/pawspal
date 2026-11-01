@@ -14,7 +14,7 @@ const LEGAL: { slug: string; label: Key }[] = [
   { slug: 'privacyPolicy', label: 'legal.privacy' },
   { slug: 'communityGuidelines', label: 'legal.guidelines' },
 ];
-const ROLE_LABEL: Record<PublicProfile['role'], Key> = { owner: 'profile.role.owner', sitter: 'profile.role.sitter', both: 'profile.role.both' };
+const ROLE_LABEL: Record<PublicProfile['role'], Key> = { owner: 'profile.role.owner', sitter: 'profile.role.sitter' };
 
 /** Profile tab: your card, then Edit profile, My pets, Settings and the legal documents. */
 export default function ProfileTab() {
@@ -54,6 +54,7 @@ export default function ProfileTab() {
       ) : null}
       {row(tr('profile.edit'), '/profile/edit')}
       {row(tr('profile.pets'), '/pets')}
+      {row(tr('profile.membership'), '/membership')}
       {row(tr('profile.settings'), '/settings', true)}
       {row(tr('profile.safety'), '/safety')}
       <Text accessibilityRole="header" style={{ color: c.text, fontSize: 17, marginTop: 16, fontFamily: fontFamily('bold', rtl) }}>{tr('profile.legal')}</Text>

@@ -8,7 +8,6 @@ import { Button } from '../../src/components/Button';
 import { Chip } from '../../src/components/Chip';
 import { errorKey, uploadPhoto } from '../../src/lib/api';
 import { useAuth } from '../../src/lib/auth';
-import { getRoleHint, Role } from '../../src/lib/draft';
 import { nextStep } from '../../src/lib/gate';
 import { supabase } from '../../src/lib/supabase';
 import { fontFamily, useTheme } from '../../src/theme';
@@ -38,11 +37,11 @@ function PhotoButton({ done, label, doneLabel, busy, onPress }: { done: boolean;
   );
 }
 
-/** Step 4: name, role, the first pet (owners) and a photo of the home (sitters). */
+/** Step 3: first name, then a first pet (owners) or a photo of the home (hosts). The role was chosen at sign-up and is shown, not changed. */
 export default function AboutStep() {
   const { state, refresh } = useAuth();
   const [name, setName] = React.useState(state?.first_name ?? '');
-  const [role, setRole] = React.useState<Role>(state?.role && state.first_name ? state.role : getRoleHint());
+  const role = state?.role ?? 'owner';
   const [petName, setPetName] = React.useState('');
   const [petType, setPetType] = React.useState<PetType>('dog');
   const [petSize, setPetSize] = React.useState<PetSize>('medium');
@@ -51,8 +50,8 @@ export default function AboutStep() {
   const [busy, setBusy] = React.useState<'pet' | 'home' | 'save' | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  const needsPet = role !== 'sitter' && !state?.has_pet;
-  const needsHome = role !== 'owner';
+  const needsPet = role === 'owner' && !state?.has_pet;
+  const needsHome = role === 'sitter';
   const ready = name.trim().length > 0 && (!needsPet || (petName.trim().length > 0 && !!petPhoto)) && (!needsHome || homeDone);
 
   const photo = async (kind: 'pet' | 'home') => {
@@ -72,7 +71,7 @@ export default function AboutStep() {
       const { data: u } = await supabase.auth.getUser();
       const uid = u.user?.id;
       if (!uid) throw new Error('no user');
-      const p = await supabase.from('profiles').update({ first_name: name.trim(), role }).eq('id', uid);
+      const p = await supabase.from('profiles').update({ first_name: name.trim() }).eq('id', uid);
       if (p.error) throw p.error;
       if (needsPet && petPhoto) {
         const pet = await supabase.from('pets').insert({ owner_id: uid, name: petName.trim(), type: petType, size: petSize, photo_paths: [petPhoto] });
@@ -84,18 +83,9 @@ export default function AboutStep() {
   };
 
   return (
-    <StepScreen step={4} title={tr('signup.about.title')} sub={tr('signup.about.sub')}
+    <StepScreen step={3} total={5} title={tr('signup.about.title')} sub={tr('signup.about.sub')}
       footer={<Button navy title={tr('common.continue')} disabled={!ready || busy !== null} onPress={() => { save().catch(() => {}); }} />}>
       <TextField label={tr('signup.about.name')} value={name} onChangeText={setName} maxLength={40} autoCapitalize="words" autoComplete="given-name" textContentType="givenName" />
-
-      <View style={{ gap: 10 }}>
-        <Heading>{tr('signup.role.title')}</Heading>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <Chip label={tr('welcome.needSitter')} selected={role === 'owner'} onPress={() => setRole('owner')} />
-          <Chip label={tr('welcome.wantSit')} selected={role === 'sitter'} onPress={() => setRole('sitter')} />
-          <Chip label={tr('signup.role.both')} selected={role === 'both'} onPress={() => setRole('both')} />
-        </View>
-      </View>
 
       {needsPet ? (
         <View style={{ gap: 12 }}>

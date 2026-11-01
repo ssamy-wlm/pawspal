@@ -20,7 +20,7 @@ import { nights } from '../../../src/lib/search';
 
 /**
  * "Booking confirmed" (mockup 17): the stamp, the dates, who stays with whom, and the exact pin with directions. The pin
- * comes from get_booking_location, which only answers the two people in a paid booking.
+ * comes from get_booking_location, which only answers the two people in a confirmed booking.
  */
 export default function BookingDone() {
   const { id } = useLocalSearchParams<{ id: string }>();
