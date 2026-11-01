@@ -21,7 +21,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
         }}
       >
-        <style>{`@media (max-width: 800px) { .shell { flex-direction: column !important; } .sidenav { width: auto !important; flex-direction: row !important; flex-wrap: wrap; height: auto !important; position: static !important; } .sidenav img { display: none; } .page > div { padding: 16px !important; } }`}</style>
+        <style>{`:focus-visible { outline: 3px solid ${tokens.color.brand.navy}; outline-offset: 2px; box-shadow: 0 0 0 5px ${tokens.color.light.surface}; } .sidenav :focus-visible { outline-color: ${tokens.color.dark.text}; box-shadow: none; } @media (max-width: 800px) { .shell { flex-direction: column !important; } .sidenav { width: auto !important; flex-direction: row !important; flex-wrap: wrap; height: auto !important; position: static !important; } .sidenav img { display: none; } .page > div { padding: 16px !important; } }`}</style>
         <AuthProvider>
           <Shell>{children}</Shell>
         </AuthProvider>

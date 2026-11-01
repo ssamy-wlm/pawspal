@@ -34,9 +34,9 @@ export function Badge({ children, tone = 'neutral' }: { children: React.ReactNod
 export const statusTone = (s: string): Tone => (s === 'active' || s === 'resolved' || s === 'completed' || s === 'confirmed' ? 'good' : s === 'suspended' || s === 'removed' || s === 'dismissed' || s === 'cancelled' ? 'bad' : 'warn');
 
 export function Btn({ children, onClick, kind = 'primary', disabled, type = 'button' }:
-  { children: React.ReactNode; onClick?: () => void; kind?: 'primary' | 'secondary' | 'danger'; disabled?: boolean; type?: 'button' | 'submit' }) {
-  const bg = kind === 'primary' ? C.primary : kind === 'danger' ? C.danger : 'transparent';
-  const fg = kind === 'secondary' ? C.primary : C.onPrimary;
+  { children: React.ReactNode; onClick?: () => void; kind?: 'primary' | 'secondary' | 'danger' | 'accent'; disabled?: boolean; type?: 'button' | 'submit' }) {
+  const bg = kind === 'primary' ? C.primary : kind === 'danger' ? C.danger : kind === 'accent' ? C.accent : 'transparent';
+  const fg = kind === 'secondary' ? C.primary : kind === 'accent' ? C.onAccent : C.onPrimary;
   return (
     <button type={type} onClick={onClick} disabled={disabled}
       style={{ minHeight: 40, padding: '0 18px', borderRadius: 999, border: kind === 'secondary' ? `2px solid ${C.primary}` : 'none', background: bg, color: fg, fontWeight: 600, fontSize: font.small, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, borderStyle: disabled ? 'dashed' : undefined }}>

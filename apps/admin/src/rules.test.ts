@@ -62,3 +62,12 @@ test('a suspension needs a length, and the confirm button names it', () => {
   assert.equal(confirmLabel({ action: 'removal', length: '' }), 'Yes, remove and ban this person');
   assert.equal(nice('terms_agreed_now'), 'terms agreed now');
 });
+
+import tokens from './tokens.json' with { type: 'json' };
+test('the accent button is brand orange with navy text (docs/design-system.md)', () => {
+  assert.equal(tokens.color.light.accent.toLowerCase(), '#ff9f43');
+  assert.equal(tokens.color.light.onAccent.toLowerCase(), '#1f2d3d');
+  const lum = (hex: string) => { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const [a, b] = [lum(tokens.color.light.accent), lum(tokens.color.light.onAccent)];
+  assert.ok((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= 4.5, 'navy on orange must pass AA');
+});

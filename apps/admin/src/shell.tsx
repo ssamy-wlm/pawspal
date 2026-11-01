@@ -41,7 +41,7 @@ function SignIn() {
         <Field label="Password"><input style={inputStyle} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
         <Turnstile onToken={setToken} resetKey={attempt} />
         <Err>{error}</Err>
-        <Btn type="submit" disabled={busy || !email || !password || (needsToken && !token)}>Sign in</Btn>
+        <Btn kind="accent" type="submit" disabled={busy || !email || !password || (needsToken && !token)}>Sign in</Btn>
       </form>
     </Card>
   );
