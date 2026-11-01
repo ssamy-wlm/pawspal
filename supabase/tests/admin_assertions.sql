@@ -67,6 +67,15 @@ select pg_temp.fails($$insert into auth.users (id, email, email_confirmed_at) va
 select pg_temp.fails($$insert into auth.users (id, phone, phone_confirmed_at) values (gen_random_uuid(), '14155550123', now())$$, 'a foreign phone sign-up was accepted');
 select pg_temp.check(exists (select 1 from public.profiles where id = 'a8a8a8a8-0000-0000-0000-000000000001'), 'the admin account has no profile row');
 
+-- The dashboard's Add user form sends phone = '' (empty), not null: an invited email must still work, an uninvited one must not.
+select private.invite_admin('formuser@example.com');
+insert into auth.users (id, phone, email, email_confirmed_at, created_at) values ('a8a8a8a8-0000-0000-0000-000000000009', '', 'formuser@example.com', now(), now());
+select pg_temp.check(private.grant_admin('formuser@example.com') = 'granted', 'an invited account with an empty phone could not become an admin');
+select private.revoke_admin('formuser@example.com');
+delete from auth.users where id = 'a8a8a8a8-0000-0000-0000-000000000009';
+select pg_temp.fails($$insert into auth.users (id, phone, email, email_confirmed_at) values (gen_random_uuid(), '', 'nobody@example.com', now())$$, 'an uninvited email with an empty phone was accepted');
+select pg_temp.fails($$insert into auth.users (id, phone, email, email_confirmed_at) values (gen_random_uuid(), '   ', null, now())$$, 'a blank phone with no email was accepted');
+
 \echo '--- D3 admin rights need the authenticator code'
 select pg_temp.check(pg_temp.as_admin(null, 'select public.admin_status()') = 'needs_mfa', 'an admin without the code was not told to use it');
 select pg_temp.check(pg_temp.as_admin('aal1', 'select public.admin_status()') = 'needs_mfa', 'aal1 counted as admin');
