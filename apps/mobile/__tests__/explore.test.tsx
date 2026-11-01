@@ -309,7 +309,7 @@ describe('animated card backgrounds', () => {
 describe('browse card chips', () => {
   it('shows who lives there, the pets welcome, what is offered and what the home has', () => {
     const labels = cardChips(host(1, { pet_name: 'Rex', pets_accepted: ['dog', 'cat'], offers: ['paid', 'food_provided'], home_tags: ['garden', 'pet_first_aid', 'near_beach', 'quiet_home'] })).map((x) => x.label);
-    expect(labels).toEqual(['Rex lives here', 'Dogs', 'Cats', 'Food provided', 'Garden', 'Pet first aid', 'Quiet home']);
+    expect(labels).toEqual(['Rex lives here', 'Dogs', 'Cats', 'Food provided', 'Garden', 'Pet first aid', 'Near the beach']);
   });
   it('says "Pet-friendly home" when no pet lives there, ignores unknown tags, and never shows more than seven', () => {
     expect(cardChips(host(1, { pet_name: null, offers: ['paid'], pets_accepted: ['dog'], home_tags: ['made_up'] })).map((x) => x.label)).toEqual(['Pet-friendly home', 'Dogs']);

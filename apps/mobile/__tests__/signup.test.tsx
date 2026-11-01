@@ -6,7 +6,13 @@ import { COMBOS, renderIn } from '../test-utils/render';
 import { setLocaleForTests } from '../src/i18n';
 import { ApiError } from '../src/lib/api';
 import * as api from '../src/lib/api';
-import PhoneStep from '../app/signup/phone';
+import { clearVerificationDraft, getFacePath, setFacePath, setIdPath, setPendingEmail } from '../src/lib/draft';
+import { legal } from '../src/legal';
+import AccountStep from '../app/signup/account';
+import CheckEmailStep from '../app/signup/check-email';
+import SignIn from '../app/signin';
+import Forgot from '../app/forgot';
+import ResetPassword from '../app/reset-password';
 import SelfieStep from '../app/signup/selfie';
 import IdStep from '../app/signup/id';
 import AboutStep from '../app/signup/about';
@@ -17,16 +23,21 @@ import Pending from '../app/pending';
 const mockRefresh = jest.fn();
 const mockSignOut = jest.fn(async () => {});
 let mockState: unknown = null;
-jest.mock('../src/lib/auth', () => ({ useAuth: () => ({ ready: true, session: { user: { id: 'u1' } }, state: mockState, refresh: mockRefresh, signOut: mockSignOut }) }));
-jest.mock('../src/lib/api', () => ({ ...jest.requireActual('../src/lib/api'), requestOtp: jest.fn(), verifyOtp: jest.fn(), uploadPhoto: jest.fn(), verifyFace: jest.fn(), verifyId: jest.fn() }));
+let mockSession: unknown = { user: { id: 'u1' } };
+jest.mock('../src/lib/auth', () => ({ useAuth: () => ({ ready: true, session: mockSession, state: mockState, refresh: mockRefresh, signOut: mockSignOut }) }));
+jest.mock('../src/lib/api', () => ({ ...jest.requireActual('../src/lib/api'), uploadPhoto: jest.fn(), deviceId: jest.fn(async () => 'device-1') }));
 
 const mockCalls: { table: string; op: string; row?: unknown }[] = [];
 const mockRpc = jest.fn();
+const mockAuth = {
+  getUser: async () => ({ data: { user: { id: 'u1' } } }),
+  signUp: jest.fn(), resend: jest.fn(), signInWithPassword: jest.fn(), resetPasswordForEmail: jest.fn(), updateUser: jest.fn(),
+};
 let mockTables: Record<string, unknown[]> = {};
 let mockAcceptError: { code: string } | null = null;
 jest.mock('../src/lib/supabase', () => ({
   supabase: {
-    auth: { getUser: async () => ({ data: { user: { id: 'u1' } } }) },
+    auth: mockAuth,
     rpc: (...a: unknown[]) => mockRpc(...a),
     from: (table: string) => ({
       insert: async (row: unknown) => { mockCalls.push({ table, op: 'insert', row }); return { error: table === 'legal_acceptances' ? mockAcceptError : null }; },
@@ -42,89 +53,302 @@ jest.mock('../src/lib/supabase', () => ({
 }));
 
 const m = api as jest.Mocked<typeof api>;
+const GOOD_PASSWORD = 'Sunny-Day-2026';
+const ACCEPT = 'I have read this and I accept the Terms of Service and Privacy Policy';
+
 beforeEach(() => {
-  jest.clearAllMocks(); mockCalls.length = 0; mockState = null; mockAcceptError = null;
-  mockTables = { legal_documents: [{ doc: 'terms', current_version: '1' }, { doc: 'privacy', current_version: '1' }, { doc: 'guidelines', current_version: '1' }] };
-  delete process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY;
-  mockRefresh.mockResolvedValue({ status: 'pending_verification', missing: ['face'] });
+  jest.clearAllMocks(); mockCalls.length = 0; mockState = null; mockAcceptError = null; mockSession = { user: { id: 'u1' } };
+  mockTables = { legal_documents: [{ doc: 'guidelines', current_version: '1' }] };
+  clearVerificationDraft(); setPendingEmail('');
+  mockRefresh.mockResolvedValue({ status: 'pending_verification', missing: ['name'] });
   mockRpc.mockResolvedValue({ data: 'pending_review', error: null });
+  mockAuth.signUp.mockResolvedValue({ data: { user: { id: 'new', identities: [{}] } }, error: null });
+  mockAuth.resend.mockResolvedValue({ data: {}, error: null });
+  mockAuth.signInWithPassword.mockResolvedValue({ data: {}, error: null });
+  mockAuth.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
+  mockAuth.updateUser.mockResolvedValue({ data: {}, error: null });
 });
 afterEach(() => setLocaleForTests('en'));
 
-describe.each(COMBOS)('sign-up steps in $mode / $locale', ({ mode, locale }) => {
+describe.each(COMBOS)('sign-up screens in $mode / $locale', ({ mode, locale }) => {
   const show = (ui: React.ReactElement) => renderIn(ui, { mode, locale });
 
-  it.each([['phone', PhoneStep], ['selfie', SelfieStep], ['id', IdStep], ['about', AboutStep], ['location', LocationStep], ['rules', RulesStep], ['pending', Pending]] as const)(
-    'shows the %s screen with a heading', async (_name, Step) => {
-      await show(<Step />);
-      expect(screen.getAllByRole('header').length).toBeGreaterThan(0);
-    });
+  it.each([
+    ['account', AccountStep], ['check-email', CheckEmailStep], ['signin', SignIn], ['forgot', Forgot], ['reset', ResetPassword],
+    ['selfie', SelfieStep], ['id', IdStep], ['about', AboutStep], ['location', LocationStep], ['rules', RulesStep], ['pending', Pending],
+  ] as const)('shows the %s screen with a heading', async (_name, Step) => {
+    mockState = { status: 'pending_review', role: 'owner', verification: { status: 'none', note: null }, membership: { state: 'active' } };
+    setFacePath('u1/face.jpg');
+    await show(<Step />);
+    expect(screen.getAllByRole('header').length).toBeGreaterThan(0);
+  });
 });
 
-describe('phone step', () => {
-  it('asks for a code, then shows a resend timer and lets the person use another number', async () => {
-    m.requestOtp.mockResolvedValue({ resend_after_seconds: 60 });
-    await renderIn(<PhoneStep />);
-    const send = screen.getByText('Send code');
-    expect(send).toBeTruthy();
-    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '010 1234 5678');
-    await fireEvent.press(send);
-    await waitFor(() => expect(screen.getByText('Enter your code')).toBeTruthy());
-    expect(m.requestOtp).toHaveBeenCalledWith('010 1234 5678', undefined);
-    expect(screen.getByText('Send again in 60s')).toBeTruthy();
-    expect(screen.queryByText('Send again')).toBeNull();
-    await fireEvent.press(screen.getByText('Use another number'));
-    expect(screen.getByText('Your phone number')).toBeTruthy();
+describe('create account', () => {
+  const fill = async (over: { role?: string | null; email?: string; password?: string; accept?: boolean } = {}) => {
+    const { role = 'Owner', email = 'salma@example.com', password = GOOD_PASSWORD, accept = true } = over;
+    if (role) await fireEvent.press(screen.getByLabelText(new RegExp(`^${role}\\.`)));
+    await fireEvent.changeText(screen.getByLabelText('Email'), email);
+    await fireEvent.changeText(screen.getByLabelText('Password'), password);
+    if (accept) await fireEvent.press(screen.getByLabelText(ACCEPT));
+  };
+
+  it('shows Owner and Host with a line each, and the disclaimer word for word', async () => {
+    await renderIn(<AccountStep />);
+    expect(screen.getByText('I have a pet and need a host.')).toBeTruthy();
+    expect(screen.getByText('I have a home and can look after pets.')).toBeTruthy();
+    expect(screen.getByText('PawsPal connects pet owners and hosts. PawsPal does not vet, employ or guarantee any host or owner, and arrangements and payments between users are their own responsibility. If a disagreement happens, PawsPal will help where it can, for example by reviewing the chat and handover photos.')).toBeTruthy();
+    expect(screen.getByText('At least 12 characters with upper case, lower case and a number.')).toBeTruthy();
   });
 
-  it('offers "Send again" once the wait is over', async () => {
-    m.requestOtp.mockResolvedValue({ resend_after_seconds: 1 });
-    await renderIn(<PhoneStep />);
-    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
-    await fireEvent.press(screen.getByText('Send code'));
-    await waitFor(() => expect(screen.getByText('Send again in 1s')).toBeTruthy());
-    await waitFor(() => expect(screen.getByText('Send again')).toBeTruthy(), { timeout: 3000 });
+  it('links the Terms and the Privacy Policy', async () => {
+    await renderIn(<AccountStep />);
+    expect(screen.getAllByRole('link').map((l) => l.props.accessibilityRole)).toHaveLength(2);
+    expect(screen.getByText('Terms of Service')).toBeTruthy();
+    expect(screen.getByText('Privacy Policy')).toBeTruthy();
   });
 
-  it('keeps the send button off until a number is typed', async () => {
-    await renderIn(<PhoneStep />);
-    await fireEvent.press(screen.getByText('Send code'));
-    expect(m.requestOtp).not.toHaveBeenCalled();
+  it('cannot be sent until the box about the disclaimer, Terms and Privacy Policy is ticked', async () => {
+    await renderIn(<AccountStep />);
+    await fill({ accept: false });
+    await fireEvent.press(screen.getByText('Create account'));
+    expect(mockAuth.signUp).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByLabelText(ACCEPT));
+    await fireEvent.press(screen.getByText('Create account'));
+    await waitFor(() => expect(mockAuth.signUp).toHaveBeenCalledTimes(1));
   });
 
-  it('shows a plain message when the number is not an Egypt number or the limit is reached', async () => {
-    m.requestOtp.mockRejectedValueOnce(new ApiError('invalid_phone', 400));
-    await renderIn(<PhoneStep />);
-    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '+1 555 0100 000');
-    await fireEvent.press(screen.getByText('Send code'));
-    await waitFor(() => expect(screen.getByText('That does not look like an Egypt mobile number.')).toBeTruthy());
-    expect(screen.queryByText('Enter your code')).toBeNull();
+  it('needs a role, a valid email and a strong password', async () => {
+    await renderIn(<AccountStep />);
+    await fill({ role: null });
+    await fireEvent.press(screen.getByText('Create account'));
+    await fireEvent.press(screen.getByLabelText(/^Host\./));
+    await fireEvent.changeText(screen.getByLabelText('Email'), 'not-an-email');
+    await fireEvent.press(screen.getByText('Create account'));
+    await fireEvent.changeText(screen.getByLabelText('Email'), 'salma@example.com');
+    for (const weak of ['short1A', 'alllowercase1234', 'ALLUPPERCASE1234', 'NoDigitsInHere']) {
+      await fireEvent.changeText(screen.getByLabelText('Password'), weak);
+      await fireEvent.press(screen.getByText('Create account'));
+    }
+    expect(mockAuth.signUp).not.toHaveBeenCalled();
   });
 
-  it('signs in with the code and moves to the first step that is missing', async () => {
-    m.requestOtp.mockResolvedValue({ resend_after_seconds: 60 });
-    m.verifyOtp.mockResolvedValue(undefined);
-    await renderIn(<PhoneStep />);
-    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
-    await fireEvent.press(screen.getByText('Send code'));
-    await waitFor(() => screen.getByLabelText('Code'));
-    await fireEvent.changeText(screen.getByLabelText('Code'), '12 34-56');
-    await fireEvent.press(screen.getByText('Verify'));
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/signup/selfie'));
-    expect(m.verifyOtp).toHaveBeenCalledWith('01012345678', '123456', undefined);
+  it('sends the role, the Terms version and the device id as sign-up data, and the link address', async () => {
+    await renderIn(<AccountStep />);
+    await fill({ role: 'Host' });
+    await fireEvent.press(screen.getByText('Create account'));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/signup/check-email'));
+    expect(mockAuth.signUp).toHaveBeenCalledWith({
+      email: 'salma@example.com', password: GOOD_PASSWORD,
+      options: { emailRedirectTo: 'pawspal://auth/callback', data: { role: 'sitter', terms_version: legal.termsOfService.version, device_id: 'device-1' } },
+    });
   });
 
-  it('says so when the code is wrong', async () => {
-    m.requestOtp.mockResolvedValue({ resend_after_seconds: 60 });
-    m.verifyOtp.mockRejectedValue(new ApiError('invalid_code', 401));
-    await renderIn(<PhoneStep />);
-    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
-    await fireEvent.press(screen.getByText('Send code'));
-    await waitFor(() => screen.getByLabelText('Code'));
-    await fireEvent.changeText(screen.getByLabelText('Code'), '000000');
-    await fireEvent.press(screen.getByText('Verify'));
-    await waitFor(() => expect(screen.getByText('That code did not work. Check it and try again.')).toBeTruthy());
+  it('sends an owner as "owner"', async () => {
+    await renderIn(<AccountStep />);
+    await fill();
+    await fireEvent.press(screen.getByText('Create account'));
+    await waitFor(() => expect(mockAuth.signUp).toHaveBeenCalled());
+    expect((mockAuth.signUp.mock.calls[0][0] as { options: { data: { role: string } } }).options.data.role).toBe('owner');
+  });
+
+  it.each([
+    [{ code: 'user_already_exists', status: 422, message: 'x' }, 'That email already has an account. Try signing in.'],
+    [{ code: 'weak_password', status: 422, message: 'x' }, 'That password is too weak. Use at least 12 characters with upper case, lower case and a number.'],
+    [{ code: 'over_email_send_rate_limit', status: 429, message: 'x' }, 'Too many tries. Wait a few minutes and try again.'],
+    [{ name: 'AuthRetryableFetchError', status: 0, message: 'x' }, 'No connection. Check your internet and try again.'],
+    [{ status: 500, message: 'Database error saving new user' }, 'We cannot create an account with these details.'],
+  ])('shows a plain sentence for %j', async (error, sentence) => {
+    mockAuth.signUp.mockResolvedValueOnce({ data: { user: null }, error });
+    await renderIn(<AccountStep />);
+    await fill();
+    await fireEvent.press(screen.getByText('Create account'));
+    await waitFor(() => expect(screen.getByText(sentence)).toBeTruthy());
     expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('treats a sign-up with no identities (an address that is already registered) as "already has an account"', async () => {
+    mockAuth.signUp.mockResolvedValueOnce({ data: { user: { id: 'x', identities: [] } }, error: null });
+    await renderIn(<AccountStep />);
+    await fill();
+    await fireEvent.press(screen.getByText('Create account'));
+    await waitFor(() => expect(screen.getByText('That email already has an account. Try signing in.')).toBeTruthy());
+  });
+
+  it('never prints the email or password to the console', async () => {
+    const spies = (['log', 'warn', 'error', 'info'] as const).map((k) => jest.spyOn(console, k).mockImplementation(() => {}));
+    mockAuth.signUp.mockResolvedValueOnce({ data: { user: null }, error: { code: 'weak_password', message: 'x' } });
+    await renderIn(<AccountStep />);
+    await fill();
+    await fireEvent.press(screen.getByText('Create account'));
+    await waitFor(() => expect(mockAuth.signUp).toHaveBeenCalled());
+    for (const s of spies) { expect(JSON.stringify(s.mock.calls)).not.toMatch(/salma@example|Sunny-Day/); s.mockRestore(); }
+  });
+});
+
+describe('check your email', () => {
+  beforeEach(() => { jest.useFakeTimers(); setPendingEmail('salma@example.com'); });
+  afterEach(() => { jest.useRealTimers(); });
+  const tick = async (seconds: number) => { for (let i = 0; i < seconds; i += 1) await act(async () => { jest.advanceTimersByTime(1000); }); };
+
+  it('shows the address and what to do', async () => {
+    await renderIn(<CheckEmailStep />);
+    expect(screen.getByText('We sent a link to salma@example.com. Open the email and tap the link to confirm your account.')).toBeTruthy();
+    expect(screen.getAllByText('salma@example.com').length).toBeGreaterThan(0);
+  });
+
+  it('lets the person resend only after 60 seconds, then waits another 60', async () => {
+    await renderIn(<CheckEmailStep />);
+    expect(screen.getByText('Send again in 60s')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Send again in 60s'));
+    expect(mockAuth.resend).not.toHaveBeenCalled();
+    await tick(30);
+    expect(screen.getByText('Send again in 30s')).toBeTruthy();
+    await tick(30);
+    await fireEvent.press(screen.getByText('Send the email again'));
+    await waitFor(() => expect(mockAuth.resend).toHaveBeenCalledWith({ type: 'signup', email: 'salma@example.com', options: { emailRedirectTo: 'pawspal://auth/callback' } }));
+    await waitFor(() => expect(screen.getByText('We sent it again.')).toBeTruthy());
+    expect(screen.getByText('Send again in 60s')).toBeTruthy();
+  });
+
+  it('shows a plain sentence when resending fails', async () => {
+    mockAuth.resend.mockResolvedValueOnce({ data: {}, error: { code: 'over_email_send_rate_limit', status: 429, message: 'x' } });
+    await renderIn(<CheckEmailStep />);
+    await tick(60);
+    await fireEvent.press(screen.getByText('Send the email again'));
+    await waitFor(() => expect(screen.getByText('Too many tries. Wait a few minutes and try again.')).toBeTruthy());
+  });
+
+  it('goes to sign-in once confirmed, and back to the form to change the email', async () => {
+    await renderIn(<CheckEmailStep />);
+    await fireEvent.press(screen.getByText('I confirmed, sign me in'));
+    expect(router.replace).toHaveBeenCalledWith('/signin');
+    await fireEvent.press(screen.getByText('Change email'));
+    expect(router.replace).toHaveBeenCalledWith('/signup/account');
+  });
+});
+
+describe('sign in', () => {
+  const fill = async () => {
+    await fireEvent.changeText(screen.getByLabelText('Email'), 'salma@example.com');
+    await fireEvent.changeText(screen.getByLabelText('Password'), 'whatever');
+  };
+
+  it('signs in with email and password and leaves the routing to the gate', async () => {
+    await renderIn(<SignIn />);
+    await fill();
+    await fireEvent.press(screen.getByText('Sign in'));
+    await waitFor(() => expect(mockAuth.signInWithPassword).toHaveBeenCalledWith({ email: 'salma@example.com', password: 'whatever' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('gives one generic sentence for a wrong email or password, whatever the reason', async () => {
+    for (const error of [{ code: 'invalid_credentials', status: 400, message: 'Invalid login credentials' }, { code: 'user_not_found', status: 400, message: 'nope' }, { status: 500, message: 'odd' }]) {
+      mockAuth.signInWithPassword.mockResolvedValueOnce({ data: {}, error });
+      const view = await renderIn(<SignIn />);
+      await fill();
+      await fireEvent.press(screen.getByText('Sign in'));
+      await waitFor(() => expect(screen.getByText('The email or password is not right.')).toBeTruthy());
+      view.unmount();
+    }
+  });
+
+  it('offers to send the confirmation email again when the address is not confirmed', async () => {
+    mockAuth.signInWithPassword.mockResolvedValueOnce({ data: {}, error: { code: 'email_not_confirmed', status: 400, message: 'Email not confirmed' } });
+    await renderIn(<SignIn />);
+    await fill();
+    await fireEvent.press(screen.getByText('Sign in'));
+    await waitFor(() => expect(screen.getByText('Your email is not confirmed yet. Open the link we sent you.')).toBeTruthy());
+    await fireEvent.press(screen.getByText('Send the confirmation email again'));
+    await waitFor(() => expect(mockAuth.resend).toHaveBeenCalledWith({ type: 'signup', email: 'salma@example.com', options: { emailRedirectTo: 'pawspal://auth/callback' } }));
+    await waitFor(() => expect(screen.getByText('We sent it again.')).toBeTruthy());
+  });
+
+  it('links to Forgot password and to Create account', async () => {
+    await renderIn(<SignIn />);
+    await fireEvent.press(screen.getByText('Forgot password?'));
+    expect(router.push).toHaveBeenCalledWith('/forgot');
+    await fireEvent.press(screen.getByText('New here? Create an account'));
+    expect(router.replace).toHaveBeenCalledWith('/signup/account');
+  });
+
+  it('stays off until both fields are filled', async () => {
+    await renderIn(<SignIn />);
+    await fireEvent.press(screen.getByText('Sign in'));
+    expect(mockAuth.signInWithPassword).not.toHaveBeenCalled();
+  });
+});
+
+describe('forgot password', () => {
+  const MESSAGE = 'If that email has an account, we sent a link. Open it on this phone to choose a new password.';
+
+  it('asks for a link that opens the app on the reset screen', async () => {
+    await renderIn(<Forgot />);
+    await fireEvent.changeText(screen.getByLabelText('Email'), 'salma@example.com');
+    await fireEvent.press(screen.getByText('Send link'));
+    await waitFor(() => expect(screen.getByText(MESSAGE)).toBeTruthy());
+    expect(mockAuth.resetPasswordForEmail).toHaveBeenCalledWith('salma@example.com', { redirectTo: 'pawspal://auth/reset' });
+  });
+
+  it('says the same thing whether or not the address has an account', async () => {
+    mockAuth.resetPasswordForEmail.mockResolvedValueOnce({ data: {}, error: { code: 'user_not_found', status: 400, message: 'x' } });
+    await renderIn(<Forgot />);
+    await fireEvent.changeText(screen.getByLabelText('Email'), 'nobody@example.com');
+    await fireEvent.press(screen.getByText('Send link'));
+    await waitFor(() => expect(screen.getByText(MESSAGE)).toBeTruthy());
+  });
+
+  it('only a lost connection gets a different message', async () => {
+    mockAuth.resetPasswordForEmail.mockResolvedValueOnce({ data: {}, error: { name: 'AuthRetryableFetchError', status: 0, message: 'x' } });
+    await renderIn(<Forgot />);
+    await fireEvent.changeText(screen.getByLabelText('Email'), 'salma@example.com');
+    await fireEvent.press(screen.getByText('Send link'));
+    await waitFor(() => expect(screen.getByText('No connection. Check your internet and try again.')).toBeTruthy());
+    expect(screen.queryByText(MESSAGE)).toBeNull();
+  });
+
+  it('sends nothing for an address that is not an email', async () => {
+    await renderIn(<Forgot />);
+    await fireEvent.changeText(screen.getByLabelText('Email'), 'salma');
+    await fireEvent.press(screen.getByText('Send link'));
+    expect(mockAuth.resetPasswordForEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe('reset password', () => {
+  it('needs two matching strong passwords, then saves and goes on', async () => {
+    await renderIn(<ResetPassword />);
+    await fireEvent.changeText(screen.getByLabelText('New password'), 'weak');
+    await fireEvent.changeText(screen.getByLabelText('Repeat the new password'), 'weak');
+    await fireEvent.press(screen.getByText('Save password'));
+    expect(mockAuth.updateUser).not.toHaveBeenCalled();
+    await fireEvent.changeText(screen.getByLabelText('New password'), GOOD_PASSWORD);
+    await fireEvent.changeText(screen.getByLabelText('Repeat the new password'), GOOD_PASSWORD + 'x');
+    expect(screen.getByText('The two passwords do not match.')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Save password'));
+    expect(mockAuth.updateUser).not.toHaveBeenCalled();
+    await fireEvent.changeText(screen.getByLabelText('Repeat the new password'), GOOD_PASSWORD);
+    await fireEvent.press(screen.getByText('Save password'));
+    await waitFor(() => expect(mockAuth.updateUser).toHaveBeenCalledWith({ password: GOOD_PASSWORD }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/'));
+  });
+
+  it('shows a plain sentence when the server says no', async () => {
+    mockAuth.updateUser.mockResolvedValueOnce({ data: {}, error: { code: 'weak_password', status: 422, message: 'x' } });
+    await renderIn(<ResetPassword />);
+    await fireEvent.changeText(screen.getByLabelText('New password'), GOOD_PASSWORD);
+    await fireEvent.changeText(screen.getByLabelText('Repeat the new password'), GOOD_PASSWORD);
+    await fireEvent.press(screen.getByText('Save password'));
+    await waitFor(() => expect(screen.getByText(/too weak/)).toBeTruthy());
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('says the link has expired when there is no session, and offers a new link', async () => {
+    mockSession = null;
+    await renderIn(<ResetPassword />);
+    expect(screen.getByText('This link has expired. Ask for a new one.')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Ask for a new link'));
+    expect(router.replace).toHaveBeenCalledWith('/forgot');
   });
 });
 
@@ -135,28 +359,32 @@ describe('selfie step', () => {
     expect(screen.getByLabelText('Face guide: keep your face inside the oval')).toBeTruthy();
   });
 
-  it('uploads the cleaned photo, checks the face and moves on', async () => {
+  it('uploads the photo as a selfie, keeps the raw path in the draft and moves to the ID step', async () => {
     m.uploadPhoto.mockResolvedValue('u1/clean.jpg');
-    m.verifyFace.mockResolvedValue(true);
-    mockRefresh.mockResolvedValue({ status: 'pending_verification', missing: ['id'] });
     await renderIn(<SelfieStep />);
     await fireEvent.press(screen.getByText('Take photo'));
     await waitFor(() => screen.getByText('Use this photo'));
     await fireEvent.press(screen.getByText('Use this photo'));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/signup/id'));
     expect(m.uploadPhoto).toHaveBeenCalledWith('face', 'file:///selfie.jpg');
-    expect(m.verifyFace).toHaveBeenCalledWith('u1/clean.jpg');
+    expect(getFacePath()).toBe('u1/clean.jpg');
+    expect(mockRpc).not.toHaveBeenCalled();                 // nothing is submitted until the ID is uploaded too
   });
 
-  it('asks for a new photo when no clear face was found', async () => {
-    m.uploadPhoto.mockResolvedValue('u1/clean.jpg');
-    m.verifyFace.mockResolvedValue(false);
+  it('shows the reviewer\'s note after a rejection', async () => {
+    mockState = { status: 'pending_verification', verification: { status: 'rejected', note: 'The photo is too dark.' } };
+    await renderIn(<SelfieStep />);
+    expect(screen.getByText('We could not approve your photos.')).toBeTruthy();
+    expect(screen.getByText('The photo is too dark.')).toBeTruthy();
+  });
+
+  it('says so when the upload fails and stays on the step', async () => {
+    m.uploadPhoto.mockRejectedValue(new ApiError('network', 0));
     await renderIn(<SelfieStep />);
     await fireEvent.press(screen.getByText('Take photo'));
     await waitFor(() => screen.getByText('Use this photo'));
     await fireEvent.press(screen.getByText('Use this photo'));
-    await waitFor(() => expect(screen.getByText('We could not match a clear face. Try again in good light.')).toBeTruthy());
-    expect(screen.getByText('Take photo')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('No connection. Check your internet and try again.')).toBeTruthy());
     expect(router.replace).not.toHaveBeenCalled();
   });
 
@@ -169,69 +397,112 @@ describe('selfie step', () => {
 });
 
 describe('ID step', () => {
-  it('says we keep no photo of the ID and moves on after a good check', async () => {
-    m.verifyId.mockResolvedValue({ ok: true, adult: true });
-    mockRefresh.mockResolvedValue({ status: 'pending_verification', missing: ['name'] });
+  beforeEach(() => setFacePath('u1/face.jpg'));
+
+  it('says who sees the photo and that it is deleted after the check', async () => {
     await renderIn(<IdStep />);
-    expect(screen.getByText('We do not keep your ID photo')).toBeTruthy();
-    await fireEvent.press(screen.getByText('Start ID check'));
+    expect(screen.getByText('Passport or national ID. Only the PawsPal team sees it and it is deleted right after we check it.')).toBeTruthy();
+  });
+
+  it('goes back to the selfie when there is none yet', async () => {
+    clearVerificationDraft();
+    await renderIn(<IdStep />);
+    expect(router.replace).toHaveBeenCalledWith('/signup/selfie');
+  });
+
+  it('uploads the ID, then submits both paths for review and moves on', async () => {
+    m.uploadPhoto.mockResolvedValue('u1/id.jpg');
+    mockRpc.mockResolvedValue({ data: 'req-1', error: null });
+    mockRefresh.mockResolvedValue({ status: 'pending_verification', missing: ['name', 'pet'] });
+    await renderIn(<IdStep />);
+    await fireEvent.press(screen.getByText('Take a photo'));
+    await waitFor(() => screen.getByText('ID photo added'));
+    expect(m.uploadPhoto).toHaveBeenCalledWith('id', 'file:///camera.jpg');
+    expect(mockRpc).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('Send for checking'));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/signup/about'));
+    expect(mockRpc).toHaveBeenCalledWith('submit_verification', { p_face_path: 'u1/face.jpg', p_id_path: 'u1/id.jpg' });
+    expect(getFacePath()).toBeNull();                        // the draft is cleared once it is sent
   });
 
-  it('stops under-18s and failed checks', async () => {
-    m.verifyId.mockResolvedValueOnce({ ok: true, adult: false });
+  it('can pick the photo from the library', async () => {
+    m.uploadPhoto.mockResolvedValue('u1/id.jpg');
     await renderIn(<IdStep />);
-    await fireEvent.press(screen.getByText('Start ID check'));
-    await waitFor(() => expect(screen.getByText('You need to be 18 or older to join PawsPal.')).toBeTruthy());
-    m.verifyId.mockResolvedValueOnce({ ok: false, adult: true });
-    await fireEvent.press(screen.getByText('Start ID check'));
-    await waitFor(() => expect(screen.getByText('We could not read your ID. Try again.')).toBeTruthy());
-    expect(router.replace).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('Choose from library'));
+    await waitFor(() => screen.getByText('ID photo added'));
+    expect(m.uploadPhoto).toHaveBeenCalledWith('id', 'file:///photo.jpg');
   });
 
-  it('shows the "not available yet" message while no ID provider is set up', async () => {
-    m.verifyId.mockRejectedValueOnce(new ApiError('not_configured', 503));
+  it('keeps the draft and shows a message when sending fails', async () => {
+    setIdPath('u1/id.jpg');
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'x' } });
     await renderIn(<IdStep />);
-    await fireEvent.press(screen.getByText('Start ID check'));
-    await waitFor(() => expect(screen.getByText('This step is not available yet. Try again later.')).toBeTruthy());
+    await fireEvent.press(screen.getByText('Send for checking'));
+    await waitFor(() => expect(screen.getByText('Something went wrong. Try again.')).toBeTruthy());
+    expect(getFacePath()).toBe('u1/face.jpg');
+    expect(router.replace).not.toHaveBeenCalledWith('/signup/about');
+  });
+
+  it('shows a plain message when the upload fails', async () => {
+    m.uploadPhoto.mockRejectedValue(new ApiError('invalid_image', 400));
+    await renderIn(<IdStep />);
+    await fireEvent.press(screen.getByText('Choose from library'));
+    await waitFor(() => expect(screen.getByText('That photo did not work. Take a new one.')).toBeTruthy());
+    expect(screen.queryByText('Send for checking')).toBeNull();
   });
 });
 
 describe('about step', () => {
-  it('needs a name, a pet with a photo and a home photo before continuing', async () => {
-    m.uploadPhoto.mockResolvedValueOnce('u1/pet.jpg').mockResolvedValueOnce('u1/home.jpg');
+  it('asks an owner for a first name and a pet with a photo, and saves the name without a role', async () => {
+    mockState = { status: 'pending_verification', role: 'owner', first_name: null, has_pet: false, has_home_photo: false };
+    m.uploadPhoto.mockResolvedValueOnce('u1/pet.jpg');
     mockRefresh.mockResolvedValue({ status: 'pending_verification', missing: ['location', 'legal'] });
-    await renderIn(<AboutStep />);                      // no role chosen yet: "both"
+    await renderIn(<AboutStep />);
+    expect(screen.queryByText('Your home')).toBeNull();
+    expect(screen.queryByText('Owner')).toBeNull();                 // no role switch here
     await fireEvent.press(screen.getByText('Continue'));
     expect(mockCalls).toHaveLength(0);
     await fireEvent.changeText(screen.getByLabelText('First name'), 'Salma');
     await fireEvent.changeText(screen.getByLabelText('Pet name'), 'Biscuit');
     await fireEvent.press(screen.getByText('Cat'));
     await fireEvent.press(screen.getByText('Small'));
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(mockCalls).toHaveLength(0);                              // the pet photo is still missing
     await fireEvent.press(screen.getByText('Add a photo'));
     await waitFor(() => screen.getByText('Photo added'));
     await fireEvent.press(screen.getByText('Continue'));
-    expect(mockCalls).toHaveLength(0);                       // the home photo is still missing
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/signup/location'));
+    expect(mockCalls).toEqual([
+      { table: 'profiles', op: 'update', row: { first_name: 'Salma' } },
+      { table: 'pets', op: 'insert', row: { owner_id: 'u1', name: 'Biscuit', type: 'cat', size: 'small', photo_paths: ['u1/pet.jpg'] } },
+    ]);
+    expect(m.uploadPhoto).toHaveBeenCalledWith('pet', 'file:///photo.jpg');
+  });
+
+  it('asks a host for a first name and a home photo, and no pet', async () => {
+    mockState = { status: 'pending_verification', role: 'sitter', first_name: null, has_pet: false, has_home_photo: false };
+    m.uploadPhoto.mockResolvedValueOnce('u1/home.jpg');
+    mockRefresh.mockResolvedValue({ status: 'pending_verification', missing: ['location', 'legal'] });
+    await renderIn(<AboutStep />);
+    expect(screen.queryByText('Your pet')).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText('First name'), 'Mona');
+    await fireEvent.press(screen.getByText('Continue'));
+    expect(mockCalls).toHaveLength(0);                              // the home photo is still missing
     await fireEvent.press(screen.getByText('Add a photo of your home'));
     await waitFor(() => screen.getByText('Home photo added'));
     await fireEvent.press(screen.getByText('Continue'));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/signup/location'));
-    expect(mockCalls).toEqual([
-      { table: 'profiles', op: 'update', row: { first_name: 'Salma', role: 'both' } },
-      { table: 'pets', op: 'insert', row: { owner_id: 'u1', name: 'Biscuit', type: 'cat', size: 'small', photo_paths: ['u1/pet.jpg'] } },
-    ]);
-    expect(m.uploadPhoto).toHaveBeenNthCalledWith(1, 'pet', 'file:///photo.jpg');
-    expect(m.uploadPhoto).toHaveBeenNthCalledWith(2, 'home', 'file:///photo.jpg');
+    expect(mockCalls).toEqual([{ table: 'profiles', op: 'update', row: { first_name: 'Mona' } }]);
+    expect(m.uploadPhoto).toHaveBeenCalledWith('home', 'file:///photo.jpg');
   });
 
-  it('asks owners only for a pet, and sitters only for a home photo', async () => {
+  it('does not ask an owner who already has a pet for another one', async () => {
+    mockState = { status: 'pending_verification', role: 'owner', first_name: 'Salma', has_pet: true, has_home_photo: false };
+    mockRefresh.mockResolvedValue({ status: 'pending_verification', missing: ['location'] });
     await renderIn(<AboutStep />);
-    await fireEvent.press(screen.getByText('I need a sitter'));
-    expect(screen.getByText('Your pet')).toBeTruthy();
-    expect(screen.queryByText('Your home')).toBeNull();
-    await fireEvent.press(screen.getByText('I want to sit'));
     expect(screen.queryByText('Your pet')).toBeNull();
-    expect(screen.getByText('Your home')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Continue'));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/signup/location'));
   });
 });
 
@@ -258,36 +529,29 @@ describe('location step', () => {
 });
 
 describe('rules step', () => {
-  const tickAll = async () => {
-    for (const name of ['Terms of Service', 'Privacy Policy', 'Community Guidelines']) {
-      await fireEvent.press(screen.getByLabelText(`I accept the ${name}`));
-    }
-  };
+  const tick = async () => { await fireEvent.press(screen.getByLabelText('I accept the Community Guidelines')); };
 
-  it('stays off until all three documents are ticked', async () => {
+  it('asks only for the Community Guidelines (Terms and Privacy were accepted at sign-up)', async () => {
     await renderIn(<RulesStep />);
-    await fireEvent.press(screen.getByText('Send for review'));
-    expect(mockRpc).not.toHaveBeenCalled();
-    await fireEvent.press(screen.getByLabelText('I accept the Terms of Service'));
+    expect(screen.queryByLabelText('I accept the Terms of Service')).toBeNull();
+    expect(screen.queryByLabelText('I accept the Privacy Policy')).toBeNull();
     await fireEvent.press(screen.getByText('Send for review'));
     expect(mockRpc).not.toHaveBeenCalled();
   });
 
-  it('records the accepted versions and sends the profile for review', async () => {
+  it('records the Guidelines version and sends the profile for review', async () => {
     await renderIn(<RulesStep />);
-    await tickAll();
+    await tick();
     await fireEvent.press(screen.getByText('Send for review'));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/pending'));
-    expect(mockCalls.filter((c) => c.table === 'legal_acceptances').map((c) => c.row)).toEqual([
-      { user_id: 'u1', doc: 'terms', version: '1' }, { user_id: 'u1', doc: 'privacy', version: '1' }, { user_id: 'u1', doc: 'guidelines', version: '1' },
-    ]);
+    expect(mockCalls.filter((c) => c.table === 'legal_acceptances').map((c) => c.row)).toEqual([{ user_id: 'u1', doc: 'guidelines', version: '1' }]);
     expect(mockRpc).toHaveBeenCalledWith('submit_profile');
   });
 
   it('treats an already accepted version as fine, but stops on any other error', async () => {
     mockAcceptError = { code: '23505' };
     await renderIn(<RulesStep />);
-    await tickAll();
+    await tick();
     await fireEvent.press(screen.getByText('Send for review'));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/pending'));
     (router.replace as jest.Mock).mockClear();
@@ -298,24 +562,61 @@ describe('rules step', () => {
   });
 });
 
-describe('pending screen', () => {
-  it('tells people their profile is being checked and lets them sign out', async () => {
-    mockState = { status: 'pending_review' };
+describe('pending screen (status hub)', () => {
+  const account = (over: Record<string, unknown> = {}) => ({
+    status: 'pending_review', role: 'owner', verification: { status: 'pending', note: null },
+    membership: { state: 'active', claim_status: 'none', claim_note: null, amount_egp: 75 }, ...over,
+  });
+
+  it('promises a review within 1 business day, shows the photo status and lets people sign out', async () => {
+    mockState = account();
     await renderIn(<Pending />);
-    expect(screen.getByText('We are checking your profile')).toBeTruthy();
+    expect(screen.getByText('We are checking your account')).toBeTruthy();
+    expect(screen.getByText('We review new accounts within 1 business day.')).toBeTruthy();
+    expect(screen.getByText('Your photos are waiting for our team.')).toBeTruthy();
     await fireEvent.press(screen.getByText('Sign out'));
     expect(mockSignOut).toHaveBeenCalled();
   });
 
-  it('shows a different message for a suspended account', async () => {
-    mockState = { status: 'suspended' };
+  it('shows a rejection with the reviewer\'s note and goes back to the selfie to upload again', async () => {
+    mockState = account({ verification: { status: 'rejected', note: 'The ID is cut off.' } });
     await renderIn(<Pending />);
+    expect(screen.getByText('We could not approve your photos.')).toBeTruthy();
+    expect(screen.getByText('The ID is cut off.')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Upload again'));
+    expect(router.replace).toHaveBeenCalledWith('/signup/selfie');
+  });
+
+  it('shows the registration fee with a button to Membership while it is unpaid', async () => {
+    mockState = account({ membership: { state: 'unpaid', claim_status: 'none', claim_note: null, amount_egp: 75 } });
+    await renderIn(<Pending />);
+    expect(screen.getByText('Registration fee: 75 EGP')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Pay registration'));
+    expect(router.push).toHaveBeenCalledWith('/membership');
+  });
+
+  it('says the payment is being confirmed once it has been sent', async () => {
+    mockState = account({ membership: { state: 'unpaid', claim_status: 'pending', claim_note: null, amount_egp: 75 } });
+    await renderIn(<Pending />);
+    expect(screen.getByText('We got it. We confirm payments within 1 business day.')).toBeTruthy();
+    expect(screen.queryByText('Pay registration')).toBeNull();
+  });
+
+  it('shows different text for a suspended and a removed account', async () => {
+    mockState = account({ status: 'suspended' });
+    const view = await renderIn(<Pending />);
     expect(screen.getByText('This account is not active')).toBeTruthy();
-    expect(screen.queryByText('We are checking your profile')).toBeNull();
+    expect(screen.getByText(/If you think this is a mistake/)).toBeTruthy();
+    expect(screen.queryByText('We are checking your account')).toBeNull();
+    expect(screen.queryByText('Your photos are waiting for our team.')).toBeNull();
+    view.unmount();
+    mockState = account({ status: 'removed' });
+    await renderIn(<Pending />);
+    expect(screen.getByText('This account has been removed. If you think this is a mistake, you can ask us to look again.')).toBeTruthy();
   });
 
   it('lets a suspended person read our message and send an appeal, once', async () => {
-    mockState = { status: 'suspended' };
+    mockState = account({ status: 'suspended' });
     mockTables.enforcement_actions = [{ id: 'act-1', message: 'You broke rule 4.' }];
     await renderIn(<Pending />);
     await waitFor(() => expect(screen.getByText('You broke rule 4.')).toBeTruthy());
@@ -331,7 +632,7 @@ describe('pending screen', () => {
   });
 
   it('shows "Appeal sent" straight away when an appeal is already open', async () => {
-    mockState = { status: 'removed' };
+    mockState = account({ status: 'removed' });
     mockTables.enforcement_actions = [{ id: 'act-1', message: null }];
     mockTables.appeals = [{ id: 'ap-1' }];
     await renderIn(<Pending />);
@@ -340,79 +641,9 @@ describe('pending screen', () => {
   });
 
   it('offers no appeal form to someone who is only waiting for review', async () => {
-    mockState = { status: 'pending_review' };
+    mockState = account();
     mockTables.enforcement_actions = [{ id: 'act-1', message: 'x' }];
     await renderIn(<Pending />);
     expect(screen.queryByText('Send appeal')).toBeNull();
-  });
-});
-
-describe('CAPTCHA (Cloudflare Turnstile)', () => {
-  const solve = async (token: string) => {
-    const web = screen.getByTestId('webview');
-    await act(async () => { web.props.onMessage({ nativeEvent: { data: JSON.stringify({ token }) } }); });
-  };
-
-  it('asks for no CAPTCHA while no site key is set', async () => {
-    m.requestOtp.mockResolvedValue({ resend_after_seconds: 60 });
-    await renderIn(<PhoneStep />);
-    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
-    await fireEvent.press(screen.getByText('Send code'));
-    await waitFor(() => expect(m.requestOtp).toHaveBeenCalledWith('01012345678', undefined));
-    expect(screen.queryByTestId('webview')).toBeNull();
-  });
-
-  it('shows the check first, and sends the code only with its token', async () => {
-    process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY = '1x00000000000000000000AA';
-    m.requestOtp.mockResolvedValue({ resend_after_seconds: 60 });
-    await renderIn(<PhoneStep />);
-    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
-    await fireEvent.press(screen.getByText('Send code'));
-    expect(screen.getByTestId('webview')).toBeTruthy();
-    expect(m.requestOtp).not.toHaveBeenCalled();
-    await solve('tok-1');
-    await waitFor(() => expect(m.requestOtp).toHaveBeenCalledWith('01012345678', 'tok-1'));
-    await waitFor(() => expect(screen.getByText('Enter your code')).toBeTruthy());
-    expect(screen.queryByTestId('webview')).toBeNull();
-  });
-
-  it('shows the check again when the server did not accept it', async () => {
-    process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY = '1x00000000000000000000AA';
-    m.requestOtp.mockRejectedValueOnce(new ApiError('captcha_failed', 400, { captcha_required: true }));
-    await renderIn(<PhoneStep />);
-    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
-    await fireEvent.press(screen.getByText('Send code'));
-    await solve('bad');
-    await waitFor(() => expect(screen.getByText('The check did not work. Try again.')).toBeTruthy());
-    expect(screen.getByTestId('webview')).toBeTruthy();
-  });
-
-  it('asks for the check after two wrong codes and retries the code with its token', async () => {
-    process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY = '1x00000000000000000000AA';
-    m.requestOtp.mockResolvedValue({ resend_after_seconds: 60 });
-    m.verifyOtp.mockRejectedValueOnce(new ApiError('too_many_attempts', 429, { captcha_required: true, retry_after_seconds: 600 }));
-    m.verifyOtp.mockResolvedValueOnce(undefined);
-    await renderIn(<PhoneStep />);
-    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
-    await fireEvent.press(screen.getByText('Send code'));
-    await solve('send-token');
-    await waitFor(() => screen.getByLabelText('Code'));
-    await fireEvent.changeText(screen.getByLabelText('Code'), '123456');
-    await fireEvent.press(screen.getByText('Verify'));
-    await solve('verify-token');                     // the check shows after the first, too-many-attempts answer
-    await waitFor(() => expect(m.verifyOtp).toHaveBeenCalledTimes(2));
-    expect(m.verifyOtp).toHaveBeenNthCalledWith(2, '01012345678', '123456', 'verify-token');
-  });
-
-  it('tells the person to ask for a new code when this one is used up', async () => {
-    m.requestOtp.mockResolvedValue({ resend_after_seconds: 60 });
-    m.verifyOtp.mockRejectedValue(new ApiError('request_new_code', 429));
-    await renderIn(<PhoneStep />);
-    await fireEvent.changeText(screen.getByLabelText('Mobile number'), '01012345678');
-    await fireEvent.press(screen.getByText('Send code'));
-    await waitFor(() => screen.getByLabelText('Code'));
-    await fireEvent.changeText(screen.getByLabelText('Code'), '123456');
-    await fireEvent.press(screen.getByText('Verify'));
-    await waitFor(() => expect(screen.getByText('That code is used up. Ask for a new one.')).toBeTruthy());
   });
 });

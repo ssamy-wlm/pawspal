@@ -153,7 +153,7 @@ select pg_temp.check(pg_temp.count_as('b0b0b0b0-0000-0000-0000-000000000001', $$
 select pg_temp.check(pg_temp.count_as('b0b0b0b0-0000-0000-0000-000000000002', $$select count(*) from storage.objects where bucket_id = 'ids'$$) = 0, 'another person read an ID file');
 select pg_temp.check(pg_temp.as_aal('aal1', 'b0b0b0b0-0000-0000-0000-00000000000a', $$select count(*) from storage.objects where bucket_id = 'ids'$$)::bigint = 0, 'an admin without the authenticator code read an ID file');
 select pg_temp.check(pg_temp.as_aal(null, 'b0b0b0b0-0000-0000-0000-00000000000a', $$select count(*) from storage.objects where bucket_id = 'ids'$$)::bigint = 0, 'an admin with no aal claim read an ID file');
-select pg_temp.check(pg_temp.as_aal('aal2', 'b0b0b0b0-0000-0000-0000-00000000000a', $$select count(*) from storage.objects where bucket_id = 'ids' and name like 'b0b0b0b0-%'$$)::bigint >= 8, 'an admin with the authenticator code cannot read ID files');
+select pg_temp.check(pg_temp.as_aal('aal2', 'b0b0b0b0-0000-0000-0000-00000000000a', $$select count(*) from storage.objects where bucket_id = 'ids' and name like 'b0b0b0b0-%'$$)::bigint >= 5, 'an admin with the authenticator code cannot read ID files');
 select pg_temp.check(exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and cmd = 'SELECT' and qual like '%ids%' and qual like '%payments%' and qual like '%is_admin%'), 'no admin read policy for ids and payments');
 select pg_temp.check(exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and cmd = 'DELETE' and qual like '%ids%' and qual like '%payments%' and qual like '%is_admin%'), 'no admin delete policy for ids and payments');
 select pg_temp.check(not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and cmd in ('SELECT', 'ALL') and qual like '%''ids''%' and qual not like '%is_admin%'), 'a non-admin policy can read the ids bucket');
@@ -192,6 +192,7 @@ select pg_temp.check((pg_temp.state('b0b0b0b0-0000-0000-0000-000000000001') -> '
 select pg_temp.fails_as('anon', null, $$select public.submit_profile()$$, 'anon submitted a profile');
 update public.profiles set first_name = 'Olive' where id = 'b0b0b0b0-0000-0000-0000-000000000001';
 select pg_temp.fails_as('authenticated', 'b0b0b0b0-0000-0000-0000-000000000001', $$select public.submit_profile()$$, 'a profile without a pet was submitted');
+insert into storage.objects (bucket_id, name) values ('pets', 'b0b0b0b0-0000-0000-0000-000000000001/pet.jpg'), ('pets', 'b0b0b0b0-0000-0000-0000-000000000002/pet.jpg');
 insert into public.pets (owner_id, name, type, size, photo_paths) values ('b0b0b0b0-0000-0000-0000-000000000001', 'Biscuit', 'dog', 'medium', array['b0b0b0b0-0000-0000-0000-000000000001/pet.jpg']);
 select pg_temp.fails_as('authenticated', 'b0b0b0b0-0000-0000-0000-000000000001', $$select public.submit_profile()$$, 'a profile without a location was submitted');
 select pg_temp.as_role('authenticated', 'b0b0b0b0-0000-0000-0000-000000000001', $$select public.set_my_location(28.49, 34.5)$$);

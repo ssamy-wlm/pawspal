@@ -3,15 +3,14 @@
 \set ON_ERROR_STOP 1
 \i supabase/tests/helpers.sql
 
-insert into auth.users (id, phone, phone_confirmed_at) values
-  ('f1f1f1f1-0000-0000-0000-000000000001', '201277800001', now()),   -- Olly, owns the pet
-  ('f2f2f2f2-0000-0000-0000-000000000002', '201277800002', now()),   -- Sam, the sitter
-  ('f3f3f3f3-0000-0000-0000-000000000003', '201277800003', now()),   -- Stan, a stranger
-  ('f4f4f4f4-0000-0000-0000-000000000004', '201277800004', now());   -- Una, a second owner
-update public.profiles set first_name = 'Olly', role = 'owner', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'f1f1f1f1-0000-0000-0000-000000000001';
-update public.profiles set first_name = 'Sam', role = 'sitter', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'f2f2f2f2-0000-0000-0000-000000000002';
-update public.profiles set first_name = 'Stan', role = 'both', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'f3f3f3f3-0000-0000-0000-000000000003';
-update public.profiles set first_name = 'Una', role = 'owner', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'f4f4f4f4-0000-0000-0000-000000000004';
+select pg_temp.new_user('f1f1f1f1-0000-0000-0000-000000000001', 'olly-owner@example.com', 'owner');   -- Olly, owns the pet
+select pg_temp.new_user('f2f2f2f2-0000-0000-0000-000000000002', 'sam-host@example.com', 'sitter');    -- Sam, the sitter
+select pg_temp.new_user('f3f3f3f3-0000-0000-0000-000000000003', 'stan-owner@example.com', 'owner');   -- Stan, a stranger
+select pg_temp.new_user('f4f4f4f4-0000-0000-0000-000000000004', 'una-owner@example.com', 'owner');    -- Una, a second owner
+select pg_temp.activate('f1f1f1f1-0000-0000-0000-000000000001', 'Olly');
+select pg_temp.activate('f2f2f2f2-0000-0000-0000-000000000002', 'Sam');
+select pg_temp.activate('f3f3f3f3-0000-0000-0000-000000000003', 'Stan');
+select pg_temp.activate('f4f4f4f4-0000-0000-0000-000000000004', 'Una');
 insert into storage.objects (bucket_id, name) values
   ('pets', 'f1f1f1f1-0000-0000-0000-000000000001/a.jpg'), ('pets', 'f4f4f4f4-0000-0000-0000-000000000004/b.jpg'),
   ('handovers', 'f2f2f2f2-0000-0000-0000-000000000002/d1.jpg'), ('handovers', 'f1f1f1f1-0000-0000-0000-000000000001/d2.jpg'),
@@ -23,7 +22,7 @@ insert into public.pets (id, owner_id, name, type, size, photo_paths) values
   ('f4f4f4f4-1111-0000-0000-000000000004', 'f4f4f4f4-0000-0000-0000-000000000004', 'Unapet', 'cat', 'small', array['f4f4f4f4-0000-0000-0000-000000000004/b.jpg']);
 create temp table t_ids (k text primary key, v text);
 
--- A confirmed booking that starts today and ends today (so it can be completed today).
+-- A booking confirmed by both people accepting the terms, that starts today and ends today (so it can be completed today).
 create or replace function pg_temp.confirmed(p_key text, p_owner uuid, p_sitter uuid, p_pet uuid, p_start int) returns void language plpgsql as $$
 declare v_id text; v_ver int;
 begin
@@ -32,7 +31,6 @@ begin
   select terms_version into v_ver from public.bookings where id = v_id::uuid;
   perform pg_temp.as_role('authenticated', p_owner, format($q$select public.accept_terms(%L, %s)$q$, v_id, v_ver));
   perform pg_temp.as_role('authenticated', p_sitter, format($q$select public.accept_terms(%L, %s)$q$, v_id, v_ver));
-  perform public.confirm_booking_payment(v_id::uuid);
   update public.bookings set starts_on = current_date, ends_on = current_date where id = v_id::uuid;
 end $$;
 select pg_temp.confirmed('b1', 'f1f1f1f1-0000-0000-0000-000000000001', 'f2f2f2f2-0000-0000-0000-000000000002', 'f1f1f1f1-1111-0000-0000-000000000001', 10);

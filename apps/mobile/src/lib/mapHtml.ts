@@ -2,7 +2,7 @@
 // A pure function: the app passes in what to draw and gets one HTML string back. Nothing but the approximate position,
 // the first name, the area and the price label ever goes into the page (no photos, no user ids, no exact places).
 
-/** MapLibre is pinned to one exact version and checked by hash (SRI). Change both together: see docs/SETUP.md. */
+/** MapLibre is pinned to one exact version and checked by hash (SRI). Change both together (recompute both hashes from the npm package). */
 export const MAPLIBRE_VERSION = '4.7.1';
 export const MAPLIBRE_JS_URL = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`;
 export const MAPLIBRE_CSS_URL = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`;

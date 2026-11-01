@@ -3,17 +3,16 @@
 \set ON_ERROR_STOP 1
 \i supabase/tests/helpers.sql
 
-insert into auth.users (id, phone, phone_confirmed_at) values
-  ('c1c1c1c1-0000-0000-0000-000000000001', '201277100001', now()),   -- owner
-  ('c2c2c2c2-0000-0000-0000-000000000002', '201277100002', now()),   -- host
-  ('c3c3c3c3-0000-0000-0000-000000000003', '201277100003', now()),   -- host who gets blocked
-  ('c4c4c4c4-0000-0000-0000-000000000004', '201277100004', now()),   -- still waiting for review
-  ('c5c5c5c5-0000-0000-0000-000000000005', '201277100005', now());   -- another host
-update public.profiles set first_name = 'Owen', role = 'owner', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'c1c1c1c1-0000-0000-0000-000000000001';
-update public.profiles set first_name = 'Hana', role = 'sitter', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'c2c2c2c2-0000-0000-0000-000000000002';
-update public.profiles set first_name = 'Bo', role = 'both', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'c3c3c3c3-0000-0000-0000-000000000003';
-update public.profiles set first_name = 'Pending', role = 'sitter' where id = 'c4c4c4c4-0000-0000-0000-000000000004';
-update public.profiles set first_name = 'Sam', role = 'both', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'c5c5c5c5-0000-0000-0000-000000000005';
+select pg_temp.new_user('c1c1c1c1-0000-0000-0000-000000000001', 'c1-owner@example.com', 'owner');    -- owner
+select pg_temp.new_user('c2c2c2c2-0000-0000-0000-000000000002', 'c2-host@example.com', 'sitter');    -- host
+select pg_temp.new_user('c3c3c3c3-0000-0000-0000-000000000003', 'c3-host@example.com', 'sitter');    -- host who gets blocked
+select pg_temp.new_user('c4c4c4c4-0000-0000-0000-000000000004', 'c4-waiting@example.com', 'sitter'); -- still waiting for review
+select pg_temp.new_user('c5c5c5c5-0000-0000-0000-000000000005', 'c5-host@example.com', 'sitter');    -- another host
+select pg_temp.activate('c1c1c1c1-0000-0000-0000-000000000001', 'Owen');
+select pg_temp.activate('c2c2c2c2-0000-0000-0000-000000000002', 'Hana');
+select pg_temp.activate('c3c3c3c3-0000-0000-0000-000000000003', 'Bo');
+update public.profiles set first_name = 'Pending' where id = 'c4c4c4c4-0000-0000-0000-000000000004';
+select pg_temp.activate('c5c5c5c5-0000-0000-0000-000000000005', 'Sam');
 
 \echo '--- E1 home tags'
 select pg_temp.as_role('authenticated', 'c2c2c2c2-0000-0000-0000-000000000002', $$update public.profiles set home_tags = array['garden', 'pet_first_aid'] where id = 'c2c2c2c2-0000-0000-0000-000000000002'$$);
@@ -88,9 +87,9 @@ select pg_temp.check((select count(*) = 0 from public.travel_posts where note ~*
 select pg_temp.fails_as('authenticated', 'c1c1c1c1-0000-0000-0000-000000000001', $$update public.travel_posts set starts_on = current_date - 3 where user_id = 'c1c1c1c1-0000-0000-0000-000000000001'$$, 'a travel post was moved into the past');
 do $$ begin
   for i in 1..100 loop
-    insert into auth.users (id, phone, phone_confirmed_at) values (gen_random_uuid(), '2012772' || lpad(i::text, 5, '0'), now());
+    perform pg_temp.new_user(gen_random_uuid(), 'bulk-host-' || i || '@example.com', 'sitter');
   end loop;
-  update public.profiles set status = 'active', first_name = 'Bulk' where first_name is null and status = 'pending_verification';
+  perform pg_temp.activate(u.id, 'Bulk') from auth.users u where u.email like 'bulk-host-%@example.com';
   insert into public.shortlist (user_id, host_id) select 'c5c5c5c5-0000-0000-0000-000000000005', id from public.profiles where first_name = 'Bulk' limit 100;
 end $$;
 select pg_temp.fails($$insert into public.shortlist (user_id, host_id) values ('c5c5c5c5-0000-0000-0000-000000000005', 'c2c2c2c2-0000-0000-0000-000000000002')$$, 'the 101st shortlist entry was accepted');

@@ -51,10 +51,13 @@ export function AvailabilityMap({ onOpen }: { onOpen: (userId: string) => void }
 
   React.useEffect(() => {
     let live = true;
-    setRows(null); setFailed(false); setMapFailed(false); setReady(false); setSelected(null);
     fetchMapAvailability(petType).then((r) => { if (live) setRows(r); }, () => { if (live) setFailed(true); });
     return () => { live = false; };
   }, [petType, attempt]);
+
+  // Back to "loading" whenever the question changes (done where the change happens, not in the effect).
+  const reset = () => { setRows(null); setFailed(false); setMapFailed(false); setReady(false); setSelected(null); };
+  const retry = () => { reset(); setAttempt((n) => n + 1); };
 
   const tileUrl = process.env.EXPO_PUBLIC_MAP_TILE_URL || DEFAULT_TILE_URL;
   const attribution = process.env.EXPO_PUBLIC_MAP_ATTRIBUTION || DEFAULT_ATTRIBUTION;
@@ -90,13 +93,13 @@ export function AvailabilityMap({ onOpen }: { onOpen: (userId: string) => void }
   return (
     <View style={{ gap: 14 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {PETS.map((p) => <Chip key={p} label={tr(petPlural(p))} selected={petType === p} onPress={() => setPetType((cur) => (cur === p ? null : p))} />)}
+        {PETS.map((p) => <Chip key={p} label={tr(petPlural(p))} selected={petType === p} onPress={() => { reset(); setPetType((cur) => (cur === p ? null : p)); }} />)}
       </View>
 
       {failed ? (
         <View style={{ gap: 12 }}>
           <Text accessibilityRole="alert" style={{ color: c.danger, fontFamily: fontFamily('medium', rtl) }}>{tr('map.availability.error')}</Text>
-          <Button variant="secondary" title={tr('map.availability.retry')} onPress={() => setAttempt((n) => n + 1)} />
+          <Button variant="secondary" title={tr('map.availability.retry')} onPress={retry} />
         </View>
       ) : rows === null ? (
         <ActivityIndicator color={c.primary} accessibilityLabel={tr('map.availability.loading')} />
@@ -108,7 +111,7 @@ export function AvailabilityMap({ onOpen }: { onOpen: (userId: string) => void }
             {mapFailed ? (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, gap: 12 }}>
                 <Text accessibilityRole="alert" style={[muted, { textAlign: 'center' }]}>{tr('map.availability.error')}</Text>
-                <Button variant="secondary" title={tr('map.availability.retry')} onPress={() => setAttempt((n) => n + 1)} />
+                <Button variant="secondary" title={tr('map.availability.retry')} onPress={retry} />
               </View>
             ) : (
               <WebView<object>

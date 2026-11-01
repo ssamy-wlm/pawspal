@@ -3,12 +3,13 @@
 \set ON_ERROR_STOP 1
 \i supabase/tests/helpers.sql
 
-insert into auth.users (id, phone, phone_confirmed_at) values
-  ('b1b1b1b1-0000-0000-0000-000000000001', '201277000001', now()),   -- an owner
-  ('b2b2b2b2-0000-0000-0000-000000000002', '201277000002', now()),   -- a stranger, active
-  ('b3b3b3b3-0000-0000-0000-000000000003', '201277000003', now());   -- someone still waiting for review
-update public.profiles set first_name = 'Owner', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'b1b1b1b1-0000-0000-0000-000000000001';
-update public.profiles set first_name = 'Stranger', status = 'active', face_verified = true, id_verified = true, is_adult = true where id = 'b2b2b2b2-0000-0000-0000-000000000002';
+select pg_temp.new_user('b1b1b1b1-0000-0000-0000-000000000001', 'b1-owner@example.com', 'owner');   -- an owner
+select pg_temp.new_user('b2b2b2b2-0000-0000-0000-000000000002', 'b2-stranger@example.com', 'owner');   -- a stranger, active
+select pg_temp.new_user('b3b3b3b3-0000-0000-0000-000000000003', 'b3-waiting@example.com', 'owner');   -- someone still waiting for review
+select pg_temp.new_user('b4b4b4b4-0000-0000-0000-000000000004', 'b4-host@example.com', 'sitter');     -- a host
+select pg_temp.activate('b1b1b1b1-0000-0000-0000-000000000001', 'Owner');
+select pg_temp.activate('b2b2b2b2-0000-0000-0000-000000000002', 'Stranger');
+select pg_temp.activate('b4b4b4b4-0000-0000-0000-000000000004', 'Host');
 insert into storage.objects (bucket_id, name) values ('pets', 'b1b1b1b1-0000-0000-0000-000000000001/p1.jpg'), ('pets', 'b1b1b1b1-0000-0000-0000-000000000001/p2.jpg');
 insert into public.pets (id, owner_id, name, type, size, photo_paths) values
   ('b1b1b1b1-1111-0000-0000-000000000001', 'b1b1b1b1-0000-0000-0000-000000000001', 'Biscuit', 'dog', 'medium', array['b1b1b1b1-0000-0000-0000-000000000001/p1.jpg']);
@@ -45,7 +46,15 @@ select pg_temp.check(pg_temp.count_as('b2b2b2b2-0000-0000-0000-000000000002', $$
 select pg_temp.check(pg_temp.count_as('b3b3b3b3-0000-0000-0000-000000000003', $$select count(*) from public.pets where id = 'b1b1b1b1-1111-0000-0000-000000000001'$$) = 0, 'someone waiting for review can see pets');
 
 \echo '--- P3 a pet in a confirmed booking cannot be changed'
-update public.pets set locked = true where id = 'b1b1b1b1-1111-0000-0000-000000000001';
+-- Both people accept the terms: the booking is confirmed and the pet is locked (no payment step any more).
+create temp table t_ids (k text primary key, v text);
+insert into t_ids select 'bk', pg_temp.as_role('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', $$select public.request_booking('b4b4b4b4-0000-0000-0000-000000000004', 'b1b1b1b1-1111-0000-0000-000000000001', current_date + 10, current_date + 12, 'sitter_home', 'paid', 200, false)$$);
+select pg_temp.check((select not locked from public.pets where id = 'b1b1b1b1-1111-0000-0000-000000000001'), 'a pet was locked by a request that is not confirmed');
+select pg_temp.as_role('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', format($$select public.accept_terms(%L, 1)$$, (select v from t_ids where k = 'bk')));
+select pg_temp.check((select not locked from public.pets where id = 'b1b1b1b1-1111-0000-0000-000000000001'), 'a pet was locked after only one person accepted');
+select pg_temp.as_role('authenticated', 'b4b4b4b4-0000-0000-0000-000000000004', format($$select public.accept_terms(%L, 1)$$, (select v from t_ids where k = 'bk')));
+select pg_temp.check((select status = 'confirmed' from public.bookings where id = (select v::uuid from t_ids where k = 'bk')), 'two acceptances did not confirm the booking');
+select pg_temp.check((select locked from public.pets where id = 'b1b1b1b1-1111-0000-0000-000000000001'), 'confirming the booking did not lock the pet');
 select pg_temp.as_role('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', $$update public.pets set name = 'Renamed', size = 'large' where id = 'b1b1b1b1-1111-0000-0000-000000000001'$$);
 select pg_temp.check((select name = 'Biscuit' and size = 'medium' from public.pets where id = 'b1b1b1b1-1111-0000-0000-000000000001'), 'a locked pet was edited');
 select pg_temp.as_role('authenticated', 'b1b1b1b1-0000-0000-0000-000000000001', $$update public.pets set photo_paths = array['b1b1b1b1-0000-0000-0000-000000000001/p2.jpg'] where id = 'b1b1b1b1-1111-0000-0000-000000000001'$$);
