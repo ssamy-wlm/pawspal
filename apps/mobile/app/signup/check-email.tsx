@@ -13,21 +13,23 @@ import { fontFamily, useTheme } from '../../src/theme';
 import { isRTL, t as tr } from '../../src/i18n';
 
 export const RESEND_SECONDS = 60;
+const nowMs = () => Date.now();
 
 /** After sign-up: open the email and tap the link. Resend is allowed once a minute. */
 export default function CheckEmailStep() {
   const c = useTheme().color;
   const email = getPendingEmail();
-  const [left, setLeft] = React.useState(RESEND_SECONDS);
+  const [until, setUntil] = React.useState(() => nowMs() + RESEND_SECONDS * 1000);
+  const [now, setNow] = React.useState(() => nowMs());
   const [busy, setBusy] = React.useState(false);
   const [sent, setSent] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (left <= 0) return;
-    const id = setTimeout(() => setLeft((n) => n - 1), 1000);
-    return () => clearTimeout(id);
-  }, [left]);
+    const id = setInterval(() => setNow(nowMs()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const left = Math.max(0, Math.ceil((until - now) / 1000));
 
   const resend = async () => {
     if (left > 0 || !email) return;
@@ -35,7 +37,7 @@ export default function CheckEmailStep() {
     try {
       const { error: err } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: AUTH_CALLBACK } });
       if (err) { setError(tr(authErrorKey(err))); return; }
-      setSent(true); setLeft(RESEND_SECONDS);
+      setSent(true); setUntil(nowMs() + RESEND_SECONDS * 1000); setNow(nowMs());
     } catch (e) { setError(tr(authErrorKey(e))); } finally { setBusy(false); }
   };
 

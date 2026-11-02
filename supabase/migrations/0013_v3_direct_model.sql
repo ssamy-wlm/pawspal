@@ -489,7 +489,7 @@ begin
   elsif p_key = 'reminder_days' then
     if v_value !~ '^[0-9]{1,2}$' or v_value::integer < 1 or v_value::integer > 60 then raise exception 'invalid value'; end if;
   elsif p_key in ('instapay_link', 'instapay_qr_url') then
-    if v_value <> '' and v_value !~ '^https://[^[:space:]]{3,480}$' then raise exception 'invalid value'; end if;
+    if v_value <> '' and v_value !~ '^https://[^[:space:]]{3,255}$' then raise exception 'invalid value'; end if;
   elsif p_key in ('bank_name', 'bank_account_name', 'bank_account_number', 'bank_iban', 'payment_note') then
     if length(v_value) > 500 then raise exception 'invalid value'; end if;
   else

@@ -191,9 +191,10 @@ describe('create account', () => {
 });
 
 describe('check your email', () => {
-  beforeEach(() => { jest.useFakeTimers(); setPendingEmail('salma@example.com'); });
+  beforeEach(() => { setPendingEmail('salma@example.com'); });
   afterEach(() => { jest.useRealTimers(); });
-  const tick = async (seconds: number) => { for (let i = 0; i < seconds; i += 1) await act(async () => { jest.advanceTimersByTime(1000); }); };
+  const fake = () => jest.useFakeTimers();
+  const tick = async (seconds: number) => { await act(async () => { jest.advanceTimersByTime(seconds * 1000); }); };
 
   it('shows the address and what to do', async () => {
     await renderIn(<CheckEmailStep />);
@@ -202,6 +203,7 @@ describe('check your email', () => {
   });
 
   it('lets the person resend only after 60 seconds, then waits another 60', async () => {
+    fake();
     await renderIn(<CheckEmailStep />);
     expect(screen.getByText('Send again in 60s')).toBeTruthy();
     await fireEvent.press(screen.getByText('Send again in 60s'));
@@ -217,6 +219,7 @@ describe('check your email', () => {
 
   it('shows a plain sentence when resending fails', async () => {
     mockAuth.resend.mockResolvedValueOnce({ data: {}, error: { code: 'over_email_send_rate_limit', status: 429, message: 'x' } });
+    fake();
     await renderIn(<CheckEmailStep />);
     await tick(60);
     await fireEvent.press(screen.getByText('Send the email again'));
@@ -246,15 +249,16 @@ describe('sign in', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('gives one generic sentence for a wrong email or password, whatever the reason', async () => {
-    for (const error of [{ code: 'invalid_credentials', status: 400, message: 'Invalid login credentials' }, { code: 'user_not_found', status: 400, message: 'nope' }, { status: 500, message: 'odd' }]) {
-      mockAuth.signInWithPassword.mockResolvedValueOnce({ data: {}, error });
-      const view = await renderIn(<SignIn />);
-      await fill();
-      await fireEvent.press(screen.getByText('Sign in'));
-      await waitFor(() => expect(screen.getByText('The email or password is not right.')).toBeTruthy());
-      view.unmount();
-    }
+  it.each([
+    [{ code: 'invalid_credentials', status: 400, message: 'Invalid login credentials' }],
+    [{ code: 'user_not_found', status: 400, message: 'nope' }],
+    [{ status: 500, message: 'odd' }],
+  ])('gives one generic sentence for a wrong email or password: %j', async (error) => {
+    mockAuth.signInWithPassword.mockResolvedValueOnce({ data: {}, error });
+    await renderIn(<SignIn />);
+    await fill();
+    await fireEvent.press(screen.getByText('Sign in'));
+    await waitFor(() => expect(screen.getByText('The email or password is not right.')).toBeTruthy());
   });
 
   it('offers to send the confirmation email again when the address is not confirmed', async () => {
