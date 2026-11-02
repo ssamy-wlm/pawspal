@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from './Button';
 import { fontFamily, useTheme } from '../theme';
 import { isRTL, t as tr } from '../i18n';
@@ -27,13 +28,14 @@ function Steps({ safari, onClose }: { safari: boolean; onClose: () => void }) {
   const c = t.color;
   const rtl = isRTL();
   const enter = useEntrance({ rise: 60, scale: false, duration: 350 });
+  const insets = useSafeAreaInsets();
   const text = { color: c.text, fontSize: 16, lineHeight: 23, fontFamily: fontFamily('regular', rtl), flexShrink: 1 } as const;
   const steps = ['install.step1', 'install.step2', 'install.step3'] as const;
   return (
     <Modal transparent animationType="none" onRequestClose={onClose} accessibilityViewIsModal>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: t.brand.navy + '99' }}>
         <Pressable accessibilityRole="button" accessibilityLabel={tr('install.close')} style={{ flex: 1 }} onPress={onClose} />
-        <Animated.View style={[{ backgroundColor: c.surface, padding: 24, gap: 16, borderTopStartRadius: 28, borderTopEndRadius: 28 }, enter]}>
+        <Animated.View style={[{ backgroundColor: c.surface, padding: 24, paddingBottom: 24 + insets.bottom, gap: 16, borderTopStartRadius: 28, borderTopEndRadius: 28 }, enter]}>
           <Text accessibilityRole="header" style={{ color: c.text, fontSize: 20, fontFamily: fontFamily('bold', rtl) }}>{tr('install.howTitle')}</Text>
           {steps.map((k, i) => (
             <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

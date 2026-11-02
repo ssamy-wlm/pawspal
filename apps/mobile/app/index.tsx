@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { Link, router } from 'expo-router';
 import Animated from 'react-native-reanimated';
 import { useEntrance } from '../src/motion';
@@ -65,7 +65,9 @@ export default function Welcome() {
       <Blob x={-110} y={height * 0.3} size={220} color={t.name === 'navy' ? c.surface! : t.tint.orange} delay={150} />
       <Blob x={width * 0.62} y={height * 0.42} size={110} color={t.name === 'navy' ? c.surface! : t.tint.sand} delay={300} />
 
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, gap: 6 }}>
+      {/* On a short screen (a phone in a browser, with its bars) the page scrolls instead of squeezing the logo under the buttons. */}
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
+      <View style={{ flex: 1, minHeight: 340, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, paddingTop: 24, gap: 6 }}>
         <AnimatedLogo size={170} />
         <Enter delay={500} rise={0}>
           <Text style={{ fontFamily: fontFamily('extrabold', false), fontSize: 36, color: c.text, marginTop: 12 }}>PawsPal</Text>
@@ -95,6 +97,7 @@ export default function Welcome() {
           ))}
         </View>
       </View>
+      </ScrollView>
     </View>
   );
 }
