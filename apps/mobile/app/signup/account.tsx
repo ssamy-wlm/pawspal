@@ -22,7 +22,7 @@ const ROLES: { role: Role; title: Key; sub: Key }[] = [
 
 /** Create an account: who you are, email, password, the disclaimer and the Terms. The server checks all of it again. */
 export default function AccountStep() {
-  const c = useTheme().color;
+  const c = useTheme(true).color;
   const rtl = isRTL();
   const [role, setRole] = React.useState<Role | null>(null);
   const [email, setEmail] = React.useState('');

@@ -14,7 +14,7 @@ import { isRTL, t as tr } from '../src/i18n';
 
 /** Asks for a reset link. The answer is always the same sentence, so nobody can learn which emails have an account. */
 export default function Forgot() {
-  const c = useTheme().color;
+  const c = useTheme(true).color;
   const [email, setEmail] = React.useState(getPendingEmail());
   const [busy, setBusy] = React.useState(false);
   const [done, setDone] = React.useState(false);

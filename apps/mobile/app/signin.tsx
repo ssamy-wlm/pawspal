@@ -15,7 +15,7 @@ import { isRTL, t as tr } from '../src/i18n';
 
 /** Sign in with email and password. One plain sentence for every wrong answer, so nobody can probe which emails exist. */
 export default function SignIn() {
-  const c = useTheme().color;
+  const c = useTheme(true).color;
   const rtl = isRTL();
   const [email, setEmail] = React.useState(getPendingEmail());
   const [password, setPassword] = React.useState('');

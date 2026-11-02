@@ -17,7 +17,7 @@ const nowMs = () => Date.now();
 
 /** After sign-up: open the email and tap the link. Resend is allowed once a minute. */
 export default function CheckEmailStep() {
-  const c = useTheme().color;
+  const c = useTheme(true).color;
   const email = getPendingEmail();
   const [until, setUntil] = React.useState(() => nowMs() + RESEND_SECONDS * 1000);
   const [now, setNow] = React.useState(() => nowMs());
