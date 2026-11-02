@@ -74,6 +74,17 @@
     "updates": {
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "PawsPal Dahab",
+      "shortName": "PawsPal",
+      "description": "Pet sitting in Dahab, from people who live here.",
+      "themeColor": "#1F2D3D",
+      "backgroundColor": "#1F2D3D",
+      "lang": "en",
+      "favicon": "./public/favicon.png"
     }
   }
 }

@@ -11,7 +11,9 @@
     "android": "npm run sync && expo run:android",
     "typecheck": "npm run sync && tsc --noEmit",
     "lint": "expo lint --max-warnings 0",
-    "test": "jest"
+    "test": "jest",
+    "web": "npm run sync && expo start --web",
+    "build:web": "npm run sync && expo export -p web"
   },
   "dependencies": {
     "@expo-google-fonts/cairo": "^0.4.2",
@@ -47,6 +49,7 @@
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@testing-library/react-native": "^14.1.0",
     "@types/jest": "30.0.0",
     "@types/react": "^19.0.0",
