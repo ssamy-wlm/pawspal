@@ -192,9 +192,17 @@ describe('create account', () => {
 
 describe('check your email', () => {
   beforeEach(() => { setPendingEmail('salma@example.com'); });
-  afterEach(() => { jest.useRealTimers(); });
-  const fake = () => jest.useFakeTimers();
-  const tick = async (seconds: number) => { await act(async () => { jest.advanceTimersByTime(seconds * 1000); }); };
+  // A clock the test moves by hand: the screen's one-second timer is captured and called when the test says so.
+  let clock = 0;
+  let beat: (() => void) | null = null;
+  const spies: jest.SpyInstance[] = [];
+  const fake = () => {
+    clock = 1_700_000_000_000;
+    spies.push(jest.spyOn(Date, 'now').mockImplementation(() => clock));
+    spies.push(jest.spyOn(global, 'setInterval').mockImplementation(((fn: () => void, ms?: number) => { if (ms === 1000) beat = fn; return 0; }) as never));
+  };
+  afterEach(() => { while (spies.length) spies.pop()?.mockRestore(); beat = null; });
+  const tick = async (seconds: number) => { clock += seconds * 1000; await act(async () => { beat?.(); }); };
 
   it('shows the address and what to do', async () => {
     await renderIn(<CheckEmailStep />);
@@ -606,14 +614,16 @@ describe('pending screen (status hub)', () => {
     expect(screen.queryByText('Pay registration')).toBeNull();
   });
 
-  it('shows different text for a suspended and a removed account', async () => {
+  it('shows the suspended text for a suspended account', async () => {
     mockState = account({ status: 'suspended' });
-    const view = await renderIn(<Pending />);
+    await renderIn(<Pending />);
     expect(screen.getByText('This account is not active')).toBeTruthy();
     expect(screen.getByText(/If you think this is a mistake/)).toBeTruthy();
     expect(screen.queryByText('We are checking your account')).toBeNull();
     expect(screen.queryByText('Your photos are waiting for our team.')).toBeNull();
-    view.unmount();
+  });
+
+  it('shows its own text for a removed account', async () => {
     mockState = account({ status: 'removed' });
     await renderIn(<Pending />);
     expect(screen.getByText('This account has been removed. If you think this is a mistake, you can ask us to look again.')).toBeTruthy();
