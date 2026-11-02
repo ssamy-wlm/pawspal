@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <!-- Zoom stays allowed: people who need bigger text can pinch. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>%WEB_TITLE%</title>
+    <!-- This is the page every web visit starts from (Expo uses it as the template; it adds the script tags, the theme colour
+         and the description from app.json). It holds the install details (manifest, icons, iPhone start-up pictures) and a
+         plain navy start-up screen that shows until the app can draw. No script lives here: the content policy only allows
+         our own script files. The icons and pictures are made by scripts/make-web-icons.mjs. -->
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="PawsPal" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="apple-touch-startup-image" href="/splash/iphone-1320x2868.png" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/iphone-1206x2622.png" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/iphone-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/iphone-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/iphone-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/iphone-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/iphone-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/iphone-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/iphone-1242x2208.png" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/splash/iphone-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <style id="expo-reset">
+      html, body { height: 100%; }
+      body { margin: 0; overflow: hidden; }
+      #root { display: flex; height: 100%; flex: 1; }
+    </style>
+    <style id="pp-splash-style">
+      html { background-color: #1F2D3D; }
+      #pp-splash { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 2147483647; display: flex; align-items: center; justify-content: center; background-color: #1F2D3D; transition: opacity .3s ease-out; }
+      #pp-splash[data-hidden="true"] { opacity: 0; pointer-events: none; }
+      #pp-splash img { width: 120px; height: 120px; border-radius: 28px; animation: pp-breathe 3s ease-in-out infinite; }
+      @keyframes pp-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+      @media (prefers-reduced-motion: reduce) { #pp-splash img { animation: none; } #pp-splash { transition: none; } }
+    </style>
+  </head>
+
+  <body>
+    <noscript>PawsPal needs JavaScript to run. Please turn it on in your browser. / يحتاج PawsPal إلى تشغيل JavaScript في المتصفح.</noscript>
+    <div id="root"></div>
+    <div id="pp-splash" aria-hidden="true"><img src="/icons/icon-192.png" alt="" width="120" height="120" /></div>
+  </body>
+</html>

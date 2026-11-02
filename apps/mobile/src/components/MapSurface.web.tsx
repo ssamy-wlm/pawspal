@@ -49,7 +49,6 @@ export const MapSurface = React.forwardRef<MapSurfaceHandle, MapSurfaceProps>(fu
         src="/map-frame.html"
         title={tr('map.availability.label')}
         sandbox="allow-scripts"
-        referrerPolicy="no-referrer"
         style={{ border: 0, width: '100%', height: '100%', display: 'block' }}
       />
     </View>
