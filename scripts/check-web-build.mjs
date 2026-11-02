@@ -30,12 +30,13 @@ const frameCsp = policyOf('/map-frame.html');
 const directive = (policy, name) => (policy.split(';').map((s) => s.trim()).find((s) => s.startsWith(`${name} `)) ?? '').split(/\s+/).slice(1);
 const headerOf = (source, key) => vercel.headers.find((h) => h.source === source)?.headers.find((h) => h.key === key)?.value;
 
+// (The Supabase library itself mentions the prefix "sb_secret_" in code that refuses such keys; only a real-looking key counts.)
 // A key that could write to the database (a service-role key) must never be in a page. The public anon key is fine.
 function secretsIn() {
   const found = [];
   for (const f of textFiles) {
     const text = read(f);
-    if (/service_role|SERVICE_ROLE|sb_secret_|sk_live_|BEGIN (RSA |EC )?PRIVATE KEY/.test(text.replace(/"service_role"\s*:\s*false/g, ''))) found.push(f.replace(dist, 'dist'));
+    if (/service_role|SERVICE_ROLE|sb_secret_[A-Za-z0-9_-]{20,}|sk_live_[A-Za-z0-9]{10,}|BEGIN (RSA |EC )?PRIVATE KEY/.test(text.replace(/"service_role"\s*:\s*false/g, ''))) found.push(f.replace(dist, 'dist'));
     for (const m of text.matchAll(/eyJ[\w-]{10,}\.([\w-]{10,})\.[\w-]{10,}/g)) {
       try { if (JSON.parse(Buffer.from(m[1], 'base64url').toString()).role === 'service_role') found.push(`${f.replace(dist, 'dist')} (a service-role key)`); } catch { /* not a token */ }
     }

@@ -34,6 +34,16 @@ Goal: a fake person, a thief or a careless user cannot hurt a pet, steal a locat
 8. Log security events (masked contact attempts, blocked sign-ups) without logging message contents or codes.
 9. Dependencies: pin versions and enable Dependabot; CI fails on high-severity `npm audit` findings.
 
+## Web session storage (the web app)
+
+On a phone the sign-in session lives in the secure keychain. A browser has no keychain, so the web app keeps the session (and the language and theme choices) in `localStorage`. The trade-off: any script that runs on the page could read it, so a cross-site scripting (XSS) bug would be much more serious on the web. The defence is to make sure no foreign script can run:
+
+- The strict Content Security Policy in `apps/mobile/vercel.json` is **required**: `script-src 'self'` (no inline script, no `unsafe-eval`, no third-party host), `connect-src` only this site and `*.supabase.co`, `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`. `scripts/check-web-build.mjs` and the jest tests fail if it is loosened.
+- No third-party scripts, analytics or widgets on the app page. The map runs in a sandboxed iframe (`/map-frame.html`, scripts only, no storage or cookies, its own policy that alone allows the pinned MapLibre file with its integrity hash).
+- If the browser refuses storage, the session is kept in memory for that tab only.
+- Sign-in and reset links put tokens in the address; the app uses them once and removes them from the address bar. The service worker never caches pages or any cross-origin or non-GET request.
+- Camera and location are allowed for this site only (`Permissions-Policy`).
+
 ## Before launch: security checklist
 
 - [ ] Supabase: RLS enabled on all tables (run the Security Advisor and fix every warning)

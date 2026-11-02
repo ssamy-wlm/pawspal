@@ -60,6 +60,10 @@ Run one phase at a time with `/phase N`. A phase is done only when every accepta
 - EAS builds, store listings, privacy labels (App Store) and data safety form (Google Play) matching the privacy policy.
 - **Accept:** the security checklist is fully ticked and the legal review is done.
 
+## Web / PWA (after v3)
+The app builds for the browser and installs from it. See `docs/ARCHITECTURE.md` section 10b and `SETUP.md` E3b.
+- **Accept:** `npm run build:web` succeeds; `npm run check:web` passes; jest, lint and typecheck pass; in a browser the welcome and sign-in screens show no content-policy errors (`node scripts/web-browser-check.mjs`, by hand), the manifest is valid, the service worker registers, the offline page shows without a connection, the install steps show on an iPhone, and Arabic is right to left. Email links open the web app.
+
 ## Architecture v3 (the "direct" model), built after phase 8
 Owner or Host only; email sign-up; hand-checked identity; membership paid outside the app; no booking fee, Paymob or swaps; availability map; admin Verification, Payments and Settings pages. Full description and the database contract: `docs/ARCHITECTURE.md`. Migration `0013_v3_direct_model.sql`.
 - **Accept:** a paused account cannot search, message or book; the ID photo and payment screenshot are gone from storage after the decision; a booking is confirmed when both accept; contact details unlock only then; the disclaimer is shown at sign-up and recorded with the Terms version.

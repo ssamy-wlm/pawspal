@@ -81,6 +81,45 @@ The admin dashboard (`apps/admin`, built in phase 8; for now a one-page placehol
 3. **Settings, Environments, Production, Branch Tracking:** set the production branch to **`production`** (not `main`). The `deploy` workflow moves `production` to a commit only after `ci` passes, so Vercel never publishes a commit that failed the checks.
 4. Every other branch gets a preview deployment. Previews are protected by Vercel sign-in.
 
+## E3b. Put the app on the web (PWA)
+
+The same app also runs in a browser, and people can add it to their home screen from there (Add to Home Screen). It is a second Vercel project, separate from the admin site. The code and settings are already in the repo (`apps/mobile/vercel.json`); you only click through the steps below.
+
+**1. Create the Vercel project**
+1. In Vercel, click **Add New, Project** and import the `pawspal-dahab` GitHub repository again.
+2. **Project Name:** `pawspal-app`.
+3. **Root Directory:** click **Edit**, choose `apps/mobile`, **Continue**. Leave **Framework Preset** as "Other". Vercel reads the build settings from `vercel.json` (build command `npx expo export -p web`, output folder `dist`). Node.js: 22.x.
+4. Before you press Deploy, open **Environment Variables** and add these (names exactly as written; they are public settings, none is secret):
+   - `EXPO_PUBLIC_SUPABASE_URL`: your Supabase project URL (Supabase, Project Settings, API).
+   - `EXPO_PUBLIC_SUPABASE_ANON_KEY`: the **public** (anon / publishable) key from the same page. Never the service-role key.
+   - `EXPO_PUBLIC_MAP_TILE_URL`: optional. Leave it out to use OpenStreetMap (see E12).
+   - `EXPO_PUBLIC_MAP_ATTRIBUTION`: optional, the credit text your map provider asks for.
+5. Click **Deploy**. When it finishes, open the address Vercel shows and check the welcome screen appears.
+6. **Settings, Environments, Production, Branch Tracking:** set the production branch to **`production`**, like the admin site. The `deploy` workflow moves that branch only after the checks pass, so nothing else is needed in GitHub.
+
+**2. Your own address (custom domain)**
+1. **Settings, Domains, Add**, type your domain (for example `app.pawspal.example`), **Add**.
+2. Vercel shows one DNS record. Add it where you bought the domain, wait a few minutes, and Vercel shows a green tick. HTTPS is automatic. (The camera and the install button only work on https.)
+
+**3. Tell Supabase about the web address**
+In Supabase: **Authentication, URL Configuration**.
+1. **Site URL:** `https://YOUR-WEB-DOMAIN` (for example `https://app.pawspal.example`).
+2. Under **Redirect URLs** click **Add URL** for each of these, then **Save**:
+   - `https://YOUR-WEB-DOMAIN/auth/callback` (the sign-up confirmation link)
+   - `https://YOUR-WEB-DOMAIN/auth/reset` (the password-reset link)
+   - `pawspal://auth/callback` and `pawspal://auth/reset` (keep them: the phone apps use these)
+   - Optional, only for trying the web app on your own computer: `http://localhost:8081/auth/callback` and `http://localhost:8081/auth/reset`.
+3. If you also use the Vercel address (`https://pawspal-app.vercel.app`) before the domain is ready, add its two `/auth/...` links the same way.
+
+**4. If you use your own Supabase domain**
+The page may only talk to `*.supabase.co`. If you ever give Supabase a custom domain, ask Claude Code to add it to the policy in `apps/mobile/vercel.json` first.
+
+**5. Try it on a phone**
+- **iPhone:** open the web address in **Safari** (not Chrome). Tap the Share button, scroll, tap **Add to Home Screen**, tap **Add**. PawsPal now opens from the home screen without the browser bars. The welcome screen and Settings also have an **Install PawsPal** button that shows these steps.
+- **Android:** open it in **Chrome**. Tap **Install** on the PawsPal card (or the browser menu, **Install app**). Confirm. It appears with the other apps.
+- **Offline:** switch on airplane mode and open it: you should see a short "You are offline" page in English and Arabic.
+- **Sign-up emails:** create a test account on the web address and check that the confirmation link opens the web app, not an error page.
+
 ## E4. Dependency updates (automatic)
 
 Dependabot opens update PRs every week. The `dependabot-automerge` workflow merges each one that passes CI, so you do nothing. Packages that Expo manages are never offered, because they must move together (`npx expo install --fix`). Updates to GitHub Actions files are the one exception: GitHub does not let the built-in token merge changes to `.github/workflows`, so those PRs wait for Claude Code to merge them.

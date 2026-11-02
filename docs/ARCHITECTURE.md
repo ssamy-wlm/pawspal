@@ -162,6 +162,20 @@ Removal bans the **email hash** and **device hash** (kinds `email`, `device` in 
 
 Pages: **Overview** (adds "waiting for verification", "payments to confirm", "renewals due in 7 days", "paused"), **Verification** (replaces Approvals), **Payments** (new), **Settings** (new: payment details and fees), Reports, Users (shows membership and paid-until), Appeals, Bookings, Photo review, Rules, Audit log. The founder is the reviewer (`pawspal@gmail.com`).
 
+## 10b. Web / PWA
+
+The Expo app also builds for the browser (`npm run build:web` in `apps/mobile`, which is `expo export -p web`, single-page output into `dist/`). It is installable (manifest, icons, iPhone start-up pictures, offline page) and hosted as its own Vercel project (`pawspal-app`, root `apps/mobile`, production branch `production`, settings in `apps/mobile/vercel.json`). The iOS and Android apps are unchanged.
+
+- **Page and install files** are in `apps/mobile/public/` (copied as they are): `index.html` is the page template (Expo's `+html.tsx` is not used in single-page output), `manifest.webmanifest`, `sw.js`, `offline.html`, `map-frame.html` and `.js`, and icons made by `scripts/make-web-icons.mjs` from `assets/logo`.
+- **Service worker** (`sw.js`): keeps the offline page and icons, hashed files cache-first, pages network-first with the offline page as fallback. It never touches another origin or a non-GET request, so Supabase, storage and map tiles are never cached.
+- **Platform splits** (Metro picks `.web` files; the phone bundle never sees them): `src/lib/storage(.web).ts` (keychain on a phone, localStorage with an in-memory fallback on the web), `src/lib/webShell(.web).ts`, `src/components/FaceCapture(.web).tsx`, `MapSurface(.web).tsx`, `InstallPrompt(.web).tsx`.
+- **Camera:** web selfie uses the browser camera on https, otherwise (or by choice) the device's camera app / file picker. ID and handover photos use the picker's file input. Uploads accept `blob:` and `data:` addresses. EXIF is still removed on the server.
+- **Map:** the same MapLibre page (`src/lib/mapHtml.ts`) is sent into a sandboxed iframe (`/map-frame.html`, `sandbox="allow-scripts"`) by message. The frame has its own policy, so the map host (unpkg) is not allowed on the app page itself.
+- **Email links** open the web origin (`<origin>/auth/callback`, `<origin>/auth/reset`); tokens are read from the fragment or query, used, then removed from the address bar. Phones keep `pawspal://`.
+- **Language:** `dir` and `lang` on the page follow the saved language; switching reloads the page.
+- **Install prompt:** Chrome/Edge/Android use `beforeinstallprompt`; iPhone/iPad show three steps. Hidden when installed; dismissal is remembered on the device.
+- Vibration does nothing on the web. Nothing new is collected, so the privacy policy is unchanged (section 8).
+
 ## 11. Rules every part must follow
 
 CLAUDE.md applies in full: server enforces everything; no secrets in the app; theme tokens only; every string through `t()` in English and Arabic; no exclamation marks except "Booking confirmed"; never log message text, codes, ID data or exact locations; 44 pt touch targets; new tables get RLS and tests in the same migration.

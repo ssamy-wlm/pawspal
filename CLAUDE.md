@@ -10,7 +10,7 @@ You are building **PawsPal Dahab**, a pet-sitting app (owners and hosts) for Dah
 - `assets/`: logo, illustrations (shared with the posts), original mockups.
 
 ## Commands
-- App: `cd apps/mobile && npm start` | `npm run typecheck` | `npm run lint` | `npm test`
+- App: `cd apps/mobile && npm start` | `npm run typecheck` | `npm run lint` | `npm test` | `npm run build:web` (web export) | `npm run check:web` (web smoke test)
 - Shared files: `node scripts/sync-shared.mjs` (runs before every start)
 - Config guard: `python3 scripts/check-config.py` (CI fails if `supabase/config.toml` holds a plain-text secret, a local hook or weaker admin/sign-in settings)
 - Local Supabase: `bash scripts/local-supabase.sh start` (email sign-up needs no test numbers; sign-up emails go to the local inbox)
