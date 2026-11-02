@@ -202,6 +202,14 @@ describe('check your email', () => {
     expect(screen.getAllByText('salma@example.com').length).toBeGreaterThan(0);
   });
 
+  it('goes to sign-in once confirmed, and back to the form to change the email', async () => {
+    await renderIn(<CheckEmailStep />);
+    await fireEvent.press(screen.getByText('I confirmed, sign me in'));
+    expect(router.replace).toHaveBeenCalledWith('/signin');
+    await fireEvent.press(screen.getByText('Change email'));
+    expect(router.replace).toHaveBeenCalledWith('/signup/account');
+  });
+
   it('lets the person resend only after 60 seconds, then waits another 60', async () => {
     fake();
     await renderIn(<CheckEmailStep />);
@@ -215,23 +223,11 @@ describe('check your email', () => {
     await waitFor(() => expect(mockAuth.resend).toHaveBeenCalledWith({ type: 'signup', email: 'salma@example.com', options: { emailRedirectTo: 'pawspal://auth/callback' } }));
     await waitFor(() => expect(screen.getByText('We sent it again.')).toBeTruthy());
     expect(screen.getByText('Send again in 60s')).toBeTruthy();
-  });
-
-  it('shows a plain sentence when resending fails', async () => {
+    // a second resend that the server refuses shows a plain sentence
     mockAuth.resend.mockResolvedValueOnce({ data: {}, error: { code: 'over_email_send_rate_limit', status: 429, message: 'x' } });
-    fake();
-    await renderIn(<CheckEmailStep />);
     await tick(60);
     await fireEvent.press(screen.getByText('Send the email again'));
     await waitFor(() => expect(screen.getByText('Too many tries. Wait a few minutes and try again.')).toBeTruthy());
-  });
-
-  it('goes to sign-in once confirmed, and back to the form to change the email', async () => {
-    await renderIn(<CheckEmailStep />);
-    await fireEvent.press(screen.getByText('I confirmed, sign me in'));
-    expect(router.replace).toHaveBeenCalledWith('/signin');
-    await fireEvent.press(screen.getByText('Change email'));
-    expect(router.replace).toHaveBeenCalledWith('/signup/account');
   });
 });
 

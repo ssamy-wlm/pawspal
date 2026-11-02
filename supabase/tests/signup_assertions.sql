@@ -178,8 +178,10 @@ select pg_temp.check((select face_verified = false and status::text = 'pending_v
 insert into storage.objects (bucket_id, name) values ('faces', 'b0b0b0b0-0000-0000-0000-000000000003/f.jpg'), ('ids', 'b0b0b0b0-0000-0000-0000-000000000003/i.jpg');
 insert into public.verification_requests (user_id, face_path, id_path, status, note, submitted_at, decided_at)
 select 'b0b0b0b0-0000-0000-0000-000000000003', 'old/f' || g, null, 'rejected', 'blurry', now() - (g || ' hours')::interval, now() from generate_series(1, 5) g;
+insert into public.security_events (user_id, kind, created_at)
+select 'b0b0b0b0-0000-0000-0000-000000000003', 'verification_submitted', now() - (g || ' hours')::interval from generate_series(1, 5) g;     -- the tries are counted from the log, so a retake counts too
 select pg_temp.fails_as('authenticated', 'b0b0b0b0-0000-0000-0000-000000000003', $$select public.submit_verification('b0b0b0b0-0000-0000-0000-000000000003/f.jpg', 'b0b0b0b0-0000-0000-0000-000000000003/i.jpg')$$, 'a sixth verification in a day was accepted');
-update public.verification_requests set submitted_at = now() - interval '2 days' where user_id = 'b0b0b0b0-0000-0000-0000-000000000003' and face_path = 'old/f5';
+update public.security_events set created_at = now() - interval '2 days' where user_id = 'b0b0b0b0-0000-0000-0000-000000000003' and kind = 'verification_submitted' and created_at < now() - interval '4 hours 30 minutes';
 select pg_temp.as_role('authenticated', 'b0b0b0b0-0000-0000-0000-000000000003', $$select public.submit_verification('b0b0b0b0-0000-0000-0000-000000000003/f.jpg', 'b0b0b0b0-0000-0000-0000-000000000003/i.jpg')$$);
 select pg_temp.check((select count(*) = 1 from public.verification_requests where user_id = 'b0b0b0b0-0000-0000-0000-000000000003' and status = 'pending'), 'person 03 should now have one pending request');
 select pg_temp.fails_as('authenticated', 'b0b0b0b0-0000-0000-0000-000000000003', $$select public.submit_verification('b0b0b0b0-0000-0000-0000-000000000003/f.jpg', 'b0b0b0b0-0000-0000-0000-000000000003/i.jpg')$$, 'the fifth-plus-one in a day (a retake) was accepted');

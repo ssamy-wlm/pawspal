@@ -161,6 +161,10 @@ select pg_temp.fails_as('authenticated', 'd3d3d3d3-0000-0000-0000-000000000003',
 select pg_temp.check((select terms_version = 2 and owner_accepted_at is null from public.bookings where id = (select v::uuid from t_ids where k = 'b2')), 'the version did not go up or acceptance was not cleared');
 select pg_temp.as_role('authenticated', 'd3d3d3d3-0000-0000-0000-000000000003', format($$select public.accept_terms(%L, 2)$$, (select v from t_ids where k = 'b2')));
 select pg_temp.check((select owner_accepted_at is not null from public.bookings where id = (select v::uuid from t_ids where k = 'b2')), 'accepting the current version did not work');
+-- a request whose start date has passed cannot be confirmed any more
+update public.bookings set starts_on = current_date - 3, ends_on = current_date - 2 where id = (select v::uuid from t_ids where k = 'b2');
+select pg_temp.fails_as('authenticated', 'd4d4d4d4-0000-0000-0000-000000000004', format($$select public.accept_terms(%L, 2)$$, (select v from t_ids where k = 'b2')), 'a stale request was confirmed after its start date');
+update public.bookings set starts_on = current_date + 70, ends_on = current_date + 72 where id = (select v::uuid from t_ids where k = 'b2');
 
 \echo '--- R4 a blocked or suspended person cannot change or accept terms'
 insert into public.blocks (blocker_id, blocked_id) values ('d4d4d4d4-0000-0000-0000-000000000004', 'd3d3d3d3-0000-0000-0000-000000000003');

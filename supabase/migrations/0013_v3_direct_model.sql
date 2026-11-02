@@ -171,12 +171,17 @@ create index on public.memberships (paid_until);
 -- Everyone who already has a profile gets a membership row (nobody has paid yet).
 insert into public.memberships (user_id) select id from public.profiles on conflict do nothing;
 
+-- "Today" for every membership rule is the date in Dahab (Cairo time), not the database's UTC date.
+create or replace function private.today() returns date language sql stable set search_path = '' as $$
+  select (now() at time zone 'Africa/Cairo')::date
+$$;
+
 -- An account is usable only when it is approved AND its membership is paid up. Every rule that asks "is this person active"
 -- (search, messages, requests, bookings, profile cards) therefore stops working by itself when a membership lapses.
 create or replace function public.is_active(p_user uuid)
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public, private as $$
   select exists (select 1 from public.profiles p join public.memberships m on m.user_id = p.id
-                  where p.id = p_user and p.status = 'active' and m.paid_until is not null and m.paid_until >= current_date);
+                  where p.id = p_user and p.status = 'active' and m.paid_until is not null and m.paid_until >= private.today());
 $$;
 
 create or replace view public.profile_cards as
@@ -264,6 +269,7 @@ begin
     -- Accounts made in the Supabase dashboard (the admins) carry no role: they must have been invited first.
     -- An invite works once: the first account made for it is tied to it, and nobody else can use it afterwards.
     if not exists (select 1 from private.admin_invites where email = v_email and user_id is null) then raise exception 'sign-up not allowed [E2]'; end if;
+    if new.email_confirmed_at is null then raise exception 'sign-up not allowed [E2]'; end if;     -- only a confirmed address can use the invite
     update private.admin_invites set user_id = new.id where email = v_email;
     insert into public.profiles (id) values (new.id);
     insert into public.memberships (user_id) values (new.id);
@@ -332,9 +338,9 @@ begin
   if not v_legal then v_missing := array_append(v_missing, 'legal'); end if;
 
   if m.paid_until is null then v_state := 'unpaid'; v_kind := 'registration'; v_amount := v_reg;
-  elsif m.paid_until < current_date then v_state := 'paused'; v_kind := 'renewal'; v_amount := v_ren; v_days := m.paid_until - current_date;
-  elsif m.paid_until - current_date <= v_remind then v_state := 'due_soon'; v_kind := 'renewal'; v_amount := v_ren; v_days := m.paid_until - current_date;
-  else v_state := 'active'; v_kind := 'renewal'; v_amount := v_ren; v_days := m.paid_until - current_date;
+  elsif m.paid_until < private.today() then v_state := 'paused'; v_kind := 'renewal'; v_amount := v_ren; v_days := m.paid_until - private.today();
+  elsif m.paid_until - private.today() <= v_remind then v_state := 'due_soon'; v_kind := 'renewal'; v_amount := v_ren; v_days := m.paid_until - private.today();
+  else v_state := 'active'; v_kind := 'renewal'; v_amount := v_ren; v_days := m.paid_until - private.today();
   end if;
   v_cstatus := case when c.id is null or c.status = 'confirmed' then 'none' else c.status end;
 
@@ -382,9 +388,10 @@ begin
     raise exception 'invalid photo';
   end if;
   perform pg_advisory_xact_lock(hashtext('verification:' || auth.uid()::text));
-  if (select count(*) from public.verification_requests where user_id = auth.uid() and submitted_at > now() - interval '1 day') >= 5 then
+  if (select count(*) from public.security_events where user_id = auth.uid() and kind = 'verification_submitted' and created_at > now() - interval '1 day') >= 5 then
     raise exception 'too many tries';
   end if;
+  insert into public.security_events (user_id, kind) values (auth.uid(), 'verification_submitted');
   update public.verification_requests set face_path = p_face_path, id_path = p_id_path, submitted_at = now()
    where user_id = auth.uid() and status = 'pending' returning id into v_id;     -- retaking the photos replaces the pending request
   if v_id is null then
@@ -414,7 +421,7 @@ begin
   end if;
   select * into m from public.memberships where user_id = auth.uid();
   if m.paid_until is null then v_kind := 'registration'; v_amount := private.setting_int('registration_fee_egp', 75);
-  elsif m.paid_until - current_date <= private.setting_int('reminder_days', 7) then v_kind := 'renewal'; v_amount := private.setting_int('renewal_fee_egp', 25);
+  elsif m.paid_until - private.today() <= private.setting_int('reminder_days', 7) then v_kind := 'renewal'; v_amount := private.setting_int('renewal_fee_egp', 25);
   else raise exception 'not due yet'; end if;
   perform pg_advisory_xact_lock(hashtext('claim:' || auth.uid()::text));
   if exists (select 1 from public.payment_claims where user_id = auth.uid() and status = 'pending') then raise exception 'a payment is already waiting'; end if;
@@ -461,9 +468,9 @@ begin
   if c.id is null then raise exception 'no pending payment'; end if;
   v_path := c.screenshot_path;
   if p_confirm then
-    insert into public.memberships (user_id, paid_until) values (c.user_id, (current_date + make_interval(months => v_months))::date)
+    insert into public.memberships (user_id, paid_until) values (c.user_id, (private.today() + make_interval(months => v_months))::date)
     on conflict (user_id) do update
-      set paid_until = (greatest(current_date, coalesce(public.memberships.paid_until, current_date)) + make_interval(months => v_months))::date,
+      set paid_until = (greatest(private.today(), coalesce(public.memberships.paid_until, private.today())) + make_interval(months => v_months))::date,
           reminded_for = null;
     update public.payment_claims set status = 'confirmed', screenshot_path = null, note = nullif(btrim(p_note), ''), decided_at = now(), decided_by = auth.uid() where id = c.id;
     insert into public.audit_log (admin_id, action, target_user, details)
@@ -518,10 +525,10 @@ begin
                             and exists (select 1 from public.verification_requests v where v.user_id = p.id and v.status = 'pending')),
     'pending_payments',  (select count(*) from public.payment_claims where status = 'pending'),
     'expiring_soon',     (select count(*) from public.memberships m join public.profiles p on p.id = m.user_id
-                           where p.status = 'active' and m.paid_until >= current_date
-                             and m.paid_until <= current_date + private.setting_int('reminder_days', 7)),
+                           where p.status = 'active' and m.paid_until >= private.today()
+                             and m.paid_until <= private.today() + private.setting_int('reminder_days', 7)),
     'paused',            (select count(*) from public.memberships m join public.profiles p on p.id = m.user_id
-                           where p.status = 'active' and m.paid_until < current_date),
+                           where p.status = 'active' and m.paid_until < private.today()),
     'open_appeals',      (select count(*) from public.appeals where status in ('new', 'in_review')),
     'actions_this_month',(select count(*) from public.enforcement_actions where created_at >= date_trunc('month', now()))
   );
@@ -536,14 +543,14 @@ grant execute on function public.my_account_state(), public.submit_profile(), pu
 
 -- ================================================================ 10. reminders (service role: the membership-reminders function)
 create or replace function public.list_due_reminders()
-returns table (user_id uuid, email text, first_name text, locale text, paid_until date)
+returns table (user_id uuid, email text, first_name text, locale text, paid_until date, amount_egp integer)
 language sql stable security definer set search_path = public, private, auth as $$
-  select m.user_id, u.email::text, p.first_name, p.locale, m.paid_until
+  select m.user_id, u.email::text, p.first_name, p.locale, m.paid_until, private.setting_int('renewal_fee_egp', 25)
     from public.memberships m
     join public.profiles p on p.id = m.user_id
     join auth.users u on u.id = m.user_id
-   where p.status = 'active' and m.paid_until is not null and m.paid_until >= current_date
-     and m.paid_until <= current_date + private.setting_int('reminder_days', 7)
+   where p.status = 'active' and m.paid_until is not null and m.paid_until >= private.today()
+     and m.paid_until <= private.today() + private.setting_int('reminder_days', 7)
      and m.reminded_for is distinct from m.paid_until and u.email is not null
 $$;
 create or replace function public.mark_reminded(p_user uuid, p_paid_until date)
@@ -601,7 +608,7 @@ begin
   if not exists (select 1 from public.pets where id = p_pet and owner_id = auth.uid()) then
     raise exception 'not your pet';
   end if;
-  if p_starts < current_date or p_ends < p_starts or p_ends - p_starts > 60 then
+  if p_starts < private.today() or p_ends < p_starts or p_ends - p_starts > 60 then
     raise exception 'invalid dates';
   end if;
   if p_cost = 'paid' and (p_price is null or p_price < 0 or p_price > 100000) then raise exception 'invalid price'; end if;
@@ -634,7 +641,7 @@ begin
   if not public.is_active(auth.uid()) or not public.is_active(v_other) or public.is_blocked_between(auth.uid(), v_other) then
     raise exception 'not allowed';
   end if;
-  if p_starts < current_date or p_ends < p_starts or p_ends - p_starts > 60 then raise exception 'invalid dates'; end if;
+  if p_starts < private.today() or p_ends < p_starts or p_ends - p_starts > 60 then raise exception 'invalid dates'; end if;
   if p_cost = 'paid' and (p_price is null or p_price < 0 or p_price > 100000) then raise exception 'invalid price'; end if;
   if not public.pet_is_free(b.pet_id, p_starts, p_ends, array[b.id]) then raise exception 'that pet is already booked for these dates'; end if;
   update public.bookings
@@ -660,12 +667,14 @@ begin
     raise exception 'not allowed';
   end if;
   if b.terms_version <> p_version then raise exception 'the terms changed'; end if;
+  if b.starts_on < private.today() then raise exception 'the start date has passed'; end if;
   if auth.uid() = b.owner_id then
     update public.bookings set owner_accepted_at = coalesce(owner_accepted_at, now()) where id = p_booking returning * into b;
   else
     update public.bookings set sitter_accepted_at = coalesce(sitter_accepted_at, now()) where id = p_booking returning * into b;
   end if;
   if b.owner_accepted_at is not null and b.sitter_accepted_at is not null then
+    perform pg_advisory_xact_lock(hashtext('pet:' || b.pet_id::text));        -- one pet cannot be confirmed twice at once
     if not public.pet_is_free(b.pet_id, b.starts_on, b.ends_on, array[b.id]) then raise exception 'that pet is already booked for these dates'; end if;
     update public.bookings set status = 'confirmed', confirmed_at = now() where id = p_booking returning * into b;
     update public.pets set locked = true where id = b.pet_id;
@@ -768,3 +777,8 @@ grant execute on function public.list_unused_uploads(interval) to service_role;
 
 -- ================================================================ 14. legal documents: new versions (docs/legal/*.md say the same)
 update public.legal_documents set current_version = '2.0.0-draft', updated_at = now() where doc in ('privacy', 'terms');
+
+
+-- Helper functions that answer yes/no questions about other people are for signed-in sessions and the server only.
+revoke execute on function public.is_active(uuid), public.has_confirmed_booking(uuid, uuid), public.is_blocked_between(uuid, uuid) from public, anon;
+grant execute on function public.is_active(uuid), public.has_confirmed_booking(uuid, uuid), public.is_blocked_between(uuid, uuid) to authenticated, service_role;

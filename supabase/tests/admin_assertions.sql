@@ -103,6 +103,10 @@ select pg_temp.check(exists (select 1 from public.profiles where id = 'a8a8a8a8-
 select private.invite_admin('mixed@example.com');
 select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at, created_at) values (gen_random_uuid(), 'Mixed@Example.COM', now(), now())$$) = 'accepted', 'an invited email in other case was refused');
 select pg_temp.check(private.grant_admin('mixed@example.com') = 'granted', 'the invited account in other case could not become an admin');
+-- an unconfirmed sign-up cannot use (or squat) an invite
+select private.invite_admin('squat@example.com');
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, created_at) values (gen_random_uuid(), 'squat@example.com', now())$$) = 'sign-up not allowed [E2]', 'an unconfirmed address used an invite');
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at, created_at) values (gen_random_uuid(), 'squat@example.com', now(), now())$$) = 'accepted', 'the real owner of the address could not use the invite after a refused try');
 select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at, created_at) values (gen_random_uuid(), 'mixed2@example.com', now(), now())$$) = 'sign-up not allowed [E2]', 'an invite for one address let another address in');
 select private.revoke_admin('mixed@example.com');
 select pg_temp.check(not exists (select 1 from public.admins a join auth.users u on u.id = a.user_id where u.email ilike 'mixed@example.com'), 'revoking left an admin row');

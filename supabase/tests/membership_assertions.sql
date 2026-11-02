@@ -17,7 +17,7 @@ begin
 end $$;
 -- Set paid_until to today + p_days (null = never paid).
 create or replace function pg_temp.setpaid(n integer, p_days integer) returns void language sql as $$
-  update public.memberships set paid_until = case when p_days is null then null else current_date + p_days end where user_id = pg_temp.u(n) $$;
+  update public.memberships set paid_until = case when p_days is null then null else (now() at time zone 'Africa/Cairo')::date + p_days end where user_id = pg_temp.u(n) $$;
 create or replace function pg_temp.mkpet(n integer, p_name text) returns uuid language plpgsql as $$
 declare v_id uuid;
 begin
@@ -29,7 +29,7 @@ create or replace function pg_temp.setloc(n integer, p_lat double precision, p_l
   select pg_temp.as_role('authenticated', pg_temp.u(n), format('select public.set_my_location(%s, %s, %L)', p_lat, p_lng, 'Secret street 1')) $$;
 create or replace function pg_temp.avail(n integer, p_pets text, p_from integer, p_to integer) returns void language sql as $$
   insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers, price_per_night)
-  values (pg_temp.u(n), current_date + p_from, current_date + p_to, p_pets::public.pet_type[], array['paid'], 100) $$;
+  values (pg_temp.u(n), (now() at time zone 'Africa/Cairo')::date + p_from, (now() at time zone 'Africa/Cairo')::date + p_to, p_pets::public.pet_type[], array['paid'], 100) $$;
 -- Run a statement as a person and ignore a refusal (the check afterwards looks at what really changed).
 create or replace function pg_temp.try_as(p_role text, p_uid uuid, p_sql text) returns void language plpgsql as $$
 begin
@@ -44,7 +44,7 @@ declare c bigint; m bigint; s bigint; b bigint; t uuid := pg_temp.u(p_target);
 begin
   c := pg_temp.count_as(pg_temp.u(p_caller), format('select count(*) from public.profile_cards where id = %L', t));
   m := pg_temp.count_as(pg_temp.u(p_caller), format('select count(*) from public.map_availability(null, 300) where user_id = %L', t));
-  s := pg_temp.count_as(pg_temp.u(p_caller), format($q$select count(*) from public.search_stays(current_date + 2, current_date + 5, 'other'::public.pet_type, 0, null::integer, '{}'::text[], false, null::double precision, null::double precision, 25::double precision, 100) where user_id = %L$q$, t));
+  s := pg_temp.count_as(pg_temp.u(p_caller), format($q$select count(*) from public.search_stays((now() at time zone 'Africa/Cairo')::date + 2, (now() at time zone 'Africa/Cairo')::date + 5, 'other'::public.pet_type, 0, null::integer, '{}'::text[], false, null::double precision, null::double precision, 25::double precision, 100) where user_id = %L$q$, t));
   b := pg_temp.count_as(pg_temp.u(p_caller), format($q$select count(*) from public.browse_random('other'::public.pet_type, 60) where user_id = %L$q$, t));
   return c || '/' || m || '/' || s || '/' || b;
 end $$;
@@ -109,14 +109,14 @@ select pg_temp.check((pg_temp.state(pg_temp.u(10)) #>> '{membership,state}') = '
                  and (pg_temp.state(pg_temp.u(10)) ->> 'status') = 'active', 'paused state');
 select pg_temp.check(pg_temp.seen(1, 10) = '0/0/0/0', 'a paused host is still visible to others: ' || pg_temp.seen(1, 10));
 select pg_temp.check(pg_temp.count_as(pg_temp.u(10), 'select count(*) from public.profile_cards') = 0, 'a paused person still sees profile cards');
-select pg_temp.check(pg_temp.count_as(pg_temp.u(10), 'select count(*) from public.search_stays(current_date + 2, current_date + 5, ''other''::public.pet_type, 0, null::integer, ''{}''::text[], false, null::double precision, null::double precision, 25::double precision, 100)') = 0, 'a paused person still searches');
+select pg_temp.check(pg_temp.count_as(pg_temp.u(10), 'select count(*) from public.search_stays((now() at time zone ''Africa/Cairo'')::date + 2, (now() at time zone ''Africa/Cairo'')::date + 5, ''other''::public.pet_type, 0, null::integer, ''{}''::text[], false, null::double precision, null::double precision, 25::double precision, 100)') = 0, 'a paused person still searches');
 select pg_temp.check(pg_temp.count_as(pg_temp.u(11), 'select count(*) from public.browse_random(null, 60)') = 0, 'a paused person still browses');
 select pg_temp.check(pg_temp.count_as(pg_temp.u(11), 'select count(*) from public.map_availability(null, 300)') = 0, 'a paused person still sees the map');
 select pg_temp.fails_as('authenticated', pg_temp.u(10), format($$insert into public.messages (conversation_id, sender_id, body) values (%L, %L, 'hello while paused')$$, (select v from t_ids where k = 'conv'), pg_temp.u(10)), 'a paused person sent a message');
 select pg_temp.fails_as('authenticated', pg_temp.u(10), format($$select public.start_conversation(%L)$$, pg_temp.u(1)), 'a paused person started a conversation');
 select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.start_conversation(%L)$$, pg_temp.u(10)), 'someone started a conversation with a paused person');
-select pg_temp.fails_as('authenticated', pg_temp.u(11), format($$select public.request_booking(%L, %L, current_date + 50, current_date + 52, 'sitter_home', 'volunteer', null, false)$$, pg_temp.u(2), :'pip'), 'a paused owner requested a booking');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 50, current_date + 52, 'sitter_home', 'volunteer', null, false)$$, pg_temp.u(10), :'rex'), 'a booking was requested from a paused host');
+select pg_temp.fails_as('authenticated', pg_temp.u(11), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 50, (now() at time zone 'Africa/Cairo')::date + 52, 'sitter_home', 'volunteer', null, false)$$, pg_temp.u(2), :'pip'), 'a paused owner requested a booking');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 50, (now() at time zone 'Africa/Cairo')::date + 52, 'sitter_home', 'volunteer', null, false)$$, pg_temp.u(10), :'rex'), 'a booking was requested from a paused host');
 select pg_temp.check(not exists (select 1 from public.bookings where owner_id in (pg_temp.u(11)) or sitter_id = pg_temp.u(10)), 'a refused request left a booking');
 -- paying again makes them visible again
 select pg_temp.setpaid(10, 180);
@@ -128,10 +128,10 @@ select pg_temp.check((pg_temp.state(pg_temp.u(10)) #>> '{membership,amount_egp}'
 update public.app_settings set value = '25' where key = 'renewal_fee_egp';
 select pg_temp.setpaid(10, 180);
 -- the membership table is closed to writes and to other people's eyes
-select pg_temp.fails_as('authenticated', pg_temp.u(10), format($$update public.memberships set paid_until = current_date + 999 where user_id = %L$$, pg_temp.u(10)), 'a person extended their own membership');
-select pg_temp.fails_as('authenticated', pg_temp.u(10), format($$insert into public.memberships (user_id, paid_until) values (%L, current_date + 999) on conflict (user_id) do update set paid_until = excluded.paid_until$$, pg_temp.u(10)), 'a person upserted their own membership');
+select pg_temp.fails_as('authenticated', pg_temp.u(10), format($$update public.memberships set paid_until = (now() at time zone 'Africa/Cairo')::date + 999 where user_id = %L$$, pg_temp.u(10)), 'a person extended their own membership');
+select pg_temp.fails_as('authenticated', pg_temp.u(10), format($$insert into public.memberships (user_id, paid_until) values (%L, (now() at time zone 'Africa/Cairo')::date + 999) on conflict (user_id) do update set paid_until = excluded.paid_until$$, pg_temp.u(10)), 'a person upserted their own membership');
 select pg_temp.fails_as('authenticated', pg_temp.u(10), format($$delete from public.memberships where user_id = %L$$, pg_temp.u(10)), 'a person deleted their own membership');
-select pg_temp.check((select paid_until = current_date + 180 from public.memberships where user_id = pg_temp.u(10)), 'a refused write changed the membership');
+select pg_temp.check((select paid_until = (now() at time zone 'Africa/Cairo')::date + 180 from public.memberships where user_id = pg_temp.u(10)), 'a refused write changed the membership');
 select pg_temp.check(pg_temp.count_as(pg_temp.u(10), 'select count(*) from public.memberships') = 1, 'a person should read only their own membership row');
 select pg_temp.check(pg_temp.as_role('anon', null, 'select count(*) from public.memberships')::bigint = 0, 'anon read memberships');
 select pg_temp.check(pg_temp.as_aal('aal2', pg_temp.u(5), 'select count(*) from public.memberships')::bigint >= 5, 'an admin cannot read memberships');
@@ -297,7 +297,7 @@ select pg_temp.check(pg_temp.as_aal('aal2', pg_temp.u(5), $$select count(*) from
 
 \echo '--- M4 admin_confirm_payment'
 -- C (20): first payment, still in verification
-update public.memberships set reminded_for = current_date where user_id = pg_temp.u(20);
+update public.memberships set reminded_for = (now() at time zone 'Africa/Cairo')::date where user_id = pg_temp.u(20);
 select pg_temp.fails_as('authenticated', pg_temp.u(23), format($$select public.admin_confirm_payment(%L, true, null)$$, pg_temp.claim_of(20)), 'a normal person confirmed a payment');
 select pg_temp.fails_aal('aal2', pg_temp.u(23), format($$select public.admin_confirm_payment(%L, true, null)$$, pg_temp.claim_of(20)), 'a normal person with an aal2 claim confirmed a payment');
 select pg_temp.fails_aal('aal1', pg_temp.u(5), format($$select public.admin_confirm_payment(%L, true, null)$$, pg_temp.claim_of(20)), 'an admin with aal1 confirmed a payment');
@@ -306,10 +306,10 @@ select pg_temp.fails_as('anon', null, format($$select public.admin_confirm_payme
 select pg_temp.fails_aal('aal1', pg_temp.u(5), format($$select public.admin_confirm_payment(%L, false, 'no')$$, pg_temp.claim_of(20)), 'an admin with aal1 rejected a payment');
 select pg_temp.fails_adm($$select public.admin_confirm_payment(gen_random_uuid(), true, null)$$, 'confirmed a claim that does not exist');
 select pg_temp.fails_adm(format($$select public.admin_confirm_payment(%L, true, %L)$$, pg_temp.claim_of(20), repeat('x', 1001)), 'a note of 1001 characters');
-select pg_temp.check((select paid_until is null and reminded_for = current_date from public.memberships where user_id = pg_temp.u(20)) and (select status = 'pending' from public.payment_claims where user_id = pg_temp.u(20)), 'a refused confirmation changed something');
+select pg_temp.check((select paid_until is null and reminded_for = (now() at time zone 'Africa/Cairo')::date from public.memberships where user_id = pg_temp.u(20)) and (select status = 'pending' from public.payment_claims where user_id = pg_temp.u(20)), 'a refused confirmation changed something');
 insert into t_ids select 'claim20', pg_temp.claim_of(20)::text;
 select pg_temp.check(pg_temp.adm(format($$select public.admin_confirm_payment(%L, true, 'Thank you')$$, (select v from t_ids where k = 'claim20'))) = '', 'a claim without a screenshot should return an empty path');
-select pg_temp.check((select paid_until = (current_date + interval '6 months')::date and reminded_for is null from public.memberships where user_id = pg_temp.u(20)), 'a first payment should give today + 6 months and clear reminded_for');
+select pg_temp.check((select paid_until = ((now() at time zone 'Africa/Cairo')::date + interval '6 months')::date and reminded_for is null from public.memberships where user_id = pg_temp.u(20)), 'a first payment should give today + 6 months and clear reminded_for');
 select pg_temp.check((select status = 'confirmed' and screenshot_path is null and decided_by = pg_temp.u(5) and decided_at is not null and note = 'Thank you' from public.payment_claims where id = (select v::uuid from t_ids where k = 'claim20')), 'the confirmed claim is wrong');
 select pg_temp.check((select count(*) = 1 from public.audit_log where action = 'payment_confirmed' and target_user = pg_temp.u(20) and admin_id = pg_temp.u(5) and details ->> 'kind' = 'registration' and (details ->> 'amount_egp')::integer = 75), 'the confirmation was not audited');
 select pg_temp.check(not public.is_active(pg_temp.u(20)), 'a person still in verification became active by paying');
@@ -317,7 +317,7 @@ select pg_temp.check((pg_temp.state(pg_temp.u(20)) #>> '{membership,state}') = '
 select pg_temp.fails_as('authenticated', pg_temp.u(20), $$select public.submit_payment_claim('again', null)$$, 'a claim right after paying (not due yet)');
 select pg_temp.fails_adm(format($$select public.admin_confirm_payment(%L, true, null)$$, (select v from t_ids where k = 'claim20')), 'a claim was confirmed twice');
 select pg_temp.fails_adm(format($$select public.admin_confirm_payment(%L, false, 'oops')$$, (select v from t_ids where k = 'claim20')), 'a confirmed claim was rejected afterwards');
-select pg_temp.check((select paid_until = (current_date + interval '6 months')::date from public.memberships where user_id = pg_temp.u(20)), 'a second decision changed the membership');
+select pg_temp.check((select paid_until = ((now() at time zone 'Africa/Cairo')::date + interval '6 months')::date from public.memberships where user_id = pg_temp.u(20)), 'a second decision changed the membership');
 
 -- S (28): screenshot returned and cleared
 select pg_temp.check(pg_temp.adm(format($$select public.admin_confirm_payment(%L, true, null)$$, pg_temp.claim_of(28))) = pg_temp.u(28)::text || '/shot.jpg', 'the screenshot path was not returned');
@@ -328,13 +328,13 @@ insert into t_ids select 'oldend23', paid_until::text from public.memberships wh
 update public.memberships set reminded_for = paid_until where user_id = pg_temp.u(23);
 select pg_temp.adm(format($$select public.admin_confirm_payment(%L, true, null)$$, pg_temp.claim_of(23)));
 select pg_temp.check((select paid_until = ((select v::date from t_ids where k = 'oldend23') + interval '6 months')::date from public.memberships where user_id = pg_temp.u(23)), 'an early renewal should extend from the old end date');
-select pg_temp.check((select paid_until <> (current_date + interval '6 months')::date and reminded_for is null from public.memberships where user_id = pg_temp.u(23)), 'an early renewal must not start from today, and must clear reminded_for');
+select pg_temp.check((select paid_until <> ((now() at time zone 'Africa/Cairo')::date + interval '6 months')::date and reminded_for is null from public.memberships where user_id = pg_temp.u(23)), 'an early renewal must not start from today, and must clear reminded_for');
 select pg_temp.check((select count(*) = 1 from public.audit_log where action = 'payment_confirmed' and target_user = pg_temp.u(23) and details ->> 'kind' = 'renewal' and (details ->> 'amount_egp')::integer = 30), 'the renewal was not audited with its amount');
 
 -- F3 (25): paused, comes back from today
 select pg_temp.check(not public.is_active(pg_temp.u(25)), 'a paused person is active');
 select pg_temp.adm(format($$select public.admin_confirm_payment(%L, true, null)$$, pg_temp.claim_of(25)));
-select pg_temp.check((select paid_until = (current_date + interval '6 months')::date from public.memberships where user_id = pg_temp.u(25)), 'a lapsed person should be extended from today');
+select pg_temp.check((select paid_until = ((now() at time zone 'Africa/Cairo')::date + interval '6 months')::date from public.memberships where user_id = pg_temp.u(25)), 'a lapsed person should be extended from today');
 select pg_temp.check(public.is_active(pg_temp.u(25)), 'a lapsed person is not active again after paying');
 
 -- the setting for the length applies
@@ -343,7 +343,7 @@ select pg_temp.person(29, 'owner', 'Zed'); select pg_temp.setpaid(29, 2);
 select pg_temp.as_role('authenticated', pg_temp.u(29), $$select public.submit_payment_claim('long', null)$$);
 select pg_temp.adm(format($$select public.admin_confirm_payment(%L, true, null)$$, pg_temp.claim_of(29)));
 select pg_temp.adm($$select public.admin_set_setting('membership_months', '6')$$);
-select pg_temp.check((select paid_until = (current_date + 2 + interval '12 months')::date from public.memberships where user_id = pg_temp.u(29)), 'membership_months is not used');
+select pg_temp.check((select paid_until = ((now() at time zone 'Africa/Cairo')::date + 2 + interval '12 months')::date from public.memberships where user_id = pg_temp.u(29)), 'membership_months is not used');
 
 -- U (30): approved but never paid becomes active only when the payment is confirmed
 select pg_temp.person(30, 'sitter', 'Una'); select pg_temp.setpaid(30, null);
@@ -390,27 +390,28 @@ select pg_temp.check(pg_temp.due(44) = 0 and pg_temp.due(48) = 0, 'an unapproved
 select pg_temp.check(pg_temp.due(47) = 0, 'a person already reminded is listed');
 select pg_temp.check(pg_temp.due(49) = 0, 'a person who never paid is listed');
 select pg_temp.check(pg_temp.as_role('service_role', null, format('select email from public.list_due_reminders() where user_id = %L', pg_temp.u(40))) = 'p40-b1@example.com', 'the reminder does not carry the email');
-select pg_temp.check(pg_temp.as_role('service_role', null, format('select paid_until::text from public.list_due_reminders() where user_id = %L', pg_temp.u(40))) = (current_date + 3)::text, 'the reminder does not carry the end date');
+select pg_temp.check(pg_temp.as_role('service_role', null, format('select paid_until::text from public.list_due_reminders() where user_id = %L', pg_temp.u(40))) = ((now() at time zone 'Africa/Cairo')::date + 3)::text, 'the reminder does not carry the end date');
 select pg_temp.check(pg_temp.as_role('service_role', null, format('select first_name from public.list_due_reminders() where user_id = %L', pg_temp.u(40))) = 'Rem0', 'the reminder does not carry the first name');
+select pg_temp.check(pg_temp.as_role('service_role', null, format('select amount_egp::text from public.list_due_reminders() where user_id = %L', pg_temp.u(40))) = '25', 'the reminder does not carry the renewal fee');
 -- only the service role
 select pg_temp.fails_as('anon', null, $$select count(*) from public.list_due_reminders()$$, 'anon listed reminders');
 select pg_temp.fails_as('authenticated', pg_temp.u(40), $$select count(*) from public.list_due_reminders()$$, 'a person listed reminders');
 select pg_temp.fails_aal('aal2', pg_temp.u(5), $$select count(*) from public.list_due_reminders()$$, 'an admin listed reminders through the API');
-select pg_temp.fails_as('anon', null, format($$select public.mark_reminded(%L, current_date + 3)$$, pg_temp.u(40)), 'anon marked a reminder');
-select pg_temp.fails_as('authenticated', pg_temp.u(40), format($$select public.mark_reminded(%L, current_date + 3)$$, pg_temp.u(40)), 'a person marked their own reminder');
+select pg_temp.fails_as('anon', null, format($$select public.mark_reminded(%L, (now() at time zone 'Africa/Cairo')::date + 3)$$, pg_temp.u(40)), 'anon marked a reminder');
+select pg_temp.fails_as('authenticated', pg_temp.u(40), format($$select public.mark_reminded(%L, (now() at time zone 'Africa/Cairo')::date + 3)$$, pg_temp.u(40)), 'a person marked their own reminder');
 -- mark_reminded
-select pg_temp.as_role('service_role', null, format($$select public.mark_reminded(%L, current_date + 99)$$, pg_temp.u(41)));       -- the wrong date: nothing happens
+select pg_temp.as_role('service_role', null, format($$select public.mark_reminded(%L, (now() at time zone 'Africa/Cairo')::date + 99)$$, pg_temp.u(41)));       -- the wrong date: nothing happens
 select pg_temp.check(pg_temp.due(41) = 1 and (select reminded_for is null from public.memberships where user_id = pg_temp.u(41)), 'marking the wrong date stopped a reminder');
-select pg_temp.as_role('service_role', null, format($$select public.mark_reminded(%L, current_date + 3)$$, pg_temp.u(40)));
-select pg_temp.check(pg_temp.due(40) = 0 and (select reminded_for = current_date + 3 from public.memberships where user_id = pg_temp.u(40)), 'marking a person did not stop the reminder');
+select pg_temp.as_role('service_role', null, format($$select public.mark_reminded(%L, (now() at time zone 'Africa/Cairo')::date + 3)$$, pg_temp.u(40)));
+select pg_temp.check(pg_temp.due(40) = 0 and (select reminded_for = (now() at time zone 'Africa/Cairo')::date + 3 from public.memberships where user_id = pg_temp.u(40)), 'marking a person did not stop the reminder');
 select pg_temp.check(pg_temp.due(41) = 1 and pg_temp.due(46) = 1, 'marking one person stopped the others');
 -- a renewal makes them due again later
 update public.memberships set reminded_for = paid_until where user_id = pg_temp.u(45);
 select pg_temp.check(pg_temp.due(45) = 0, 'a reminded person is listed');
 select pg_temp.as_role('authenticated', pg_temp.u(45), $$select public.submit_payment_claim('renew-45', null)$$);
 select pg_temp.adm(format($$select public.admin_confirm_payment(%L, true, null)$$, pg_temp.claim_of(45)));
-select pg_temp.check(pg_temp.due(45) = 0 and (select reminded_for is null and paid_until = (current_date + 3 + interval '6 months')::date from public.memberships where user_id = pg_temp.u(45)), 'a renewed person should not be due, and reminded_for must be cleared');
-update public.memberships set paid_until = current_date + 2 where user_id = pg_temp.u(45);     -- time passes: the new end date is near
+select pg_temp.check(pg_temp.due(45) = 0 and (select reminded_for is null and paid_until = ((now() at time zone 'Africa/Cairo')::date + 3 + interval '6 months')::date from public.memberships where user_id = pg_temp.u(45)), 'a renewed person should not be due, and reminded_for must be cleared');
+update public.memberships set paid_until = (now() at time zone 'Africa/Cairo')::date + 2 where user_id = pg_temp.u(45);     -- time passes: the new end date is near
 select pg_temp.check(pg_temp.due(45) = 1, 'a renewed person should be reminded again when the new end date comes near');
 -- the window follows the setting
 update public.app_settings set value = '10' where key = 'reminder_days';
@@ -421,33 +422,33 @@ select pg_temp.check(pg_temp.due(42) = 0, 'the reminder window did not go back')
 \echo '--- M6 bookings without a fee'
 select pg_temp.check(enum_range(null::public.cost_type)::text = '{paid,volunteer}', 'cost_type should be paid and volunteer only');
 select pg_temp.check(enum_range(null::public.user_role)::text = '{owner,sitter}', 'user_role should be owner and sitter only');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 10, current_date + 14, 'sitter_home', 'swap', null, false)$$, pg_temp.u(2), :'rex'), 'a swap booking was requested');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 14, 'sitter_home', 'swap', null, false)$$, pg_temp.u(2), :'rex'), 'a swap booking was requested');
 select pg_temp.fails_with($$select 'swap'::public.cost_type$$, 'invalid input value for enum', 'swap is still a cost type');
 -- who may request what
-select pg_temp.fails_as('anon', null, format($$select public.request_booking(%L, %L, current_date + 10, current_date + 14, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'anon requested a booking');
-select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.request_booking(%L, %L, current_date + 10, current_date + 14, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(1), :'rex'), 'a host requested a booking as the owner');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 10, current_date + 14, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(3), :'rex'), 'an owner requested another owner');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 10, current_date + 14, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(1), :'rex'), 'a person requested themselves');
-select pg_temp.fails_as('authenticated', pg_temp.u(3), format($$select public.request_booking(%L, %L, current_date + 10, current_date + 14, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'an owner used someone else''s pet');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date - 1, current_date + 2, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'dates in the past');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 14, current_date + 10, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'dates in the wrong order');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 10, current_date + 71, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'a 61-night stay');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 10, current_date + 14, 'sitter_home', 'paid', -1, false)$$, pg_temp.u(2), :'rex'), 'a negative price');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 10, current_date + 14, 'sitter_home', 'paid', null, false)$$, pg_temp.u(2), :'rex'), 'a paid stay without a price');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 10, current_date + 14, 'sitter_home', 'paid', 100001, false)$$, pg_temp.u(2), :'rex'), 'a price over the limit');
+select pg_temp.fails_as('anon', null, format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 14, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'anon requested a booking');
+select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 14, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(1), :'rex'), 'a host requested a booking as the owner');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 14, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(3), :'rex'), 'an owner requested another owner');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 14, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(1), :'rex'), 'a person requested themselves');
+select pg_temp.fails_as('authenticated', pg_temp.u(3), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 14, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'an owner used someone else''s pet');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date - 1, (now() at time zone 'Africa/Cairo')::date + 2, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'dates in the past');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 14, (now() at time zone 'Africa/Cairo')::date + 10, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'dates in the wrong order');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 71, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'a 61-night stay');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 14, 'sitter_home', 'paid', -1, false)$$, pg_temp.u(2), :'rex'), 'a negative price');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 14, 'sitter_home', 'paid', null, false)$$, pg_temp.u(2), :'rex'), 'a paid stay without a price');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 14, 'sitter_home', 'paid', 100001, false)$$, pg_temp.u(2), :'rex'), 'a price over the limit');
 select pg_temp.check((select count(*) = 0 from public.bookings where owner_id in (pg_temp.u(1), pg_temp.u(3))), 'a refused request left a booking');
 select pg_temp.fails_as('authenticated', pg_temp.u(1), $$update public.bookings set status = 'confirmed'$$, 'a person updated bookings directly');
 select pg_temp.fails_as('authenticated', pg_temp.u(1), $$insert into public.bookings (owner_id, sitter_id, pet_id, starts_on, ends_on, status) select owner_id, sitter_id, pet_id, starts_on, ends_on, 'confirmed' from public.bookings limit 1$$, 'a person inserted a booking directly');
 -- a volunteer stay keeps no price
-insert into t_ids select 'vol', pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 60, current_date + 62, 'sitter_home', 'volunteer', 500, false)::text$$, pg_temp.u(2), :'rex'));
+insert into t_ids select 'vol', pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 60, (now() at time zone 'Africa/Cairo')::date + 62, 'sitter_home', 'volunteer', 500, false)::text$$, pg_temp.u(2), :'rex'));
 select pg_temp.check((select cost_type::text = 'volunteer' and price_per_night is null from public.bookings where id = (select v::uuid from t_ids where k = 'vol')), 'a volunteer stay should store no price');
 select pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.cancel_booking(%L, 'test')$$, (select v from t_ids where k = 'vol')));
 -- B1: O (Rex) -> H, B2: O (Rex) -> H2 on the same dates
-insert into t_ids select 'b1', pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 10, current_date + 14, 'sitter_home', 'paid', 200, false)::text$$, pg_temp.u(2), :'rex'));
-insert into t_ids select 'b2', pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 10, current_date + 14, 'sitter_home', 'paid', 180, true)::text$$, pg_temp.u(4), :'rex'));
+insert into t_ids select 'b1', pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 14, 'sitter_home', 'paid', 200, false)::text$$, pg_temp.u(2), :'rex'));
+insert into t_ids select 'b2', pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 14, 'sitter_home', 'paid', 180, true)::text$$, pg_temp.u(4), :'rex'));
 select pg_temp.check((select status::text = 'requested' and cost_type::text = 'paid' and price_per_night = 200 and owner_accepted_at is null and sitter_accepted_at is null and terms_version = 1 and confirmed_at is null from public.bookings where id = (select v::uuid from t_ids where k = 'b1')), 'a new request is wrong');
 select pg_temp.check((select not locked from public.pets where id = :'rex'), 'a request locked the pet');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 11, current_date + 12, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'a duplicate request for overlapping dates');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 11, (now() at time zone 'Africa/Cairo')::date + 12, 'sitter_home', 'paid', 200, false)$$, pg_temp.u(2), :'rex'), 'a duplicate request for overlapping dates');
 select pg_temp.check((select count(*) = 1 from public.bookings where id = (select v::uuid from t_ids where k = 'b1')) and pg_temp.count_as(pg_temp.u(3), 'select count(*) from public.bookings') = 0, 'a stranger can read bookings');
 -- chat: a phone number is masked before confirmation
 insert into t_ids select 'conv12', pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.start_conversation(%L)::text$$, pg_temp.u(2)));
@@ -465,17 +466,17 @@ select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(1), format($$sel
 select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.accept_terms(%L, 1)::text$$, (select v from t_ids where k = 'b1'))) = 'requested', 'accepting twice should be harmless');
 select pg_temp.check((select owner_accepted_at is not null and sitter_accepted_at is null and status::text = 'requested' and confirmed_at is null from public.bookings where id = (select v::uuid from t_ids where k = 'b1')), 'state after the owner accepted');
 -- changing the terms resets both acceptances
-select pg_temp.fails_as('authenticated', pg_temp.u(3), format($$select public.propose_terms(%L, current_date + 10, current_date + 15, 'sitter_home', 'paid', 220, false)$$, (select v from t_ids where k = 'b1')), 'a stranger proposed terms');
-select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.propose_terms(%L, current_date - 2, current_date + 15, 'sitter_home', 'paid', 220, false)$$, (select v from t_ids where k = 'b1')), 'terms with past dates');
-select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.propose_terms(%L, current_date + 10, current_date + 15, 'sitter_home', 'swap', 220, false)$$, (select v from t_ids where k = 'b1')), 'terms with cost swap');
-select pg_temp.as_role('authenticated', pg_temp.u(2), format($$select public.propose_terms(%L, current_date + 10, current_date + 15, 'sitter_home', 'paid', 220, false)$$, (select v from t_ids where k = 'b1')));
-select pg_temp.check((select owner_accepted_at is null and sitter_accepted_at is null and terms_version = 2 and price_per_night = 220 and ends_on = current_date + 15 and status::text = 'requested' from public.bookings where id = (select v::uuid from t_ids where k = 'b1')), 'proposing terms should reset both acceptances and bump the version');
+select pg_temp.fails_as('authenticated', pg_temp.u(3), format($$select public.propose_terms(%L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 15, 'sitter_home', 'paid', 220, false)$$, (select v from t_ids where k = 'b1')), 'a stranger proposed terms');
+select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.propose_terms(%L, (now() at time zone 'Africa/Cairo')::date - 2, (now() at time zone 'Africa/Cairo')::date + 15, 'sitter_home', 'paid', 220, false)$$, (select v from t_ids where k = 'b1')), 'terms with past dates');
+select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.propose_terms(%L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 15, 'sitter_home', 'swap', 220, false)$$, (select v from t_ids where k = 'b1')), 'terms with cost swap');
+select pg_temp.as_role('authenticated', pg_temp.u(2), format($$select public.propose_terms(%L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 15, 'sitter_home', 'paid', 220, false)$$, (select v from t_ids where k = 'b1')));
+select pg_temp.check((select owner_accepted_at is null and sitter_accepted_at is null and terms_version = 2 and price_per_night = 220 and ends_on = (now() at time zone 'Africa/Cairo')::date + 15 and status::text = 'requested' from public.bookings where id = (select v::uuid from t_ids where k = 'b1')), 'proposing terms should reset both acceptances and bump the version');
 select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.accept_terms(%L, 1)$$, (select v from t_ids where k = 'b1')), 'old terms were accepted after a change');
 -- a paused participant cannot accept
 select pg_temp.setpaid(2, -1);
 select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.accept_terms(%L, 2)$$, (select v from t_ids where k = 'b1')), 'a paused host accepted terms');
 select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.accept_terms(%L, 2)$$, (select v from t_ids where k = 'b1')), 'terms were accepted with a paused partner');
-select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.propose_terms(%L, current_date + 10, current_date + 15, 'sitter_home', 'paid', 230, false)$$, (select v from t_ids where k = 'b1')), 'a paused host proposed terms');
+select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.propose_terms(%L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 15, 'sitter_home', 'paid', 230, false)$$, (select v from t_ids where k = 'b1')), 'a paused host proposed terms');
 select pg_temp.setpaid(2, 180);
 select pg_temp.setpaid(1, -1);
 select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.accept_terms(%L, 2)$$, (select v from t_ids where k = 'b1')), 'terms were accepted with a paused owner');
@@ -491,12 +492,12 @@ select pg_temp.check((select status::text = 'confirmed' and confirmed_at is not 
 select pg_temp.check((select locked from public.pets where id = :'rex'), 'a confirmed booking should lock the pet');
 select pg_temp.try_as('authenticated', pg_temp.u(1), $$update public.pets set name = 'Hacked' where name = 'Rex' and owner_id = auth.uid()$$);
 select pg_temp.check((select name = 'Rex' from public.pets where id = :'rex'), 'an owner changed a locked pet');
-select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.propose_terms(%L, current_date + 10, current_date + 15, 'sitter_home', 'paid', 100, false)$$, (select v from t_ids where k = 'b1')), 'terms were changed after confirmation');
+select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.propose_terms(%L, (now() at time zone 'Africa/Cairo')::date + 10, (now() at time zone 'Africa/Cairo')::date + 15, 'sitter_home', 'paid', 100, false)$$, (select v from t_ids where k = 'b1')), 'terms were changed after confirmation');
 select pg_temp.fails_as('authenticated', pg_temp.u(2), format($$select public.accept_terms(%L, 2)$$, (select v from t_ids where k = 'b1')), 'terms were accepted again after confirmation');
 -- the same pet cannot be confirmed twice for overlapping dates
 select pg_temp.fails_as('authenticated', pg_temp.u(4), format($$select public.accept_terms(%L, 1)$$, (select v from t_ids where k = 'b2')), 'a pet already confirmed elsewhere was confirmed again');
 select pg_temp.check((select status::text = 'requested' and confirmed_at is null and sitter_accepted_at is null from public.bookings where id = (select v::uuid from t_ids where k = 'b2')), 'the blocked second confirmation changed the booking');
-select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 12, current_date + 13, 'sitter_home', 'paid', 100, false)$$, pg_temp.u(4), :'rex'), 'a request for a pet already confirmed for these dates');
+select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 12, (now() at time zone 'Africa/Cairo')::date + 13, 'sitter_home', 'paid', 100, false)$$, pg_temp.u(4), :'rex'), 'a request for a pet already confirmed for these dates');
 -- contact details unlock after confirmation, both ways
 select pg_temp.as_role('authenticated', pg_temp.u(1), format($$insert into public.messages (conversation_id, sender_id, body) values (%L, %L, 'Now: 0101 234 5678 or mona@mail.com')$$, (select v from t_ids where k = 'conv12'), pg_temp.u(1)));
 select pg_temp.check((select not masked and body = 'Now: 0101 234 5678 or mona@mail.com' from public.messages where conversation_id = (select v::uuid from t_ids where k = 'conv12') order by id desc limit 1), 'contact details stayed masked after confirmation');
@@ -518,7 +519,7 @@ select pg_temp.fails_as('authenticated', pg_temp.u(1), format($$select * from pu
 select pg_temp.fails_as('authenticated', pg_temp.u(3), format($$select public.cancel_booking(%L, 'x')$$, (select v from t_ids where k = 'b1')), 'a stranger cancelled a booking');
 select pg_temp.fails_as('anon', null, format($$select public.cancel_booking(%L, 'x')$$, (select v from t_ids where k = 'b1')), 'anon cancelled a booking');
 -- B4 (Rex, later dates) confirmed too: cancelling B1 keeps the pet locked while B4 stands
-insert into t_ids select 'b4', pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 30, current_date + 33, 'sitter_home', 'volunteer', null, true)::text$$, pg_temp.u(2), :'rex'));
+insert into t_ids select 'b4', pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 30, (now() at time zone 'Africa/Cairo')::date + 33, 'sitter_home', 'volunteer', null, true)::text$$, pg_temp.u(2), :'rex'));
 select pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.accept_terms(%L, 1)$$, (select v from t_ids where k = 'b4')));
 select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(2), format($$select public.accept_terms(%L, 1)::text$$, (select v from t_ids where k = 'b4'))) = 'confirmed', 'a second, non-overlapping booking was not confirmed');
 select pg_temp.as_role('authenticated', pg_temp.u(2), format($$select public.cancel_booking(%L, 'plans changed')$$, (select v from t_ids where k = 'b1')));
@@ -534,7 +535,7 @@ select pg_temp.check((select locked from public.pets where id = :'rex'), 'the pe
 select pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.cancel_booking(%L, 'x')$$, (select v from t_ids where k = 'b2')));
 -- an owner-home stay releases the owner's location instead
 select pg_temp.setloc(1, 28.55, 34.45);
-insert into t_ids select 'b5', pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, current_date + 40, current_date + 42, 'owner_home', 'paid', 150, false)::text$$, pg_temp.u(2), :'rex'));
+insert into t_ids select 'b5', pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.request_booking(%L, %L, (now() at time zone 'Africa/Cairo')::date + 40, (now() at time zone 'Africa/Cairo')::date + 42, 'owner_home', 'paid', 150, false)::text$$, pg_temp.u(2), :'rex'));
 select pg_temp.as_role('authenticated', pg_temp.u(1), format($$select public.accept_terms(%L, 1)$$, (select v from t_ids where k = 'b5')));
 select pg_temp.as_role('authenticated', pg_temp.u(2), format($$select public.accept_terms(%L, 1)$$, (select v from t_ids where k = 'b5')));
 select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(2), format($$select lat::text from public.get_booking_location(%L)$$, (select v from t_ids where k = 'b5'))) = (select lat::text from private.locations where user_id = pg_temp.u(1)), 'an owner-home stay should release the owner''s location');
@@ -548,10 +549,10 @@ select pg_temp.person(62, 'sitter', 'Map3'); select pg_temp.setloc(62, 28.47, 34
 select pg_temp.person(63, 'sitter', 'Map4'); select pg_temp.setloc(63, 28.48, 34.54);   select pg_temp.avail(63, '{dog,cat}', 1, 20); select pg_temp.setpaid(63, -1);        -- paused
 select pg_temp.person(64, 'sitter', 'Map5'); select pg_temp.setloc(64, 28.49, 34.55);   select pg_temp.avail(64, '{dog,cat}', 1, 20);                                       -- blocked by the caller
 select pg_temp.person(65, 'sitter', 'Map6'); select pg_temp.setloc(65, 28.50, 34.56);   select pg_temp.avail(65, '{dog,cat}', 1, 20); update public.profiles set status = 'suspended' where id = pg_temp.u(65);
-select pg_temp.person(66, 'sitter', 'Map7'); select pg_temp.setloc(66, 28.51, 34.57);   insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers) values (pg_temp.u(66), current_date - 10, current_date - 1, '{dog,cat}', array['paid']);   -- ended yesterday
+select pg_temp.person(66, 'sitter', 'Map7'); select pg_temp.setloc(66, 28.51, 34.57);   insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers) values (pg_temp.u(66), (now() at time zone 'Africa/Cairo')::date - 10, (now() at time zone 'Africa/Cairo')::date - 1, '{dog,cat}', array['paid']);   -- ended yesterday
 select pg_temp.person(67, 'sitter', 'Map8');                                            select pg_temp.avail(67, '{dog,cat}', 1, 20);                                          -- no location, so no area on the map
 select pg_temp.person(68, 'owner', 'Mapper');
-select pg_temp.person(69, 'sitter', 'Map9'); select pg_temp.setloc(69, 28.52, 34.58);   insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers) values (pg_temp.u(69), current_date - 5, current_date, '{dog,cat}', array['paid']);          -- ends today: still open
+select pg_temp.person(69, 'sitter', 'Map9'); select pg_temp.setloc(69, 28.52, 34.58);   insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers) values (pg_temp.u(69), (now() at time zone 'Africa/Cairo')::date - 5, (now() at time zone 'Africa/Cairo')::date, '{dog,cat}', array['paid']);          -- ends today: still open
 insert into public.blocks (blocker_id, blocked_id) values (pg_temp.u(68), pg_temp.u(64));
 create or replace function pg_temp.mapped(p_caller integer, p_type text, p_limit integer default 300) returns text language sql as $$
   select coalesce(pg_temp.as_role('authenticated', pg_temp.u(p_caller),
@@ -579,8 +580,8 @@ select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(68), format($$se
 select pg_temp.check(not exists (select 1 from pg_proc p where p.proname = 'map_availability' and p.pronamespace = 'public'::regnamespace and (p.proargnames && array['lat', 'lng', 'address', 'exact_lat', 'exact_lng'])), 'the map function exposes exact columns');
 select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(68), format($$select (offers = array['paid'] and price_per_night = 100 and first_name = 'Map1')::text from public.map_availability(null, 300) where user_id = %L$$, pg_temp.u(60))) = 'true', 'the map row has the wrong public details');
 select pg_temp.fails_as('anon', null, $$select count(*) from public.map_availability(null, 10)$$, 'anon read the map');
-select pg_temp.fails_as('authenticated', pg_temp.u(68), $$insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers) values (auth.uid(), current_date + 1, current_date + 5, '{dog}', array['paid'])$$, 'an owner posted availability');
-select pg_temp.fails(format($$insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers) values (%L, current_date + 1, current_date + 5, '{dog}', array['swap'])$$, pg_temp.u(60)), 'a swap offer was stored');
+select pg_temp.fails_as('authenticated', pg_temp.u(68), $$insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers) values (auth.uid(), (now() at time zone 'Africa/Cairo')::date + 1, (now() at time zone 'Africa/Cairo')::date + 5, '{dog}', array['paid'])$$, 'an owner posted availability');
+select pg_temp.fails(format($$insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers) values (%L, (now() at time zone 'Africa/Cairo')::date + 1, (now() at time zone 'Africa/Cairo')::date + 5, '{dog}', array['swap'])$$, pg_temp.u(60)), 'a swap offer was stored');
 
 \echo '--- M8 the clean-up list'
 select pg_temp.new_user(pg_temp.u(50), 'p50-b1@example.com', 'owner');
@@ -659,3 +660,8 @@ select pg_temp.adm($$select public.admin_set_setting('instapay_link', '')$$);
 select pg_temp.adm($$select public.admin_set_setting('instapay_qr_url', '')$$);
 
 \echo 'membership assertions OK'
+
+-- review fixes: reminder carries the renewal fee, helper oracles closed to anon, verification tries are counted
+select pg_temp.check(not has_function_privilege('anon', 'public.is_active(uuid)', 'execute') and not has_function_privilege('anon', 'public.has_confirmed_booking(uuid, uuid)', 'execute')
+                 and not has_function_privilege('anon', 'public.is_blocked_between(uuid, uuid)', 'execute'), 'anon can call a helper that answers questions about people');
+select pg_temp.check(private.today() = (now() at time zone 'Africa/Cairo')::date, 'today is not the Cairo date');

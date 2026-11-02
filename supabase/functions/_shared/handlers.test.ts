@@ -260,8 +260,8 @@ test('cleanup-photos: cleans ids and payments too', async () => {
 // ---------------------------------------------------------------- membership-reminders
 const REMIND_KEY = 'reminder-secret-with-enough-length-0123456789';
 const remindReq = (secret?: string, method = 'POST') => new Request('http://x', { method, headers: secret === undefined ? {} : { 'x-reminder-secret': secret } });
-const U1 = { user_id: 'u1', email: 'ana@example.test', first_name: 'Ana', locale: 'en', paid_until: '2027-01-10' };
-const U2 = { user_id: 'u2', email: 'sara@example.test', first_name: 'Sara', locale: 'ar', paid_until: '2027-01-11' };
+const U1 = { user_id: 'u1', email: 'ana@example.test', first_name: 'Ana', locale: 'en', paid_until: '2027-01-10', amount_egp: 25 };
+const U2 = { user_id: 'u2', email: 'sara@example.test', first_name: 'Sara', locale: 'ar', paid_until: '2027-01-11', amount_egp: 25 };
 function fakeProvider(failFor: string[] = []) {
   const sent: { to: string; subject: string; text: string }[] = [];
   const provider: EmailProvider = { name: 'fake', async send(m) { if (failFor.includes(m.to)) throw new Error('refused'); sent.push(m); } };
@@ -285,7 +285,6 @@ test('membership-reminders: one email per person, in their language, then marked
   const order: string[] = [];
   const { rpc, calls } = fakeRpc({
     list_due_reminders: () => [U1, U2],
-    get_payment_settings: () => ({ renewal_fee_egp: '25' }),
     mark_reminded: (a) => { order.push(`mark ${a.p_user}`); return null; },
   });
   const p = fakeProvider();
@@ -304,8 +303,8 @@ test('membership-reminders: one email per person, in their language, then marked
   assert.ok(!JSON.stringify(body).includes('@'), 'the answer carries no emails');
 });
 
-test('membership-reminders: no amount in the settings means no amount in the email', async () => {
-  const { rpc } = fakeRpc({ list_due_reminders: () => [U1], get_payment_settings: () => new Error('x') });
+test('membership-reminders: no amount in the row means no amount in the email', async () => {
+  const { rpc } = fakeRpc({ list_due_reminders: () => [{ ...U1, amount_egp: null }] });
   const p = fakeProvider();
   await handleMembershipReminders(remindReq(REMIND_KEY), remindDeps(rpc, p));
   assert.ok(p.sent[0].text.includes('renews on 2027-01-10') && !/EGP|\d+ ?جنيه/.test(p.sent[0].text));

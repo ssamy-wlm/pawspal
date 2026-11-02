@@ -92,8 +92,8 @@ export interface DecisionResult { fileLeft: boolean }
 async function removeFile(bucket: 'ids' | 'payments', path: unknown): Promise<DecisionResult> {
   if (typeof path !== 'string' || path === '') return { fileLeft: false };
   try {
-    const { error } = await supabase().storage.from(bucket).remove([path]);
-    return { fileLeft: !!error };
+    const { data, error } = await supabase().storage.from(bucket).remove([path]);
+    return { fileLeft: !!error || !Array.isArray(data) || data.length !== 1 };   // a silent "removed nothing" counts as left
   } catch { return { fileLeft: true }; }
 }
 export async function decideVerification(userId: string, approve: boolean, adult: boolean, note: string): Promise<DecisionResult> {

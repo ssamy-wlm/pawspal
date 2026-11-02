@@ -13,7 +13,7 @@ export interface ReminderDeps {
   provider(env: Env): EmailProvider;
 }
 
-interface DueRow { user_id: string; email: string; first_name: string | null; locale: string | null; paid_until: string }
+interface DueRow { user_id: string; email: string; first_name: string | null; locale: string | null; paid_until: string; amount_egp?: number | null }
 
 const DATE = /^\d{4}-\d{2}-\d{2}/;
 
@@ -23,10 +23,9 @@ function asRows(data: unknown): DueRow[] {
     typeof r.user_id === 'string' && typeof r.email === 'string' && r.email.includes('@') && typeof r.paid_until === 'string' && DATE.test(r.paid_until));
 }
 
-/** The renewal fee from the settings, or null when it is not there. Never hard coded. */
-function amountOf(data: unknown): number | null {
-  const v = (data as { renewal_fee_egp?: unknown } | null)?.renewal_fee_egp;
-  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+/** The renewal fee comes with each row from the database settings. Never hard coded. */
+function amountOf(row: Pick<DueRow, 'amount_egp'>): number | null {
+  const n = Number(row.amount_egp);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
@@ -66,14 +65,11 @@ export async function handleMembershipReminders(req: Request, deps: ReminderDeps
   const rows = asRows(listed.data);
   if (rows.length === 0) return json(200, { sent: 0, failed: 0 });
 
-  const settings = await deps.rpc('get_payment_settings', {});
-  const amount = settings.error ? null : amountOf(settings.data);
-
   let sent = 0;
   let failed = 0;
   for (const row of rows) {
     try {
-      await provider.send({ to: row.email, ...reminderEmail(row, amount) });
+      await provider.send({ to: row.email, ...reminderEmail(row, amountOf(row)) });
     } catch {
       failed += 1;                                   // not marked, so tomorrow's run tries again
       continue;
