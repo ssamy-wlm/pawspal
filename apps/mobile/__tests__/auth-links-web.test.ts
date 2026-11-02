@@ -6,14 +6,14 @@ const ORIGIN = 'https://app.pawspal.example';
 const g = globalThis as unknown as { window?: unknown };
 let original: unknown;
 const replaceState = jest.fn();
-const setSession = jest.spyOn(supabase.auth, 'setSession');
+let setSession: jest.SpyInstance;
 
 beforeEach(() => {
   original = g.window;
   g.window = { location: { origin: ORIGIN, pathname: '/auth/callback', href: `${ORIGIN}/auth/callback#access_token=A` }, history: { state: null, replaceState } };
   jest.replaceProperty(Platform, 'OS', 'web');
   replaceState.mockReset();
-  setSession.mockReset();
+  setSession = jest.spyOn(supabase.auth, 'setSession');
   setSession.mockResolvedValue({ data: { session: null, user: null }, error: null } as never);
 });
 afterEach(() => { jest.restoreAllMocks(); g.window = original; });
