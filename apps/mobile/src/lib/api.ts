@@ -1,8 +1,8 @@
 // Talks to the Edge Functions and holds the plain-sentence error mapping. The device id (a random id made on this phone)
 // goes only to sign-up; the server stores a one-way hash of it.
-import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import { supabase } from './supabase';
+import { getItem, setItem } from './storage';
 import type { Key } from '../i18n';
 
 const base = () => `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
@@ -41,10 +41,10 @@ let cachedDevice: string | null = null;
 export async function deviceId(): Promise<string> {
   if (cachedDevice) return cachedDevice;
   let id: string | null = null;
-  try { id = await SecureStore.getItemAsync(DEVICE_KEY); } catch { /* fall through to a new id */ }
+  try { id = await getItem(DEVICE_KEY); } catch { /* fall through to a new id */ }
   if (!id) {
     id = Crypto.randomUUID();
-    try { await SecureStore.setItemAsync(DEVICE_KEY, id); } catch { /* the id still works until the app closes */ }
+    try { await setItem(DEVICE_KEY, id); } catch { /* the id still works until the app closes */ }
   }
   cachedDevice = id;
   return id;

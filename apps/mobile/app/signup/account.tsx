@@ -7,7 +7,7 @@ import { TextField } from '../../src/components/TextField';
 import { Button } from '../../src/components/Button';
 import { Icon } from '../../src/components/Icon';
 import { authErrorKey, deviceId } from '../../src/lib/api';
-import { AUTH_CALLBACK } from '../../src/lib/authLinks';
+import { authCallbackUrl } from '../../src/lib/authLinks';
 import { Role, setPendingEmail } from '../../src/lib/draft';
 import { supabase } from '../../src/lib/supabase';
 import { isEmail, isStrongPassword } from '../../src/lib/validate';
@@ -40,7 +40,7 @@ export default function AccountStep() {
       const address = email.trim();
       const { data, error: err } = await supabase.auth.signUp({
         email: address, password,
-        options: { emailRedirectTo: AUTH_CALLBACK, data: { role, terms_version: legal.termsOfService.version, device_id: await deviceId() } },
+        options: { emailRedirectTo: authCallbackUrl(), data: { role, terms_version: legal.termsOfService.version, device_id: await deviceId() } },
       });
       if (err) { setError(tr(authErrorKey(err))); return; }
       if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) { setError(tr('err.emailTaken')); return; }

@@ -1,8 +1,8 @@
 // Minimal i18n. Arabic copy is a DRAFT: have a native speaker review every string before launch.
-import { DevSettings, I18nManager } from 'react-native';
+import { DevSettings, I18nManager, Platform } from 'react-native';
 import { getLocales } from 'expo-localization';
-import * as SecureStore from 'expo-secure-store';
 import * as Updates from 'expo-updates';
+import { getItem, setItem } from '../lib/storage';
 import en from './en.json';
 import ar from './ar.json';
 
@@ -41,11 +41,12 @@ export function tn(base: PluralBase, n: number, params?: Params): string {
 /** Call once at start-up, before the first screen. Loads the saved language and makes the layout direction match. */
 export async function initI18n(): Promise<void> {
   try {
-    const saved = await SecureStore.getItemAsync(STORE_KEY);
+    const saved = await getItem(STORE_KEY);
     current = saved === 'ar' || saved === 'en' ? saved : deviceLocale();
   } catch {
     current = deviceLocale();
   }
+  if (Platform.OS === 'web') { applyPageLanguage(); return; } // the browser flips the layout from the page's dir; no restart
   I18nManager.allowRTL(true);
   if (I18nManager.isRTL !== isRTL()) {
     I18nManager.forceRTL(isRTL());
@@ -57,10 +58,18 @@ export async function initI18n(): Promise<void> {
 export async function switchLanguage(next: Locale): Promise<void> {
   if (next === current) return;
   current = next;
-  try { await SecureStore.setItemAsync(STORE_KEY, next); } catch { /* the choice still applies until the app closes */ }
+  try { await setItem(STORE_KEY, next); } catch { /* the choice still applies until the app closes */ }
+  if (Platform.OS === 'web') { applyPageLanguage(); window.location.reload(); return; } // a reload redraws every string
   I18nManager.allowRTL(true);
   I18nManager.forceRTL(isRTL());
   await reloadApp();
+}
+
+/** Web only: the page's language and direction follow the saved language (dir="rtl" mirrors the whole layout). */
+export function applyPageLanguage(): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = current;
+  document.documentElement.dir = isRTL() ? 'rtl' : 'ltr';
 }
 
 async function reloadApp() {

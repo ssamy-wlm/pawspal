@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import { getItem, setItem } from '../lib/storage';
 import tokens from './tokens.json';
 
 export type ThemeMode = 'system' | 'light' | 'navy';
@@ -42,11 +42,11 @@ export function ThemeProvider({ children, initialMode = 'system' }: { children: 
   const system = useColorScheme();
   const [mode, setModeState] = useState<ThemeMode>(initialMode);
   useEffect(() => {
-    SecureStore.getItemAsync(STORE_KEY).then((v) => { if (isMode(v)) setModeState(v); }).catch(() => {});
+    getItem(STORE_KEY).then((v) => { if (isMode(v)) setModeState(v); }).catch(() => {});
   }, []);
   const setMode = useCallback((m: ThemeMode) => {
     setModeState(m);
-    SecureStore.setItemAsync(STORE_KEY, m).catch(() => {});
+    setItem(STORE_KEY, m).catch(() => {});
   }, []);
   const theme = useMemo(() => {
     if (mode === 'navy') return navyTheme;

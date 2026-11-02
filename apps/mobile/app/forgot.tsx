@@ -5,7 +5,7 @@ import { ErrorText } from '../src/components/StepScreen';
 import { TextField } from '../src/components/TextField';
 import { Button } from '../src/components/Button';
 import { authErrorKey } from '../src/lib/api';
-import { AUTH_RESET } from '../src/lib/authLinks';
+import { authResetUrl } from '../src/lib/authLinks';
 import { getPendingEmail } from '../src/lib/draft';
 import { supabase } from '../src/lib/supabase';
 import { isEmail } from '../src/lib/validate';
@@ -24,7 +24,7 @@ export default function Forgot() {
     if (!isEmail(email)) return;
     setBusy(true); setError(null);
     try {
-      const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: AUTH_RESET });
+      const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: authResetUrl() });
       if (err && authErrorKey(err) === 'err.network') { setError(tr('err.network')); return; }
       setDone(true);
     } catch (e) {

@@ -6,7 +6,7 @@ import { ErrorText } from '../src/components/StepScreen';
 import { TextField } from '../src/components/TextField';
 import { Button } from '../src/components/Button';
 import { authErrorKey } from '../src/lib/api';
-import { AUTH_CALLBACK } from '../src/lib/authLinks';
+import { authCallbackUrl } from '../src/lib/authLinks';
 import { getPendingEmail } from '../src/lib/draft';
 import { supabase } from '../src/lib/supabase';
 import { isEmail } from '../src/lib/validate';
@@ -42,7 +42,7 @@ export default function SignIn() {
   const resend = async () => {
     setBusy(true);
     try {
-      const { error: err } = await supabase.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: AUTH_CALLBACK } });
+      const { error: err } = await supabase.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: authCallbackUrl() } });
       if (err) setError(tr(authErrorKey(err))); else { setResent(true); setError(null); }
     } catch (e) { setError(tr(authErrorKey(e))); } finally { setBusy(false); }
   };
