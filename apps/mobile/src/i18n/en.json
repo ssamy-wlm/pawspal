@@ -532,5 +532,22 @@
   "map.availability.error": "We could not load the map. Check your connection and try again.",
   "map.availability.retry": "Try again",
   "map.availability.loading": "Loading the map",
-  "map.availability.note": "Pins show an approximate area, not a home. Tap a pin or a host below."
+  "map.availability.note": "Pins show an approximate area, not a home. Tap a pin or a host below.",
+  "signup.camera.deniedWeb": "PawsPal could not open your camera. You can allow it in your browser, or choose a photo instead.",
+  "signup.selfie.choose": "Choose a photo instead",
+  "signup.selfie.webNoCamera": "This browser cannot open the camera here. Take a photo or choose one from your device.",
+  "install.title": "Install PawsPal",
+  "install.sub": "Add it to your home screen to open it like an app.",
+  "install.button": "Install",
+  "install.dismiss": "Not now",
+  "install.dismissLabel": "Hide the install suggestion",
+  "install.howTitle": "Add PawsPal to your home screen",
+  "install.step1": "Tap the Share button at the bottom of Safari.",
+  "install.step2": "Scroll down and tap Add to Home Screen.",
+  "install.step3": "Tap Add.",
+  "install.openSafari": "Using Chrome or another browser on your iPhone? Open this page in Safari first.",
+  "install.close": "Got it",
+  "install.settingsHint": "Open PawsPal from your home screen, like any app.",
+  "install.installed": "PawsPal is on your home screen.",
+  "install.how": "Show me how"
 }

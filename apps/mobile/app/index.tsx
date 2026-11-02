@@ -6,6 +6,7 @@ import { useEntrance } from '../src/motion';
 import { AnimatedLogo } from '../src/components/AnimatedLogo';
 import { Blob } from '../src/components/Blob';
 import { Illustration } from '../src/components/Illustration';
+import { InstallPrompt } from '../src/components/InstallPrompt';
 import { fontFamily, useTheme } from '../src/theme';
 import { isRTL, Key, t as tr } from '../src/i18n';
 
@@ -82,6 +83,7 @@ export default function Welcome() {
       <View style={{ paddingHorizontal: 24, paddingBottom: 32, gap: 14 }}>
         <Option primary title={tr('welcome.create')} sub={tr('welcome.createSub')} delay={1300} onPress={() => router.push('/signup/account')} />
         <Option title={tr('welcome.signin')} sub={tr('welcome.signinSub')} delay={1450} onPress={() => router.push('/signin')} />
+        <InstallPrompt delay={1600} />
         <Text style={{ textAlign: 'center', color: c.textMuted, fontSize: 12, fontFamily: fontFamily('regular', rtl) }}>{tr('welcome.legal')}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 4 }}>
           {LEGAL.map(({ slug, label }) => (

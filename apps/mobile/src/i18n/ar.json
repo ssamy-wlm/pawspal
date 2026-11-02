@@ -556,5 +556,22 @@
   "map.availability.error": "تعذر تحميل الخريطة. تحقق من الاتصال وحاول مرة أخرى.",
   "map.availability.retry": "حاول مرة أخرى",
   "map.availability.loading": "جارٍ تحميل الخريطة",
-  "map.availability.note": "تُظهر الدبابيس منطقة تقريبية وليس منزلًا. اضغط على دبوس أو على مضيف أدناه."
+  "map.availability.note": "تُظهر الدبابيس منطقة تقريبية وليس منزلًا. اضغط على دبوس أو على مضيف أدناه.",
+  "signup.camera.deniedWeb": "تعذّر على PawsPal فتح الكاميرا. يمكنك السماح بها من المتصفح، أو اختيار صورة بدلاً من ذلك.",
+  "signup.selfie.choose": "اختر صورة بدلاً من ذلك",
+  "signup.selfie.webNoCamera": "لا يستطيع هذا المتصفح فتح الكاميرا هنا. التقط صورة أو اختر واحدة من جهازك.",
+  "install.title": "ثبّت PawsPal",
+  "install.sub": "أضفه إلى شاشتك الرئيسية لتفتحه كأي تطبيق.",
+  "install.button": "تثبيت",
+  "install.dismiss": "ليس الآن",
+  "install.dismissLabel": "إخفاء اقتراح التثبيت",
+  "install.howTitle": "أضف PawsPal إلى شاشتك الرئيسية",
+  "install.step1": "اضغط على زر المشاركة أسفل Safari.",
+  "install.step2": "مرّر للأسفل واضغط على «إضافة إلى الشاشة الرئيسية».",
+  "install.step3": "اضغط على «إضافة».",
+  "install.openSafari": "تستخدم Chrome أو متصفحًا آخر على iPhone؟ افتح هذه الصفحة في Safari أولاً.",
+  "install.close": "فهمت",
+  "install.settingsHint": "افتح PawsPal من شاشتك الرئيسية، مثل أي تطبيق.",
+  "install.installed": "PawsPal على شاشتك الرئيسية.",
+  "install.how": "أرني كيف"
 }

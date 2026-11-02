@@ -1,9 +1,7 @@
 import React from 'react';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { useTheme } from '../theme';
-
-/** The map page may only be the page itself. Every other navigation (links, redirects, other sites) is refused. */
-export const allowMapRequest = (url: string): boolean => url === 'about:blank' || url === 'about:srcdoc';
+import { allowMapRequest } from '../lib/mapHtml';
 
 export interface MapSurfaceHandle { select(id: string): void }
 export interface MapSurfaceProps {

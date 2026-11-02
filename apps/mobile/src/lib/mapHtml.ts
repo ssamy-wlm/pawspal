@@ -36,6 +36,9 @@ export function pinsFromRows<R extends MapRow>(rows: R[], priceOf: (r: R) => str
   return pins;
 }
 
+/** The map page may only be the page itself. Every other navigation (links, redirects, other sites) is refused. */
+export const allowMapRequest = (url: string): boolean => url === 'about:blank' || url === 'about:srcdoc';
+
 /** JSON that is safe inside a <script> element: no "</script>", no HTML comment openers, no line separators. */
 export function safeJson(value: unknown): string {
   return JSON.stringify(value)

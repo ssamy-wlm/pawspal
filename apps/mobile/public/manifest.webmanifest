@@ -1,0 +1,20 @@
+{
+  "name": "PawsPal Dahab",
+  "short_name": "PawsPal",
+  "description": "Pet sitting in Dahab, from people who live here.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1F2D3D",
+  "theme_color": "#1F2D3D",
+  "lang": "en",
+  "dir": "auto",
+  "categories": ["lifestyle", "travel"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

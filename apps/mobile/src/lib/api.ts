@@ -72,6 +72,27 @@ async function accessToken(): Promise<string> {
   return data.session.access_token;
 }
 
+/**
+ * The bytes of a photo from its address: a file:// address on a phone, a blob: address (a chosen file) or a data: address
+ * (a camera picture) on the web. data: addresses are decoded here so the page's content policy never has to allow them in fetch.
+ */
+export async function readImageBytes(uri: string): Promise<ArrayBuffer> {
+  const m = /^data:[^;,]*(;base64)?,/i.exec(uri);
+  if (m) {
+    const payload = uri.slice(m[0].length);
+    const raw = m[1] ? atob(payload) : decodeURIComponent(payload);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i) & 0xff;
+    return out.buffer;
+  }
+  return (await fetch(uri)).arrayBuffer();
+}
+
+const isPng = (b: ArrayBuffer): boolean => {
+  const h = new Uint8Array(b, 0, Math.min(4, b.byteLength));
+  return h.length === 4 && h[0] === 0x89 && h[1] === 0x50 && h[2] === 0x4e && h[3] === 0x47;
+};
+
 export type UploadKind = 'face' | 'id' | 'payment' | 'pet' | 'home' | 'handover';
 
 /**
@@ -84,9 +105,10 @@ export async function uploadPhoto(kind: UploadKind, uri: string): Promise<string
   const uid = u.user?.id;
   if (!uid) throw new ApiError('unauthorized', 401);
   let bytes: ArrayBuffer;
-  try { bytes = await (await fetch(uri)).arrayBuffer(); } catch { throw new ApiError('invalid_image', 0); }
-  const path = `${uid}/${Crypto.randomUUID()}.jpg`;
-  const up = await supabase.storage.from('incoming').upload(path, bytes, { contentType: 'image/jpeg' });
+  try { bytes = await readImageBytes(uri); } catch { throw new ApiError('invalid_image', 0); }
+  const png = isPng(bytes);
+  const path = `${uid}/${Crypto.randomUUID()}.${png ? 'png' : 'jpg'}`;
+  const up = await supabase.storage.from('incoming').upload(path, bytes, { contentType: png ? 'image/png' : 'image/jpeg' });
   if (up.error) throw new ApiError('try_again_later', 0);
   const done = await call<{ path: string }>('process-upload', { kind, path }, token);
   return done.path;

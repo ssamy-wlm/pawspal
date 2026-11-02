@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '../src/components/Button';
 import { Chip } from '../src/components/Chip';
+import { InstallPrompt } from '../src/components/InstallPrompt';
 import { useAuth } from '../src/lib/auth';
 import { hapticsEnabled, onHapticsChange, setHapticsEnabled } from '../src/lib/haptics';
 import { fontFamily, ThemeMode, useTheme, useThemeMode } from '../src/theme';
@@ -52,6 +53,7 @@ export default function Settings() {
         </View>
         <Text style={{ color: c.textMuted, fontSize: 14, fontFamily: fontFamily('regular', rtl) }}>{tr('settings.hapticsNote')}</Text>
       </View>
+      <InstallPrompt variant="settings" />
       {session ? (
         <View style={{ gap: 12 }}>
           {title('settings.account')}

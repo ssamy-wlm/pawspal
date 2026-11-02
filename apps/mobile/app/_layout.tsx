@@ -11,8 +11,11 @@ import { initHaptics } from '../src/lib/haptics';
 import { ToastProvider } from '../src/components/Toast';
 import { AuthProvider } from '../src/lib/auth';
 import { useAuthLinks } from '../src/lib/authLinks';
+import { captureInstallPrompt } from '../src/lib/installPrompt';
+import { hideWebSplash, registerServiceWorker } from '../src/lib/webShell';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+captureInstallPrompt(); // the browser offers "install" once, early: catch it before any screen exists
 
 function Nav() {
   const t = useTheme();
@@ -71,7 +74,8 @@ export default function RootLayout() {
   const [i18nReady, setI18nReady] = React.useState(false);
   React.useEffect(() => { initI18n().finally(() => setI18nReady(true)); initHaptics().catch(() => {}); }, []);
   const ready = fontsLoaded && i18nReady;
-  React.useEffect(() => { if (ready) SplashScreen.hideAsync().catch(() => {}); }, [ready]);
+  React.useEffect(() => { if (ready) { SplashScreen.hideAsync().catch(() => {}); hideWebSplash(); } }, [ready]);
+  React.useEffect(() => { registerServiceWorker(); }, []);
   if (!ready) return null;
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
