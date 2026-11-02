@@ -13,7 +13,8 @@
     "lint": "expo lint --max-warnings 0",
     "test": "jest",
     "web": "npm run sync && expo start --web",
-    "build:web": "npm run sync && expo export -p web"
+    "build:web": "npm run sync && expo export -p web",
+    "check:web": "node ../../scripts/check-web-build.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/cairo": "^0.4.2",

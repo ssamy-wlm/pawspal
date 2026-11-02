@@ -32,7 +32,7 @@ function Steps({ safari, onClose }: { safari: boolean; onClose: () => void }) {
   const text = { color: c.text, fontSize: 16, lineHeight: 23, fontFamily: fontFamily('regular', rtl), flexShrink: 1 } as const;
   const steps = ['install.step1', 'install.step2', 'install.step3'] as const;
   return (
-    <Modal transparent animationType="none" onRequestClose={onClose} accessibilityViewIsModal>
+    <Modal visible transparent animationType="none" onRequestClose={onClose} accessibilityViewIsModal>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: t.brand.navy + '99' }}>
         <Pressable accessibilityRole="button" accessibilityLabel={tr('install.close')} style={{ flex: 1 }} onPress={onClose} />
         <Animated.View style={[{ backgroundColor: c.surface, padding: 24, paddingBottom: 24 + insets.bottom, gap: 16, borderTopStartRadius: 28, borderTopEndRadius: 28 }, enter]}>
