@@ -60,6 +60,14 @@ Run one phase at a time with `/phase N`. A phase is done only when every accepta
 - Account deletion and data export, notifications, Sentry.
 - EAS builds, store listings, privacy labels (App Store) and data safety form (Google Play) matching the privacy policy.
 - **Accept:** the security checklist is fully ticked and the legal review is done.
+- **Backlog from the passkey reviews (low or medium, none high):**
+  - Move the admin site to a nonce-based Content-Security-Policy (today `script-src` allows `'unsafe-inline'` because of Next.js, and the Supabase token sits in browser storage).
+  - Turn on the Supabase session time limit and inactivity limit for admins (a paid-plan setting); config hints are in `supabase/config.toml`.
+  - Let a recovery session register a passkey only after a second proof (today it may add one without a fresh passkey touch, by design, so a lost-device recovery can finish).
+  - Wrap `is_admin()` in the row policies as `(select public.is_admin())` so it is evaluated once per query, and add retention for the audit and security event tables beyond the passkey failure rows.
+  - A setup code is not tied to a device: a leaked code plus the password within 15 minutes could add a rogue passkey. Consider "reset only" codes and an alert on `admin_setup_code_issued`.
+  - Update Next.js past the open moderate advisory (Dependabot will propose it) and review `npm audit` for the admin site.
+  - Email sign-up has no CAPTCHA yet; add one before launch. Gmail sending limits: switch to Resend when the domain exists.
 
 ## Web / PWA (after v3)
 The app builds for the browser and installs from it. See `docs/ARCHITECTURE.md` section 10b and `SETUP.md` E3b.
