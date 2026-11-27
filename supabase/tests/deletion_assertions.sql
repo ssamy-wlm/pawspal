@@ -12,9 +12,11 @@ select pg_temp.new_user(pg_temp.du(4), 'del-x-admin@example.com', 'sitter');
 select pg_temp.new_user(pg_temp.du(5), 'del-r-removed@example.com', 'owner');
 select pg_temp.new_user(pg_temp.du(6), 'del-o-owner@example.com', 'owner');
 select pg_temp.new_user(pg_temp.du(7), 'del-z-plain@example.com', 'owner');
+select pg_temp.new_user(pg_temp.du(8), 'del-y-clean@example.com', 'owner');
 do $$ declare i int; begin for i in 1..6 loop perform pg_temp.activate(pg_temp.du(i), 'N' || i); end loop; end $$;
 update public.profiles set first_name = 'Dina', bio = 'I love dogs', area = 'Masbat' where id = pg_temp.du(1);
 update public.profiles set first_name = 'Hana' where id = pg_temp.du(2);
+select pg_temp.activate(pg_temp.du(8), 'Yan');
 select pg_temp.make_admin(pg_temp.du(4));
 
 insert into storage.objects (bucket_id, name) values
@@ -58,10 +60,17 @@ select pg_temp.check((public.close_account(gen_random_uuid()) ->> 'status') = 'n
 insert into public.bookings (id, owner_id, sitter_id, pet_id, starts_on, ends_on, status) values (pg_temp.du(202), pg_temp.du(1), pg_temp.du(3), pg_temp.du(102), current_date + 5, current_date + 7, 'requested');
 select pg_temp.check((public.close_account(pg_temp.du(1)) ->> 'status') = 'active_booking', 'a person with an open booking was closed');
 select pg_temp.check((select status = 'active' and deleted_at is null and bio = 'I love dogs' from public.profiles where id = pg_temp.du(1)), 'a refused deletion changed the profile');
-select pg_temp.check(public.deletion_attempts_blocked(pg_temp.du(1)) = false, 'blocked before any failure');
-select public.note_deletion_failure(pg_temp.du(1)) from generate_series(1, 5);
-select pg_temp.check(public.deletion_attempts_blocked(pg_temp.du(1)), '5 wrong passwords did not block');
-select pg_temp.check(public.deletion_attempts_blocked(pg_temp.du(2)) = false, 'one person''s failures blocked another');
+select pg_temp.check(public.reserve_password_attempt(pg_temp.du(1), 'delete_attempt') and public.reserve_password_attempt(pg_temp.du(1), 'delete_attempt')
+                      and public.reserve_password_attempt(pg_temp.du(1), 'delete_attempt') and public.reserve_password_attempt(pg_temp.du(1), 'delete_attempt')
+                      and public.reserve_password_attempt(pg_temp.du(1), 'delete_attempt'), 'five tries should be reserved');
+select pg_temp.check(public.reserve_password_attempt(pg_temp.du(1), 'delete_attempt') = false, 'the sixth try in an hour was reserved');
+select pg_temp.check(public.reserve_password_attempt(pg_temp.du(1), 'export_attempt'), 'the export counter shares the delete counter');
+select pg_temp.check(public.reserve_password_attempt(pg_temp.du(2), 'delete_attempt'), 'one person''s tries blocked another');
+select pg_temp.check(public.reserve_password_attempt(pg_temp.du(2), 'nonsense') = false and public.reserve_password_attempt(gen_random_uuid(), 'delete_attempt') = false, 'a bad kind or unknown person was reserved');
+select public.release_password_attempt(pg_temp.du(1), 'delete_attempt');
+select pg_temp.check(public.reserve_password_attempt(pg_temp.du(1), 'delete_attempt'), 'a released try was not given back');
+select pg_temp.check(not exists (select 1 from public.security_events where user_id = pg_temp.du(1) and details::text ~* 'pass'), 'attempt rows hold something besides a count');
+delete from public.security_events where user_id in (pg_temp.du(1), pg_temp.du(2)) and kind in ('delete_attempt', 'export_attempt');
 -- nobody but the service role can call these
 select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$select public.close_account(%L)$$, pg_temp.du(1)), 'a user closed an account through the API');
 select pg_temp.fails_as('authenticated', pg_temp.du(1), 'select public.purge_deleted_accounts()', 'a user ran the purge');
@@ -70,6 +79,21 @@ select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$select public.l
 select pg_temp.fails_as('anon', null, format($$select public.close_account(%L)$$, pg_temp.du(1)), 'anon closed an account');
 select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$select public.note_data_export(%L)$$, pg_temp.du(1)), 'a user reset their export counter');
 select pg_temp.as_role('authenticated', pg_temp.du(1), format($$select public.cancel_booking(%L, 'no longer needed')$$, pg_temp.du(202)));
+-- a disputed booking and an unresolved report or appeal against the person block closing, and change nothing
+insert into public.bookings (id, owner_id, sitter_id, pet_id, starts_on, ends_on, status) values (pg_temp.du(203), pg_temp.du(1), pg_temp.du(3), pg_temp.du(101), current_date - 20, current_date - 18, 'disputed');
+select pg_temp.check((public.close_account(pg_temp.du(1)) ->> 'status') = 'active_booking', 'a disputed booking did not block closing');
+delete from public.bookings where id = pg_temp.du(203);
+select pg_temp.check((public.close_account(pg_temp.du(1)) ->> 'status') = 'open_case', 'an unresolved report against the person did not block closing');
+update public.reports set status = 'in_review' where reported_id = pg_temp.du(1);
+select pg_temp.check((public.close_account(pg_temp.du(1)) ->> 'status') = 'open_case', 'a report in review did not block closing');
+update public.reports set status = 'resolved' where reported_id = pg_temp.du(1);
+insert into public.appeals (id, action_id, user_id, body) select pg_temp.du(301), id, pg_temp.du(1), 'please reconsider' from public.enforcement_actions where user_id = pg_temp.du(1) limit 1;
+select pg_temp.check((public.close_account(pg_temp.du(1)) ->> 'status') = 'open_case', 'an unresolved appeal did not block closing');
+update public.appeals set status = 'resolved' where id = pg_temp.du(301);
+select pg_temp.check((select status = 'active' and deleted_at is null from public.profiles where id = pg_temp.du(1)) and not exists (select 1 from public.banned_identifiers where hash = private.email_hash('del-d-owner@example.com')), 'a refused deletion changed something');
+-- a person with no sanction at all keeps no ban hash; one with a warning does
+select pg_temp.check((public.close_account(pg_temp.du(8)) ->> 'status') = 'closed', 'the clean person could not close');
+select pg_temp.check(not exists (select 1 from public.banned_identifiers where hash = private.email_hash('del-y-clean@example.com')), 'an unsanctioned person was banned by deleting');
 
 \echo '--- D2 closing an account'
 update public.app_settings set value = '45' where key = 'deletion_grace_days';
@@ -95,6 +119,7 @@ select pg_temp.check((select status = 'rejected' and screenshot_path is null fro
                       and (select status = 'confirmed' from public.payment_claims where reference = 'REF-KEEP-1'), 'payment claims after closing are wrong');
 select pg_temp.check((select count(*) = 7 from public.list_user_files(pg_temp.du(1))), 'list_user_files should list the seven files of D');
 select pg_temp.check((select count(*) = 0 from public.list_user_files(pg_temp.du(1)) where name not like pg_temp.du(1)::text || '/%'), 'list_user_files listed another folder');
+select pg_temp.check(exists (select 1 from public.banned_identifiers where kind = 'email' and hash = private.email_hash('del-d-owner@example.com')), 'a person with a warning was not banned by deleting');
 select pg_temp.check((public.close_account(pg_temp.du(1)) ->> 'status') = 'already_closed', 'closing twice was not idempotent');
 select pg_temp.check((select count(*) = 1 from public.audit_log where action = 'account_deleted' and target_user = pg_temp.du(1) and details = '{"grace_days": 45}'), 'no clean audit entry');
 
@@ -110,6 +135,23 @@ select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$insert into pub
 select pg_temp.fails('update public.profiles set status = ''active'' where id = ''' || pg_temp.du(1) || '''', 'a deleted profile became active again');
 select pg_temp.fails_aal('aal2', pg_temp.du(4), format($$select public.admin_take_action(%L, 'reinstatement', null, null, false, '[]', 'back')$$, pg_temp.du(1)), 'an admin reinstated a deleted person');
 select pg_temp.fails_aal('aal2', pg_temp.du(4), format($$select public.admin_take_action(%L, 'approval', null, null, false, '[]', null)$$, pg_temp.du(1)), 'an admin approved a deleted person');
+
+-- an old access token of the closed person (the session claims still say it is them) can write nothing
+select pg_temp.as_role('authenticated', pg_temp.du(1), $$update public.profiles set first_name = 'Zed', bio = 'haunting', area = 'Everywhere' where id = auth.uid()$$);
+select pg_temp.check((select first_name = 'Deleted user' and bio is null and area is null from public.profiles where id = pg_temp.du(1)), 'a closed person edited their own stub');
+select pg_temp.fails_as('authenticated', pg_temp.du(1), $$select public.set_my_location(28.5, 34.5, 'Back again 1')$$, 'a closed person re-created their exact location');
+select pg_temp.check((select count(*) = 0 from private.locations where user_id = pg_temp.du(1)), 'the exact location came back');
+select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$insert into public.pets (owner_id, name, type, size, photo_paths) values (%L, 'Ghost', 'dog', 'small', array[%L])$$, pg_temp.du(1), pg_temp.du(1)::text || '/p1.jpg'), 'a closed person added a pet');
+select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$select public.set_pet_care(%L, 'Dr X', '0100', 'x')$$, pg_temp.du(101)), 'a closed person wrote vet details');
+select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$insert into public.legal_acceptances (user_id, doc, version) values (%L, 'guidelines', 'x9')$$, pg_temp.du(1)), 'a closed person accepted a document');
+select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$select public.block_user(%L)$$, pg_temp.du(3)), 'a closed person blocked someone');
+select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$select public.mark_conversation_read(%L)$$, (select v from t_ids where k = 'cv')), 'a closed person wrote a read mark');
+select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$insert into storage.objects (bucket_id, name) values ('incoming', %L)$$, pg_temp.du(1)::text || '/new.jpg'), 'a closed person uploaded a raw photo');
+select pg_temp.fails_as('authenticated', pg_temp.du(1), $$select public.set_notification_prefs('{"messages": false}')$$, 'a closed person set preferences');
+select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$select public.register_push_token('ExponentPushToken[closed-user-token]', 'ios')$$), 'a closed person registered a token');
+select pg_temp.fails_as('authenticated', pg_temp.du(1), format($$select public.submit_verification(%L, %L)$$, pg_temp.du(1)::text || '/a.jpg', pg_temp.du(1)::text || '/b.jpg'), 'a closed person submitted a verification');
+select pg_temp.fails_as('authenticated', pg_temp.du(1), $$select public.submit_payment_claim('REF-GHOST', null)$$, 'a closed person submitted a payment claim');
+select pg_temp.check((select count(*) = 0 from public.push_tokens where user_id = pg_temp.du(1)) and (select count(*) = 0 from public.verification_requests where user_id = pg_temp.du(1)), 'a closed person wrote rows');
 
 \echo '--- D4 the OTHER person keeps working history'
 select pg_temp.check(pg_temp.count_as(pg_temp.du(2), format($$select count(*) from public.my_conversations() where other_id = %L and first_name = 'Deleted user'$$, pg_temp.du(1))) = 1, 'the other person lost the conversation or it shows a real name');
@@ -159,6 +201,18 @@ select pg_temp.check(not exists (select 1 from public.profiles where id = pg_tem
 
 \echo '--- D6 retention of shared history'
 update public.app_settings set value = '1' where key = 'shared_history_months';
+-- a conversation or booking named by an unresolved report is kept, and a deleted booking's handover files are returned
+insert into storage.objects (bucket_id, name) values ('handovers', pg_temp.du(2)::text || '/hand204.jpg');
+insert into public.bookings (id, owner_id, sitter_id, pet_id, starts_on, ends_on, status) values (pg_temp.du(204), pg_temp.du(1), pg_temp.du(2), pg_temp.du(101), current_date - 92, current_date - 90, 'completed');
+insert into public.handover_photos (booking_id, uploaded_by, kind, photo_path) values (pg_temp.du(204), pg_temp.du(2), 'dropoff', pg_temp.du(2)::text || '/hand204.jpg');
+insert into public.reports (id, reporter_id, reported_id, reason, booking_id, conversation_id, details) values (pg_temp.du(401), pg_temp.du(2), pg_temp.du(1), 'other', pg_temp.du(204), (select v::uuid from t_ids where k = 'cv'), 'open evidence');
+select pg_temp.check(private.case_protected((select v::uuid from t_ids where k = 'cv'), null, pg_temp.du(1), pg_temp.du(2)), 'an open report did not protect the conversation');
+select pg_temp.check((public.purge_deleted_accounts() ->> 'bookings_deleted') = '0' and exists (select 1 from public.bookings where id = pg_temp.du(204)), 'a booking named by an open report was deleted');
+update public.reports set status = 'resolved' where id = pg_temp.du(401);
+create temp table t_ret as select public.purge_deleted_accounts() as r;
+select pg_temp.check((select (r ->> 'bookings_deleted') = '1' and (r -> 'files') @> jsonb_build_array(jsonb_build_object('bucket', 'handovers', 'name', pg_temp.du(2)::text || '/hand204.jpg')) from t_ret), 'the handover files of a deleted booking were not returned');
+select pg_temp.check(not private.case_protected((select v::uuid from t_ids where k = 'cv'), null, pg_temp.du(1), pg_temp.du(2)), 'a resolved report still protects');
+delete from public.reports where id = pg_temp.du(401);
 update public.messages set created_at = now() - interval '40 days' where conversation_id = (select v::uuid from t_ids where k = 'cv') and body = 'hello Hana';
 update public.conversations set created_at = now() - interval '40 days' where id = (select v::uuid from t_ids where k = 'cv');
 select pg_temp.check((public.purge_deleted_accounts() ->> 'messages_deleted') = '1', 'only the old message should go');

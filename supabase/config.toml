@@ -414,7 +414,7 @@ verify_jwt = true       # the signed-in person; the password is checked again in
 verify_jwt = true
 
 [functions.purge-accounts]
-verify_jwt = false      # called by a timer, proves itself with CLEANUP_SECRET (the same secret as cleanup-photos)
+verify_jwt = false      # called by a timer, proves itself with PURGE_SECRET
 
 [functions.send-notifications]
 verify_jwt = false      # called by a timer, proves itself with NOTIFICATIONS_SECRET

@@ -1,5 +1,5 @@
 // Nightly: finishes the deletion of accounts whose grace period ended, and applies the retention of shared history. The database
-// does the work (purge_deleted_accounts) and names the leftover photo files; this deletes them. Same secret as cleanup-photos.
+// does the work (purge_deleted_accounts) and names the leftover photo files; this deletes them. Its own secret (PURGE_SECRET).
 // Returns only counts. Never logs anything.
 import type { Env } from '../config.ts';
 import { checkSecret } from '../secret.ts';
@@ -16,7 +16,7 @@ const BUCKETS = new Set(['faces', 'pets', 'homes', 'handovers', 'ids', 'payments
 
 export async function handlePurgeAccounts(req: Request, deps: PurgeDeps): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
-  const who = await checkSecret(deps.env, 'CLEANUP_SECRET', req, 'x-cleanup-secret');
+  const who = await checkSecret(deps.env, 'PURGE_SECRET', req, 'x-purge-secret');
   if (who === 'not_configured') return json(503, { error: 'not_configured' });
   if (who === 'unauthorized') return json(401, { error: 'unauthorized' });
 

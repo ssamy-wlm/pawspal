@@ -59,6 +59,12 @@ Run one phase at a time with `/phase N`. A phase is done only when every accepta
 - Remove `app/showcase.tsx` from production builds.
 - Account deletion and data export, notifications, Sentry.
   - **Backend done (migrations `0017_push_notifications.sql`, `0018_account_deletion_export.sql`; functions `delete-account`, `export-my-data`, `purge-accounts`, `send-notifications`; tests `supabase/tests/push_assertions.sql`, `deletion_assertions.sql`, `_shared/phase9.test.ts`):** design and contract in `docs/ARCHITECTURE.md` section 11. Open: founder cron jobs and secrets (`supabase/functions/README.md`), admin Settings fields for `push_enabled`, `deletion_grace_days`, `shared_history_months`, the lawyer's confirmation of `[30]` days and `[24]` months, retention for moderation and audit records (`[36]` months), Expo push receipts, Arabic notification text review. **Skipped:** wrapping `is_admin()` in `(select ...)` in the row policies (it would mean rewriting every policy, including those on `storage.objects`, by text; low gain at this size, so left for a reviewed hand-written migration). Sentry, EAS builds and store forms are not part of this backend work.
+  - **Phase 9 backend, accepted low items (left as they are):**
+    - A push token can be re-registered by another account, but only by someone who already holds the leaked token; content is generic, so nothing leaks.
+    - Blocks and account status are not re-checked when a notification is claimed (only when it is queued), and the outbox has no per-kind slots (one waiting notification per thing, 20 per person).
+    - Expo push receipts are not polled (tokens that only fail at receipt time go after 180 days unseen).
+    - Sentry exception text must be truncated and scrubbed in the app (the app helper does part of it); never send message text.
+    - `jwt_expiry` in `supabase/config.toml` and the hosted Auth settings must stay at or below 3600 seconds: an old access token of a closed account is refused by the database, but only for the rules above, until it expires.
 - EAS builds, store listings, privacy labels (App Store) and data safety form (Google Play) matching the privacy policy.
 - **Accept:** the security checklist is fully ticked and the legal review is done.
 - **Backlog from the passkey reviews (low or medium, none high):**

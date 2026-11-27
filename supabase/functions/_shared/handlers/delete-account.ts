@@ -1,6 +1,6 @@
 // "Delete my account." The person proves it is them again with the password (checked here, never logged), then the database
 // closes the account at once (the person disappears everywhere, photos and posts go) and the sign-in account is blocked. The
-// final purge runs later (purge-accounts). Order matters: password, then the database, then sign-in is cut, then files.
+// final purge runs later (purge-accounts). Order matters: reserve a try, password, the database, THEN sessions end and sign-in is cut (a refused deletion never signs anyone out), then files.
 import { bearerToken, json, readJson, type Rpc } from '../http.ts';
 
 export interface DeleteAccountDeps {
@@ -28,21 +28,21 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
   const body = await readJson(req, 2 * 1024);
   if (!body || typeof body.password !== 'string' || body.password.length < 1 || body.password.length > 200) return json(400, { error: 'invalid_request' });
 
-  // Five wrong passwords an hour stop the guessing, before the password is even looked at.
-  const blocked = await deps.rpc('deletion_attempts_blocked', { p_user: user.id });
-  if (blocked.error) return json(502, { error: 'try_again_later' });
-  if (blocked.data === true) return json(429, { error: 'too_many_attempts' });
+  // Five tries an hour per person. The try is RECORDED by the database before the password is looked at (one atomic step), so
+  // parallel requests cannot get past the limit. A right password gives its try back; a wrong one keeps it.
+  const reserved = await deps.rpc('reserve_password_attempt', { p_user: user.id, p_kind: 'delete_attempt' });
+  if (reserved.error) return json(502, { error: 'try_again_later' });
+  if (reserved.data !== true) return json(429, { error: 'too_many_attempts' });
 
   let ok: boolean;
   try {
     ok = await deps.verifyPassword(user.email, body.password);
   } catch {
+    await deps.rpc('release_password_attempt', { p_user: user.id, p_kind: 'delete_attempt' });     // the check did not run: not the person's fault
     return json(502, { error: 'try_again_later' });
   }
-  if (!ok) {
-    await deps.rpc('note_deletion_failure', { p_user: user.id });
-    return json(401, { error: 'wrong_password' });
-  }
+  if (!ok) return json(401, { error: 'wrong_password' });
+  await deps.rpc('release_password_attempt', { p_user: user.id, p_kind: 'delete_attempt' });
 
   const closed = await deps.rpc('close_account', { p_user: user.id });
   if (closed.error || !closed.data || typeof closed.data !== 'object') return json(502, { error: 'try_again_later' });
@@ -51,7 +51,8 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
     case 'closed':
     case 'already_closed': break;                                               // already_closed: a retry finishes the steps below
     case 'admin': return json(403, { error: 'admin_account' });                 // admins are removed with the founder tools
-    case 'active_booking': return json(409, { error: 'active_booking' });       // cancel the open booking first
+    case 'active_booking': return json(409, { error: 'active_booking' });       // cancel or resolve the open or disputed booking first
+    case 'open_case': return json(409, { error: 'open_case' });                 // an unresolved report or appeal: wait until the team resolved it
     case 'not_found': return json(404, { error: 'not_found' });
     default: return json(502, { error: 'try_again_later' });
   }

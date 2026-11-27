@@ -7,7 +7,7 @@ Deno.serve((req) => {
   const admin = adminClient();
   const ops = accountOpsOf(admin);
   return handleDeleteAccount(req, {
-    authUser: authUserWithEmailOf(admin), rpc: rpcOf(admin), verifyPassword: passwordVerifier(),
+    authUser: authUserWithEmailOf(admin), rpc: rpcOf(admin), verifyPassword: passwordVerifier(admin),
     signOutEverywhere: ops.signOutEverywhere, banUser: ops.banUser, removeFiles: ops.removeMany,
   });
 });

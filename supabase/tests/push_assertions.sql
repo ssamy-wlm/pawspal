@@ -34,6 +34,8 @@ select pg_temp.fails_as('authenticated', pg_temp.pu(1), $$select public.remove_p
 select pg_temp.fails_as('authenticated', pg_temp.pu(1), $$select private.enqueue_notification(gen_random_uuid(), 'messages', 'message', null, 'message')$$, 'a user called enqueue');
 -- the push switch and retention settings are not readable by the app
 select pg_temp.check(pg_temp.count_as(pg_temp.pu(1), $$select count(*) from public.app_settings where key in ('push_enabled', 'deletion_grace_days', 'shared_history_months')$$) = 0, 'the app can read the phase 9 settings');
+select pg_temp.check(pg_temp.as_aal('aal2', pg_temp.pu(4), $$select count(*) from public.app_settings where key in ('push_enabled', 'deletion_grace_days', 'shared_history_months')$$)::bigint = 3, 'an admin with a passkey cannot read the phase 9 settings');
+select pg_temp.check(pg_temp.as_aal('aal1', pg_temp.pu(4), $$select count(*) from public.app_settings where key in ('push_enabled', 'deletion_grace_days', 'shared_history_months')$$)::bigint = 0, 'an admin without a passkey can read the phase 9 settings');
 select pg_temp.check(not (pg_temp.as_role('authenticated', pg_temp.pu(1), 'select public.get_payment_settings()::text') ~ 'push_enabled'), 'get_payment_settings leaks the push switch');
 
 \echo '--- P2 registering tokens'

@@ -79,8 +79,9 @@ export function authUserWithEmailOf(client: ReturnType<typeof adminClient>) {
 }
 
 /** Checks a password with a separate client that keeps no session (anon key). false = wrong password; throws when the check could
- *  not run (outage, rate limit). The session it opens is closed at once. The password is never logged. */
-export function passwordVerifier() {
+ *  not run (outage, rate limit). The session it opens is revoked at once with the admin API, for THAT session only (scope 'local'
+ *  on its own token). Never the default sign-out, which is global and would end the person's real sessions. The password is never logged. */
+export function passwordVerifier(client: ReturnType<typeof adminClient>) {
   return async (email: string, password: string): Promise<boolean> => {
     const url = env.get('SUPABASE_URL');
     const anon = env.get('SUPABASE_ANON_KEY');
@@ -91,7 +92,7 @@ export function passwordVerifier() {
       if (error.status === 400) return false;
       throw new Error('password check unavailable');
     }
-    if (data.session) await c.auth.signOut().catch(() => undefined);
+    if (data.session) await client.auth.admin.signOut(data.session.access_token, 'local').catch(() => undefined);
     return true;
   };
 }
@@ -99,6 +100,7 @@ export function passwordVerifier() {
 /** Sign-out and ban through the Auth admin API. A ban of about 100 years: the person can never sign in again (the final purge deletes the user). */
 export function accountOpsOf(client: ReturnType<typeof adminClient>) {
   return {
+    /** All sessions of that person (their own token). Called only AFTER the database closed the account. */
     async signOutEverywhere(token: string): Promise<void> {
       await client.auth.admin.signOut(token, 'global');
     },

@@ -34,7 +34,8 @@ test.afterEach(() => { assert.deepEqual(logged.splice(0), [], 'a function printe
 function delDeps(over: Partial<DeleteAccountDeps> = {}, handlers: Record<string, (a: Record<string, unknown>) => unknown> = {}) {
   const log: string[] = [];
   const { rpc, calls } = fakeRpc({
-    deletion_attempts_blocked: () => false,
+    reserve_password_attempt: () => true,
+    release_password_attempt: () => null,
     close_account: () => ({ status: 'closed', purge_after: '2026-12-27T00:00:00Z' }),
     list_user_files: () => [{ bucket_id: 'pets', name: `${UID}/a.jpg` }, { bucket_id: 'faces', name: `${UID}/f.jpg` }, { bucket_id: 'pets', name: 'someone-else/x.jpg' }],
     ...handlers,
@@ -60,19 +61,51 @@ test('delete-account: signed-in people only, POST only, a password is required',
   for (const b of [{}, { password: '' }, { password: 5 }, { password: 'x'.repeat(201) }, 'nope']) assert.equal((await handleDeleteAccount(post(b, bearer), deps)).status, 400);
 });
 
-test('delete-account: a wrong password is refused, counted, and nothing is closed', async () => {
+test('delete-account: a wrong password is refused, its try stays counted, and nothing is closed', async () => {
   const { deps, log, calls } = delDeps();
   const res = await handleDeleteAccount(post({ password: 'wrong' }, bearer), deps);
   assert.equal(res.status, 401);
   assert.deepEqual(await res.json(), { error: 'wrong_password' });
-  assert.ok(calls.some((c) => c.name === 'note_deletion_failure' && c.args.p_user === UID));
+  assert.deepEqual(calls.find((c) => c.name === 'reserve_password_attempt')!.args, { p_user: UID, p_kind: 'delete_attempt' });
+  assert.ok(!calls.some((c) => c.name === 'release_password_attempt'), 'a wrong password got its try back');
   assert.ok(!calls.some((c) => c.name === 'close_account'));
-  assert.ok(!log.includes('ban'));
+  assert.ok(!log.includes('ban') && !log.includes('signout'));
   assert.ok(!JSON.stringify(calls).includes('wrong'), 'the password reached the database');
 });
 
+test('delete-account: the try is reserved BEFORE the password is checked, and a burst of parallel requests cannot beat the limit', async () => {
+  let used = 0;
+  let checks = 0;
+  const log: string[] = [];
+  const { rpc } = fakeRpc({
+    // like the database: count and record in one step
+    reserve_password_attempt: () => { if (used >= 5) return false; used += 1; return true; },
+    release_password_attempt: () => { used -= 1; return null; },
+  }, log);
+  const deps: DeleteAccountDeps = {
+    authUser: async () => ({ id: UID, email: 'a@example.com' }), rpc,
+    verifyPassword: async () => { checks += 1; await new Promise((r) => setTimeout(r, 5)); return false; },
+    signOutEverywhere: async () => undefined, banUser: async () => true, removeFiles: async () => true,
+  };
+  const results = await Promise.all(Array.from({ length: 12 }, () => handleDeleteAccount(post({ password: 'guess' }, bearer), deps)));
+  const codes = results.map((r) => r.status).sort();
+  assert.deepEqual(codes, [401, 401, 401, 401, 401, 429, 429, 429, 429, 429, 429, 429]);
+  assert.equal(checks, 5, 'more than five passwords were checked');
+  const order = log.filter((l) => l === 'rpc:reserve_password_attempt');
+  assert.equal(order.length, 12);
+});
+
+test('delete-account: a right password gives its try back; a check that could not run does too', async () => {
+  const ok = delDeps();
+  await handleDeleteAccount(post({ password: 'right-password' }, bearer), ok.deps);
+  assert.ok(ok.log.indexOf('rpc:reserve_password_attempt') < ok.log.indexOf('password') && ok.log.indexOf('password') < ok.log.indexOf('rpc:release_password_attempt'));
+  const down = delDeps({ verifyPassword: async () => { throw new Error('x'); } });
+  assert.equal((await handleDeleteAccount(post({ password: 'x' }, bearer), down.deps)).status, 502);
+  assert.ok(down.calls.some((c) => c.name === 'release_password_attempt'));
+});
+
 test('delete-account: five wrong tries an hour block, before the password is looked at', async () => {
-  const { deps, log } = delDeps({}, { deletion_attempts_blocked: () => true });
+  const { deps, log } = delDeps({}, { reserve_password_attempt: () => false });
   const res = await handleDeleteAccount(post({ password: 'right-password' }, bearer), deps);
   assert.equal(res.status, 429);
   assert.deepEqual(await res.json(), { error: 'too_many_attempts' });
@@ -82,16 +115,16 @@ test('delete-account: five wrong tries an hour block, before the password is loo
 test('delete-account: a password check that cannot run is a 502, not a refusal', async () => {
   const { deps, calls } = delDeps({ verifyPassword: async () => { throw new Error('down'); } });
   assert.equal((await handleDeleteAccount(post({ password: 'x' }, bearer), deps)).status, 502);
-  assert.ok(!calls.some((c) => c.name === 'note_deletion_failure' || c.name === 'close_account'));
+  assert.ok(!calls.some((c) => c.name === 'close_account'));
 });
 
 test('delete-account: admins and people with an open booking are refused with their own codes', async () => {
-  for (const [status, code, http] of [['admin', 'admin_account', 403], ['active_booking', 'active_booking', 409]] as const) {
+  for (const [status, code, http] of [['admin', 'admin_account', 403], ['active_booking', 'active_booking', 409], ['open_case', 'open_case', 409]] as const) {
     const { deps, log } = delDeps({}, { close_account: () => ({ status }) });
     const res = await handleDeleteAccount(post({ password: 'right-password' }, bearer), deps);
     assert.equal(res.status, http);
     assert.deepEqual(await res.json(), { error: code });
-    assert.ok(!log.includes('ban') && !log.includes('files'), 'a refused deletion cut the account');
+    assert.ok(!log.includes('ban') && !log.includes('files') && !log.includes('signout'), 'a refused deletion cut the account or signed the person out');
   }
 });
 
@@ -100,7 +133,7 @@ test('delete-account: success runs in order: password, database, sessions, ban, 
   const res = await handleDeleteAccount(post({ password: 'right-password' }, bearer), deps);
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, purge_after: '2026-12-27T00:00:00Z' });
-  assert.deepEqual(log, ['rpc:deletion_attempts_blocked', 'password', 'rpc:close_account', 'signout', 'ban', 'rpc:list_user_files', 'files', 'files']);
+  assert.deepEqual(log, ['rpc:reserve_password_attempt', 'password', 'rpc:release_password_attempt', 'rpc:close_account', 'signout', 'ban', 'rpc:list_user_files', 'files', 'files']);
   assert.deepEqual(removed.sort(), [`faces/${UID}/f.jpg`, `pets/${UID}/a.jpg`]);
   assert.deepEqual(calls.find((c) => c.name === 'close_account')!.args, { p_user: UID });      // the id comes from the token
 });
@@ -123,19 +156,23 @@ test('delete-account: a failing file delete or database error does not hide the 
 });
 
 // ---------------------------------------------------------------- export-my-data
+const exportBody = { password: 'right-password' };
+function expDeps(handlers: Record<string, (a: Record<string, unknown>) => unknown> = {}, signed: string[] = []) {
+  const f = fakeRpc({ reserve_password_attempt: () => true, release_password_attempt: () => null, note_data_export: () => true, export_user_data: () => ({ profile: { id: UID } }), ...handlers });
+  return { f, deps: {
+    authUser: async () => ({ id: UID, email: 'a@example.com' }), rpc: f.rpc, verifyPassword: async (_e: string, p: string) => p === 'right-password',
+    now: () => new Date('2026-11-27T10:00:00Z'),
+    urls: { async signedUrl(b: string, p: string, s: number) { signed.push(`${b}/${p}/${s}`); return `https://signed.test/${b}/${p}`; } },
+  } };
+}
+
 test('export-my-data: shape, links only for own files, and the caller id comes from the token', async () => {
   const signed: string[] = [];
-  const { rpc, calls } = fakeRpc({
-    note_data_export: () => true,
-    export_user_data: () => ({ profile: { id: UID }, pets: [], files: [
+  const { f, deps } = expDeps({ export_user_data: () => ({ profile: { id: UID }, pets: [], files: [
       { kind: 'face', bucket: 'faces', path: `${UID}/me.jpg` }, { kind: 'pet', bucket: 'pets', path: `${UID}/p/1.jpg` },
       { kind: 'face', bucket: 'faces', path: 'other-user/x.jpg' }, { kind: 'pet', bucket: 'pets', path: `${UID}/../other/x.jpg` },
-      { kind: 'id', bucket: 'ids', path: `${UID}/id.jpg` }, { kind: 'pet', bucket: 'pets' }] }),
-  });
-  const res = await handleExportMyData(post('', bearer), {
-    authUser: async () => ({ id: UID }), rpc, now: () => new Date('2026-11-27T10:00:00Z'),
-    urls: { async signedUrl(b, p, s) { signed.push(`${b}/${p}/${s}`); return `https://signed.test/${b}/${p}`; } },
-  });
+      { kind: 'id', bucket: 'ids', path: `${UID}/id.jpg` }, { kind: 'pet', bucket: 'pets' }] }) }, signed);
+  const res = await handleExportMyData(post(exportBody, bearer), deps);
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.ok, true);
@@ -143,21 +180,43 @@ test('export-my-data: shape, links only for own files, and the caller id comes f
   assert.deepEqual(body.data, { profile: { id: UID }, pets: [] });            // the file list is not part of the data
   assert.deepEqual(body.files, [{ kind: 'face', name: 'me.jpg', url: `https://signed.test/faces/${UID}/me.jpg` }, { kind: 'pet', name: 'p/1.jpg', url: `https://signed.test/pets/${UID}/p/1.jpg` }]);
   assert.deepEqual(signed, [`faces/${UID}/me.jpg/3600`, `pets/${UID}/p/1.jpg/3600`]);
-  assert.deepEqual(calls.find((c) => c.name === 'export_user_data')!.args, { p_user: UID });
+  assert.deepEqual(f.calls.find((c) => c.name === 'export_user_data')!.args, { p_user: UID });
+  assert.deepEqual(f.calls.find((c) => c.name === 'reserve_password_attempt')!.args, { p_user: UID, p_kind: 'export_attempt' });
 });
 
-test('export-my-data: three a day, signed-in only, POST only, and database trouble', async () => {
-  const urls = { async signedUrl() { return null; } };
-  const limited = fakeRpc({ note_data_export: () => false });
-  const res = await handleExportMyData(post('', bearer), { authUser: async () => ({ id: UID }), rpc: limited.rpc, urls });
-  assert.equal(res.status, 429);
-  assert.ok(!limited.calls.some((c) => c.name === 'export_user_data'));
-  assert.equal((await handleExportMyData(post(''), { authUser: async () => ({ id: UID }), rpc: limited.rpc, urls })).status, 401);
-  assert.equal((await handleExportMyData(new Request('https://f.test/x'), { authUser: async () => ({ id: UID }), rpc: limited.rpc, urls })).status, 405);
-  const broken = fakeRpc({ note_data_export: () => true, export_user_data: () => new Error('x') });
-  assert.equal((await handleExportMyData(post('', bearer), { authUser: async () => ({ id: UID }), rpc: broken.rpc, urls })).status, 502);
-  const none = fakeRpc({ note_data_export: () => true, export_user_data: () => null });
-  assert.equal((await handleExportMyData(post('', bearer), { authUser: async () => ({ id: UID }), rpc: none.rpc, urls })).status, 404);
+test('export-my-data: the password is checked again; a wrong one exports nothing and stays counted', async () => {
+  const { f, deps } = expDeps();
+  const res = await handleExportMyData(post({ password: 'nope' }, bearer), deps);
+  assert.equal(res.status, 401);
+  assert.deepEqual(await res.json(), { error: 'wrong_password' });
+  assert.ok(!f.calls.some((c) => c.name === 'export_user_data' || c.name === 'note_data_export' || c.name === 'release_password_attempt'));
+  for (const b of ['', {}, { password: '' }, { password: 3 }]) assert.equal((await handleExportMyData(post(b, bearer), deps)).status, 400);
+  const down = expDeps();
+  down.deps.verifyPassword = async () => { throw new Error('x'); };
+  assert.equal((await handleExportMyData(post(exportBody, bearer), down.deps)).status, 502);
+  assert.ok(down.f.calls.some((c) => c.name === 'release_password_attempt'));
+});
+
+test('export-my-data: five password tries an hour (atomic reserve), and three exports a day', async () => {
+  let used = 0; let checks = 0;
+  const { deps } = expDeps({ reserve_password_attempt: () => { if (used >= 5) return false; used += 1; return true; } });
+  deps.verifyPassword = async () => { checks += 1; await new Promise((r) => setTimeout(r, 3)); return false; };
+  const res = await Promise.all(Array.from({ length: 10 }, () => handleExportMyData(post({ password: 'guess' }, bearer), deps)));
+  assert.deepEqual(res.map((r) => r.status).sort(), [401, 401, 401, 401, 401, 429, 429, 429, 429, 429]);
+  assert.equal(checks, 5);
+  const limited = expDeps({ note_data_export: () => false });
+  const r2 = await handleExportMyData(post(exportBody, bearer), limited.deps);
+  assert.equal(r2.status, 429);
+  assert.deepEqual(await r2.json(), { error: 'too_many_attempts' });
+  assert.ok(!limited.f.calls.some((c) => c.name === 'export_user_data'));
+});
+
+test('export-my-data: signed-in only, POST only, and database trouble', async () => {
+  const { deps } = expDeps();
+  assert.equal((await handleExportMyData(post(exportBody), deps)).status, 401);
+  assert.equal((await handleExportMyData(new Request('https://f.test/x'), deps)).status, 405);
+  assert.equal((await handleExportMyData(post(exportBody, bearer), expDeps({ export_user_data: () => new Error('x') }).deps)).status, 502);
+  assert.equal((await handleExportMyData(post(exportBody, bearer), expDeps({ export_user_data: () => null }).deps)).status, 404);
 });
 
 // ---------------------------------------------------------------- purge-accounts
@@ -169,13 +228,14 @@ test('purge-accounts: needs the secret, deletes the leftover files, returns coun
     rpc: fakeRpc({ purge_deleted_accounts: () => ({ purged: 2, files: [{ bucket: 'pets', name: 'u/a.jpg' }, { bucket: 'evil', name: 'u/b.jpg' }], messages_deleted: 3, stubs_deleted: 1 }) }).rpc,
     removeMany: async (b: string, n: string[]) => { removed.push(...n.map((x) => `${b}/${x}`)); return true; },
   });
-  assert.equal((await handlePurgeAccounts(post({}, { 'x-cleanup-secret': secret }), mk({}))).status, 503);
-  assert.equal((await handlePurgeAccounts(post({}, { 'x-cleanup-secret': 'nope' }), mk({ CLEANUP_SECRET: secret }))).status, 401);
-  const res = await handlePurgeAccounts(post({}, { 'x-cleanup-secret': secret }), mk({ CLEANUP_SECRET: secret }));
+  assert.equal((await handlePurgeAccounts(post({}, { 'x-purge-secret': secret }), mk({}))).status, 503);
+  assert.equal((await handlePurgeAccounts(post({}, { 'x-cleanup-secret': secret }), mk({ CLEANUP_SECRET: secret }))).status, 503, 'the cleanup secret opened the purge');
+  assert.equal((await handlePurgeAccounts(post({}, { 'x-cleanup-secret': 'nope' }), mk({ PURGE_SECRET: secret }))).status, 401);
+  const res = await handlePurgeAccounts(post({}, { 'x-purge-secret': secret }), mk({ PURGE_SECRET: secret }));
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { purged: 2, files_removed: 1, files_failed: 0, messages_deleted: 3, conversations_deleted: 0, bookings_deleted: 0, stubs_deleted: 1 });
   assert.deepEqual(removed, ['pets/u/a.jpg']);
-  const bad = await handlePurgeAccounts(post({}, { 'x-cleanup-secret': secret }), { ...mk({ CLEANUP_SECRET: secret }), rpc: fakeRpc({ purge_deleted_accounts: () => new Error('x') }).rpc });
+  const bad = await handlePurgeAccounts(post({}, { 'x-purge-secret': secret }), { ...mk({ PURGE_SECRET: secret }), rpc: fakeRpc({ purge_deleted_accounts: () => new Error('x') }).rpc });
   assert.equal(bad.status, 502);
 });
 
