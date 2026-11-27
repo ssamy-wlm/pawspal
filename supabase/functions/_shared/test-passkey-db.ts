@@ -9,10 +9,10 @@ export class FakePasskeyDb {
   admins = new Set<string>();
   creds: Cred[] = [];
   challenges = new Map<string, string>();               // "user|session|purpose" -> challenge
-  sessions = new Map<string, { user: string; via: 'passkey' | 'recovery'; minutes: number }>();
+  sessions = new Map<string, { user: string; via: 'passkey' | 'recovery'; minutes: number; stepUp: boolean }>();
   setupCodes = new Map<string, { code: string; used: boolean }>();   // user -> code (normalised)
   recovery = new Map<string, { hash: string; used: boolean }[]>();
-  failures = new Map<string, { kind: string }[]>();      // user -> events (all "within the hour")
+  failures = new Map<string, { kind: string; session: string | null }[]>();      // user -> events (all "within the hour")
   notes: { user: string; kind: string; details: unknown }[] = [];
   calls: { name: string; args: Record<string, unknown> }[] = [];
   failNext: string | null = null;                         // an rpc name that answers with an error once
@@ -20,8 +20,15 @@ export class FakePasskeyDb {
 
   constructor(admins: string[] = []) { admins.forEach((a) => this.admins.add(a)); }
 
-  private fails(user: string, kinds: string[]) { return (this.failures.get(user) ?? []).filter((e) => kinds.includes(e.kind)).length; }
-  private addFailure(user: string, kind: string) { this.failures.set(user, [...(this.failures.get(user) ?? []), { kind }]); }
+  private addFailure(user: string, kind: string, session: string | null) { this.failures.set(user, [...(this.failures.get(user) ?? []), { kind, session }]); }
+  /** 5 failures for one session; 20 for the user (a verified session only counts its own). */
+  private locked(user: string, session: string | null) {
+    const all = this.failures.get(user) ?? [];
+    if (session && all.filter((e) => e.session === session).length >= 5) return true;
+    const s = session ? this.sessions.get(session) : undefined;
+    if (s && s.user === user) return false;
+    return all.length >= 20;
+  }
   private norm = (c: string) => c.toUpperCase().replace(/[^A-Z0-9]/g, '');
   private mine(user: string) { return this.creds.filter((c) => c.user === user); }
 
@@ -47,8 +54,8 @@ export class FakePasskeyDb {
           passkeys: this.mine(user).map((c) => ({ id: c.id, name: c.name, created_at: c.created_at, last_used_at: c.last_used_at, device_type: c.device_type, backed_up: c.backed_up })),
           verified: !!ok, via: ok ? s.via : null,
           recovery_codes_left: (this.recovery.get(user) ?? []).filter((r) => !r.used).length,
-          failures_hour: this.fails(user, ['login_failed', 'recovery_failed']),
-          recovery_locked: this.fails(user, ['recovery_failed']) >= 5,
+          expires_at: ok ? new Date(Date.UTC(2030, 0, 1)).toISOString() : null, step_up: !!ok && s.via === 'passkey' && s.stepUp,
+          locked: this.locked(user, session),
         };
       }
       case 'pk_new_challenge': this.challenges.set(`${user}|${session}|${a.p_purpose}`, a.p_challenge as string); return 'challenge-id';
@@ -59,10 +66,10 @@ export class FakePasskeyDb {
         return c;
       }
       case 'pk_check_setup_code': {
-        if (this.fails(user, ['setup_failed']) >= 10) return 'locked';
+        if (this.locked(user, session)) return 'locked';
         const s = this.setupCodes.get(user);
         if (s && !s.used && s.code === this.norm(a.p_code as string)) return 'ok';
-        this.addFailure(user, 'setup_failed');
+        this.addFailure(user, 'setup_failed', session);
         return 'bad';
       }
       case 'pk_credentials': return this.mine(user).map((c) => ({ id: c.credential_id, transports: c.transports }));
@@ -76,7 +83,7 @@ export class FakePasskeyDb {
         if (this.creds.some((c) => c.credential_id === a.p_credential_id)) return { status: 'duplicate' };
         if (a.p_setup_code != null) {
           const s = this.setupCodes.get(user);
-          if (!s || s.used || s.code !== this.norm(a.p_setup_code as string)) { this.addFailure(user, 'setup_failed'); return { status: 'bad_setup_code' }; }
+          if (!s || s.used || s.code !== this.norm(a.p_setup_code as string)) { this.addFailure(user, 'setup_failed', (a.p_session as string) ?? null); return { status: 'bad_setup_code' }; }
           s.used = true;
         }
         const id = `00000000-0000-4000-8000-${String(++this.seq).padStart(12, '0')}`;
@@ -96,7 +103,13 @@ export class FakePasskeyDb {
         const via = a.p_via as 'passkey' | 'recovery';
         const prev = this.sessions.get(session);
         if (prev && prev.via === 'passkey' && via === 'recovery') return new Date(0).toISOString();
-        this.sessions.set(session, { user, via, minutes: Math.min(a.p_minutes as number, via === 'recovery' ? 30 : 480) });
+        this.sessions.set(session, { user, via, minutes: Math.min(a.p_minutes as number, via === 'recovery' ? 30 : 480), stepUp: via === 'passkey' });
+        return new Date(Date.UTC(2030, 0, 1)).toISOString();
+      }
+      case 'pk_set_step_up': {
+        const s = this.sessions.get(session);
+        if (!s || s.user !== user || s.via !== 'passkey') return null;
+        s.stepUp = true;
         return new Date(Date.UTC(2030, 0, 1)).toISOString();
       }
       case 'pk_end_session': this.sessions.delete(a.p_session as string); return null;
@@ -107,11 +120,14 @@ export class FakePasskeyDb {
         return 10;
       }
       case 'pk_use_recovery_code': {
-        if (this.fails(user, ['recovery_failed']) >= 5) return 'locked';
+        const cur = this.sessions.get(session);
+        if (cur && cur.user === user && cur.via === 'passkey') return { status: 'already', expires_at: new Date(Date.UTC(2030, 0, 1)).toISOString() };
+        if (this.locked(user, session)) return { status: 'locked' };
         const r = (this.recovery.get(user) ?? []).find((x) => !x.used && x.hash === a.p_hash);
-        if (r) { r.used = true; return 'ok'; }
-        this.addFailure(user, 'recovery_failed');
-        return 'bad';
+        if (!r) { this.addFailure(user, 'recovery_failed', session); return { status: 'bad' }; }
+        r.used = true;
+        this.sessions.set(session, { user, via: 'recovery', minutes: 30, stepUp: false });
+        return { status: 'ok', expires_at: new Date(Date.UTC(2030, 0, 1)).toISOString() };
       }
       case 'pk_rename': {
         const c = this.mine(user).find((x) => x.id === a.p_id);
@@ -129,7 +145,7 @@ export class FakePasskeyDb {
       case 'pk_note': {
         const kind = a.p_kind as string;
         this.notes.push({ user, kind, details: a.p_details });
-        if (kind === 'login_failed') this.addFailure(user, 'login_failed');
+        if (kind === 'login_failed') this.addFailure(user, 'login_failed', (a.p_session as string) ?? null);
         return null;
       }
       default: throw new Error('unknown rpc ' + name);

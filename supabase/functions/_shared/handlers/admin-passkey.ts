@@ -51,7 +51,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';     // 32 characters, no 0 O 1 I: one random byte & 31 picks one, evenly
 const PASSKEY_MINUTES = 8 * 60;
 const RECOVERY_MINUTES = 30;
-const MAX_FAILURES_PER_HOUR = 10;
 const OPTIONS_TIMEOUT_MS = 5 * 60 * 1000;
 
 // ---------------------------------------------------------------- small helpers
@@ -134,9 +133,12 @@ interface State {
   passkeys: { id: string; name: string; created_at: string; last_used_at: string | null; device_type: string | null; backed_up: boolean | null }[];
   verified: boolean;
   via: 'passkey' | 'recovery' | null;
+  expires_at: string | null;
+  /** A fresh passkey proof (login, registration or step_up_verify) in the last 5 minutes. */
+  step_up: boolean;
   recovery_codes_left: number;
-  failures_hour: number;
-  recovery_locked: boolean;
+  /** Too many failures: 5 an hour for this Supabase session, 20 for the user (a verified session only counts its own). */
+  locked: boolean;
 }
 
 // ---------------------------------------------------------------- the handler
@@ -171,12 +173,14 @@ async function route(action: string, body: Record<string, unknown>, user: { id: 
     if (r.error) throw new Error('rpc');
     return r.data;
   };
-  const note = (kind: string, details: Record<string, unknown> = {}) => call('pk_note', { p_user: user.id, p_kind: kind, p_details: details });
+  const note = (kind: string, details: Record<string, unknown> = {}, session: string | null = null) => call('pk_note', { p_user: user.id, p_kind: kind, p_details: details, p_session: session });
+  const fail = async (reason: string) => { await note('login_failed', { reason }, user.sessionId); return REFUSED(); };
   const state = (await call('pk_state', { p_user: user.id, p_session: user.sessionId })) as State | null;
   if (!state || state.is_admin_row !== true) return REFUSED();              // every action first needs an admins row
 
   const viaPasskey = state.verified && state.via === 'passkey';
-  const failed = state.failures_hour >= MAX_FAILURES_PER_HOUR;
+  const failed = state.locked === true;
+  const STEP_UP = () => json(403, { error: 'step_up_required' });       // the one refusal with its own body
   const str = (v: unknown, max: number): string | null => (typeof v === 'string' && v.length <= max ? v : null);
   const nameOf = (v: unknown): string | null | undefined => {            // undefined = fine, absent; null = invalid
     if (v === undefined || v === null) return undefined;
@@ -187,19 +191,24 @@ async function route(action: string, body: Record<string, unknown>, user: { id: 
   switch (action) {
     case 'status': {
       const status = state.verified ? 'admin' : state.passkeys.length === 0 ? 'needs_setup' : 'needs_passkey';
-      return json(200, { ok: true, status, verified: state.verified, via: state.via, passkeys: state.passkeys, recovery_codes_left: state.recovery_codes_left });
+      return json(200, { ok: true, status, verified: state.verified, via: state.via, passkeys: state.passkeys, recovery_codes_left: state.recovery_codes_left, step_up: state.step_up });
     }
 
     case 'register_options': {
       const name = nameOf(body.name);
       if (name === null) return BAD();
-      if (!state.verified) {
-        // Not yet verified: only a one-time setup code from the founder opens this door (a password alone never does).
-        const code = str(body.setup_code, 64);
-        if (!code) return REFUSED();
-        const c = await call('pk_check_setup_code', { p_user: user.id, p_code: code });
+      const code = str(body.setup_code, 64);
+      if (code) {
+        // A founder setup code opens this door on its own (and needs no step-up).
+        const c = await call('pk_check_setup_code', { p_user: user.id, p_session: user.sessionId, p_code: code });
         if (c === 'locked') return TOO_MANY();
         if (c !== 'ok') return REFUSED();
+      } else {
+        // Otherwise: a verified session. A password alone never registers a passkey; a passkey session also needs a fresh proof
+        // (a stolen access token is not enough); a recovery session has no passkey to prove with and is exempt.
+        if (!state.verified) return REFUSED();
+        if (failed) return TOO_MANY();
+        if (viaPasskey && !state.step_up) return STEP_UP();
       }
       if (state.passkeys.length >= 10) return json(400, { error: 'passkey_limit' });
       const existing = (await call('pk_credentials', { p_user: user.id })) as { id: string; transports?: string[] }[];
@@ -218,8 +227,11 @@ async function route(action: string, body: Record<string, unknown>, user: { id: 
       const name = nameOf(body.name);
       const response = body.response;
       if (name === null || !response || typeof response !== 'object' || Array.isArray(response)) return BAD();
-      const setupCode = state.verified ? null : str(body.setup_code, 64);
-      if (!state.verified && !setupCode) return REFUSED();
+      const setupCode = str(body.setup_code, 64);
+      if (!setupCode) {
+        if (!state.verified) return REFUSED();
+        if (viaPasskey && !state.step_up) return STEP_UP();
+      }
       if (failed) return TOO_MANY();
       const challenge = await call('pk_take_challenge', { p_user: user.id, p_session: user.sessionId, p_purpose: 'register' });
       if (typeof challenge !== 'string') return REFUSED();
@@ -232,14 +244,13 @@ async function route(action: string, body: Record<string, unknown>, user: { id: 
       } catch { verified = null; }
       const info = verified?.verified ? verified.registrationInfo : undefined;
       if (!info || info.userVerified !== true) {
-        await note('login_failed', { reason: 'register' });
-        return REFUSED();
+        return fail('register');
       }
       const label = name ?? `Passkey ${new Date(deps.now()).toISOString().slice(0, 10)}`;
       const added = (await call('pk_add_credential', {
         p_user: user.id, p_credential_id: info.credential.id, p_public_key: b64urlEncode(info.credential.publicKey),
         p_counter: info.credential.counter, p_transports: info.credential.transports ?? null,
-        p_device_type: info.credentialDeviceType, p_backed_up: info.credentialBackedUp, p_name: label, p_setup_code: setupCode,
+        p_device_type: info.credentialDeviceType, p_backed_up: info.credentialBackedUp, p_name: label, p_setup_code: setupCode, p_session: user.sessionId,
       })) as { status: string; id?: string } | null;
       switch (added?.status) {
         case 'ok': break;
@@ -256,25 +267,29 @@ async function route(action: string, body: Record<string, unknown>, user: { id: 
       return json(200, { ok: true, passkey: { id: added.id, name: label }, session: { via: 'passkey', expires_at: until } });
     }
 
-    case 'login_options': {
-      if (state.passkeys.length === 0) return REFUSED();
+    case 'login_options':
+    case 'step_up_options': {
+      const stepUp = action === 'step_up_options';
+      if (state.passkeys.length === 0 || (stepUp && !viaPasskey)) return REFUSED();
       if (failed) return TOO_MANY();
       const creds = (await call('pk_credentials', { p_user: user.id })) as { id: string; transports?: string[] }[];
       const options = await webauthn.generateAuthenticationOptions({
         rpID: cfg.rpId, allowCredentials: creds.map((c) => ({ id: c.id, transports: c.transports })),
         userVerification: 'required', challenge: deps.random(32), timeout: OPTIONS_TIMEOUT_MS,
       });
-      await call('pk_new_challenge', { p_user: user.id, p_session: user.sessionId, p_purpose: 'login', p_challenge: options.challenge });
+      await call('pk_new_challenge', { p_user: user.id, p_session: user.sessionId, p_purpose: stepUp ? 'stepup' : 'login', p_challenge: options.challenge });
       return json(200, { ok: true, options });
     }
 
-    case 'login_verify': {
+    case 'login_verify':
+    case 'step_up_verify': {
+      const stepUp = action === 'step_up_verify';
       const response = body.response as Record<string, unknown> | undefined;
       if (!response || typeof response !== 'object' || Array.isArray(response) || typeof response.id !== 'string' || response.id.length > 1024) return BAD();
-      if (state.passkeys.length === 0) return REFUSED();
+      if (state.passkeys.length === 0 || (stepUp && !viaPasskey)) return REFUSED();
       if (failed) return TOO_MANY();
-      const fail = async (reason: string) => { await note('login_failed', { reason }); return REFUSED(); };
-      const challenge = await call('pk_take_challenge', { p_user: user.id, p_session: user.sessionId, p_purpose: 'login' });
+      const purpose = stepUp ? 'stepup' : 'login';
+      const challenge = await call('pk_take_challenge', { p_user: user.id, p_session: user.sessionId, p_purpose: purpose });
       if (typeof challenge !== 'string') return fail('challenge');
       const cred = (await call('pk_credential', { p_user: user.id, p_credential_id: response.id })) as
         { id: string; credential_id: string; public_key: string; counter: number | string; transports: string[] } | null;
@@ -291,6 +306,11 @@ async function route(action: string, body: Record<string, unknown>, user: { id: 
       // Clone detection: the counter must grow (0 and 0 is fine for synced passkeys).
       const counterOk = await call('pk_use_counter', { p_id: cred.id, p_new: result.authenticationInfo.newCounter });
       if (counterOk !== true) return fail('counter');
+      if (stepUp) {
+        const until = await call('pk_set_step_up', { p_user: user.id, p_session: user.sessionId });
+        if (typeof until !== 'string') return BUSY();
+        return json(200, { ok: true, until });
+      }
       const until = await call('pk_start_session', { p_user: user.id, p_session: user.sessionId, p_passkey_id: cred.id, p_via: 'passkey', p_minutes: PASSKEY_MINUTES });
       if (typeof until !== 'string') return BUSY();
       await note('passkey_login');
@@ -300,20 +320,23 @@ async function route(action: string, body: Record<string, unknown>, user: { id: 
     case 'recovery_login': {
       const code = str(body.code, 64);
       if (!code) return BAD();
+      // Already verified by a passkey: nothing to do and no code is used up.
+      if (viaPasskey) return json(200, { ok: true, session: { via: 'passkey', expires_at: state.expires_at } });
       if (failed) return TOO_MANY();
       const normal = normaliseCode(code);
       if (normal.length !== 16) return REFUSED();                            // obviously not one of ours: not counted as a guess
-      const r = await call('pk_use_recovery_code', { p_user: user.id, p_hash: await sha256Hex(normal) });
-      if (r === 'locked') return TOO_MANY();
-      if (r !== 'ok') return REFUSED();
-      const until = await call('pk_start_session', { p_user: user.id, p_session: user.sessionId, p_passkey_id: null, p_via: 'recovery', p_minutes: RECOVERY_MINUTES });
-      if (typeof until !== 'string') return BUSY();
+      // One database step: the code is used up and the 30 minute session starts together, so a failure cannot lose a code.
+      const r = (await call('pk_use_recovery_code', { p_user: user.id, p_session: user.sessionId, p_hash: await sha256Hex(normal) })) as { status: string; expires_at?: string } | null;
+      if (r?.status === 'locked') return TOO_MANY();
+      if (r?.status === 'already') return json(200, { ok: true, session: { via: 'passkey', expires_at: r.expires_at } });
+      if (r?.status !== 'ok') return REFUSED();
       await note('recovery_used');
-      return json(200, { ok: true, session: { via: viaPasskey ? 'passkey' : 'recovery', expires_at: until } });
+      return json(200, { ok: true, session: { via: state.verified ? state.via : 'recovery', expires_at: r.expires_at } });
     }
 
     case 'recovery_generate': {
       if (!viaPasskey) return REFUSED();                                     // a recovery session cannot make new recovery codes
+      if (!state.step_up) return STEP_UP();
       const codes = Array.from({ length: 10 }, () => makeRecoveryCode(deps.random));
       const hashes = await Promise.all(codes.map((c) => sha256Hex(normaliseCode(c))));
       await call('pk_replace_recovery_codes', { p_user: user.id, p_hashes: hashes });
@@ -323,6 +346,7 @@ async function route(action: string, body: Record<string, unknown>, user: { id: 
 
     case 'rename': {
       if (!viaPasskey) return REFUSED();
+      if (!state.step_up) return STEP_UP();
       const name = nameOf(body.name);
       if (typeof body.id !== 'string' || !UUID.test(body.id) || name === undefined || name === null) return BAD();
       const ok = await call('pk_rename', { p_user: user.id, p_id: body.id, p_name: name });
@@ -333,6 +357,7 @@ async function route(action: string, body: Record<string, unknown>, user: { id: 
 
     case 'remove': {
       if (!viaPasskey) return REFUSED();
+      if (!state.step_up) return STEP_UP();
       if (typeof body.id !== 'string' || !UUID.test(body.id)) return BAD();
       const r = await call('pk_remove', { p_user: user.id, p_id: body.id });
       if (r === 'last') return json(409, { error: 'last_passkey' });

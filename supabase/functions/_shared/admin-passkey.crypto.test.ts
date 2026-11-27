@@ -240,10 +240,12 @@ test('wrong origin, wrong RP ID, wrong key, wrong type and wrong challenge are a
     assert.deepEqual(r.body, { error: 'not_allowed' }, why);
     assert.equal(db.sessions.has(SESSION_B), false, why);
   }
+  db.failures.clear();
   // an answer to a challenge the server never issued
   await challengeFor(SESSION_B);
   assert.equal((await call(SESSION_B, { action: 'login_verify', response: auth.get(b64urlEncode(randomBytes(32)), { counter: 1 }) })).status, 403, 'another challenge');
-  // the right answer, finally
+  // the right answer, finally (after the lock-out window of this session is cleared)
+  db.failures.clear();
   const ok = await challengeFor(SESSION_B);
   assert.equal((await call(SESSION_B, { action: 'login_verify', response: auth.get(ok.challenge, { counter: 1 }) })).status, 200);
   assert.ok(db.notes.filter((n) => n.kind === 'login_failed').length >= tries.length, 'each refusal was written to the audit trail');
@@ -270,7 +272,7 @@ test("one admin's passkey cannot log in another admin, and a registration cannot
 test('registering twice with the same authenticator is refused (excluded and unique)', async () => {
   const { db, call } = harness();
   const auth = new SoftAuthenticator();
-  const verified = async (session: string) => { db.sessions.set(session, { user: ADMIN, via: 'passkey', minutes: 480 }); };
+  const verified = async (session: string) => { db.sessions.set(session, { user: ADMIN, via: 'passkey', minutes: 480, stepUp: true }); };
   await verified(SESSION_A);
   const o1 = await call(SESSION_A, { action: 'register_options' });
   assert.equal((await call(SESSION_A, { action: 'register_verify', response: auth.create(o1.body.options.challenge) })).status, 200);
@@ -305,4 +307,50 @@ test('the library version the function runs (Deno import) is the one these tests
   assert.ok(m, 'the entry point imports an exact version');
   assert.equal(pkg.devDependencies['@simplewebauthn/server'], m[1], 'package.json and the Deno import must name the same exact version');
   assert.equal(JSON.parse(readFileSync(new URL('node_modules/@simplewebauthn/server/package.json', root), 'utf8')).version, m[1], 'the installed copy matches');
+});
+
+test('step-up with a real passkey: sensitive actions need a fresh assertion (real library)', async () => {
+  const { db, call, enrol, challengeFor } = harness();
+  const auth = new SoftAuthenticator();
+  assert.equal((await enrol(auth, SESSION_A)).status, 200);
+  const extra = new SoftAuthenticator();
+  // a second session logs in: that proof is fresh, so a device can be added right away
+  const c = await challengeFor(SESSION_B);
+  assert.equal((await call(SESSION_B, { action: 'login_verify', response: auth.get(c.challenge, { counter: 1 }) })).status, 200);
+  assert.equal((await call(SESSION_B, { action: 'status' })).body.step_up, true);
+  // five minutes later (a stolen token): nothing sensitive works
+  db.sessions.get(SESSION_B)!.stepUp = false;
+  const id = db.creds[0].id;
+  for (const body of [{ action: 'register_options' }, { action: 'rename', id, name: 'x' }, { action: 'remove', id }, { action: 'recovery_generate' }]) {
+    const r = await call(SESSION_B, body);
+    assert.equal(r.status, 403);
+    assert.deepEqual(r.body, { error: 'step_up_required' });
+  }
+  // the login challenge is not a step-up challenge; UV missing is refused; a wrong key is refused
+  const login = await challengeFor(SESSION_B);
+  assert.equal((await call(SESSION_B, { action: 'step_up_verify', response: auth.get(login.challenge, { counter: 2 }) })).status, 403, 'wrong purpose');
+  const s1 = await call(SESSION_B, { action: 'step_up_options' });
+  assert.equal(s1.status, 200);
+  assert.equal((await call(SESSION_B, { action: 'step_up_verify', response: auth.get(s1.body.options.challenge, { counter: 2, uv: false }) })).status, 403, 'no user verification');
+  const s2 = await call(SESSION_B, { action: 'step_up_options' });
+  assert.equal((await call(SESSION_B, { action: 'step_up_verify', response: auth.get(s2.body.options.challenge, { counter: 2, key: generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey }) })).status, 403, 'wrong key');
+  assert.equal(db.sessions.get(SESSION_B)!.stepUp, false);
+  // a real fresh assertion works once and unlocks the actions
+  const s3 = await call(SESSION_B, { action: 'step_up_options' });
+  const proof = auth.get(s3.body.options.challenge, { counter: 2 });
+  const ok = await call(SESSION_B, { action: 'step_up_verify', response: proof });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal((await call(SESSION_B, { action: 'step_up_verify', response: proof })).status, 403, 'the same proof cannot be replayed');
+  db.failures.clear();
+  // now a new device can be added with the fresh proof
+  const reg = await call(SESSION_B, { action: 'register_options', name: 'Second' });
+  assert.equal(reg.status, 200);
+  assert.equal((await call(SESSION_B, { action: 'register_verify', name: 'Second', response: extra.create(reg.body.options.challenge) })).status, 200);
+  assert.equal(db.creds.length, 2);
+  assert.equal((await call(SESSION_B, { action: 'rename', id, name: 'Renamed' })).status, 200);
+  assert.equal((await call(SESSION_B, { action: 'recovery_generate' })).status, 200);
+  // a step-up proof in one session does not unlock another session
+  assert.equal((await call(SESSION_A, { action: 'status' })).body.step_up, true, 'session A kept its own fresh registration proof');
+  db.sessions.get(SESSION_A)!.stepUp = false;
+  assert.equal((await call(SESSION_A, { action: 'rename', id, name: 'x' })).body.error, 'step_up_required');
 });

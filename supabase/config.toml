@@ -254,6 +254,10 @@ enable_signup = false
 enable_confirmations = false
 
 # Configure logged in session timeouts.
+# Recommended for the admin site (a Supabase Pro plan feature, so NOT enabled here: the live project may not support it; set it in
+# the dashboard under Authentication > Sessions when the plan allows). A stolen browser session then dies on its own:
+#   timebox = "12h"              (admin passkey sessions last 8 hours anyway)
+#   inactivity_timeout = "2h"
 # [auth.sessions]
 # Force log out after the specified duration.
 # timebox = "24h"

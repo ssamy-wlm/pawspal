@@ -184,7 +184,7 @@ The Expo app also builds for the browser (`npm run build:web` in `apps/mobile`, 
 
 1. The admin signs in with email + password (Supabase Auth). The access token carries a `session_id` claim.
 2. The admin site calls the edge function `admin-passkey` with that token. The function checks a passkey (or a recovery code) and asks the database to record "this Supabase session passed": a row in `private.admin_passkey_sessions` (8 hours for a passkey, 30 minutes for a recovery code).
-3. `public.is_admin()` is true only if the caller is in `admins` **and** the JWT's `session_id` has a live, unexpired row for the same user. A missing or malformed claim is `false` (the function never raises). There is no `aal` check any more.
+3. `public.is_admin()` is true only if the caller is in `admins` **and** the JWT's `session_id` has a live, unexpired row for the same user **and** that Supabase session still exists in `auth.sessions` (signing out or revoking the session ends admin rights at once). A missing or malformed claim (or a garbage `sub`) is `false` (the function never raises). There is no `aal` check any more.
 4. An expired or signed-out Supabase session makes its row useless; the row is also deleted on sign-out and when the passkey that opened it is removed. Everything else the admin site does (`admin_*` functions, the audit log, the `ids`/`payments` buckets) keeps calling `is_admin()`, so nothing else changed.
 
 **Registering a passkey is never possible with a password alone.** It needs one of: a one-time **setup code** from the founder (first sign-in, or after everything was lost), a session already verified by a passkey (adding a device), or a **recovery** session (that is how lost-device recovery ends). The setup code is checked when the options are asked for and used up atomically with saving the passkey (a failed proof never burns it).
@@ -192,10 +192,12 @@ The Expo app also builds for the browser (`npm run build:web` in `apps/mobile`, 
 **Where this differs from the first design (found while building):**
 - The user handle in the passkey is derived (`sha256("pawspal-admin-passkey:" + user id)`), so it is stable per user and holds no email or personal data.
 - `pk_check_setup_code` was added (checks without using up) and `pk_add_credential` takes the setup code and uses it up in the same transaction.
-- Setup-code guesses are limited too: 10 wrong tries per hour per admin lock the codes (`admin_setup_code_failed` events).
+- **Lock-outs are per session and per user.** Failed passkey logins, wrong recovery codes and wrong setup codes are counted in `private.admin_passkey_events` (keyed by the auth user id, so an admin without a profile row is counted too). 5 failures an hour from one Supabase session lock that session; 20 for one user lock every session that is not yet verified. A session that is already verified is held back only by its own failures, so one attacker session cannot spend the whole budget or lock the owner out of a signed-in session. The checks run under `pg_advisory_xact_lock` per admin, so parallel guesses cannot slip past. **Manual unlock:** `private.new_admin_setup_code` and `private.reset_admin_passkeys` clear the admin's failures; or wait an hour.
+- **Step-up for sensitive actions.** A stolen access token must not be enough to add or remove a passkey, rename one or make recovery codes. These need a fresh passkey proof on the session (`step_up_options` + `step_up_verify`, valid 5 minutes; a login or registration also counts as fresh). Without it the answer is `403 {"error":"step_up_required"}` (the only refusal with its own body). Exempt: registration with a founder setup code, and a recovery session registering a new passkey (it has no passkey proof to give; it still cannot rename, remove or make codes).
+- `pk_use_recovery_code` uses the code and starts the 30 minute session in one transaction (a failure cannot lose a code), and does nothing on a session already verified by a passkey.
+- `private.revoke_admin` (0010) now also deletes that user's passkeys, sessions, recovery codes, setup codes and failures.
 - Removing a passkey also ends every session it opened (foreign key `on delete cascade`), so removing a stolen device cuts its access at once. Removing the passkey you are signed in with therefore signs you out of the admin area.
 - A recovery login never replaces a live passkey session.
-- Wrong recovery codes and failed passkey attempts share one counter for the hourly login limit (10), on top of the recovery lock (5).
 - The audit/security-event details are filtered to a few harmless keys (`name`, `via`, `reason`, `device_type`, `backed_up`, `count`), so no code or credential can end up there even by mistake.
 - The edge function also refuses a request whose `Origin` header is not `ADMIN_ORIGIN` (defence in depth; a browser always sends it).
 
@@ -204,8 +206,9 @@ The Expo app also builds for the browser (`npm run build:web` in `apps/mobile`, 
 | Table | Holds |
 |---|---|
 | `admin_passkeys` | `id`, `user_id`, `credential_id` (unique), `public_key` (base64url COSE), `counter bigint`, `transports`, `device_type`, `backed_up`, `name` (1 to 40 chars), `created_at`, `last_used_at`. At most 10 per admin. |
-| `admin_passkey_challenges` | one live challenge per (user, session, purpose `register`/`login`), valid 5 minutes, consumed by `delete ... returning` (single use) |
-| `admin_passkey_sessions` | `session_id` (primary key), `user_id`, `passkey_id` (null for recovery), `via` (`passkey`/`recovery`), `expires_at` |
+| `admin_passkey_challenges` | one live challenge per (user, session, purpose `register`/`login`/`stepup`), valid 5 minutes, consumed by `delete ... returning` (single use) |
+| `admin_passkey_sessions` | `session_id` (primary key), `user_id`, `passkey_id` (null for recovery), `via` (`passkey`/`recovery`), `expires_at`, `step_up_until` |
+| `admin_passkey_events` | failed attempts (`login_failed`, `recovery_failed`, `setup_code_failed`) with the auth user id and the Supabase session id, for the lock-outs |
 | `admin_setup_codes` | one per admin: sha256 hash, 15 minutes, `used_at` |
 | `admin_recovery_codes` | ten per admin: sha256 hashes, `used_at` |
 
@@ -215,15 +218,20 @@ Codes are 12 (setup) or 16 (recovery, shown as `XXXX-XXXX-XXXX-XXXX`, 80 bits) r
 
 Public, for the signed-in person: `is_admin()`, `admin_status()` returning `not_admin` | `needs_setup` (admin with no passkey: ask the founder for a setup code) | `needs_passkey` (has one, this session has not used it) | `admin`. The browser never changes passkeys through SQL; it talks to the edge function.
 
-Service-role only (revoked from `public`, `anon`, `authenticated`; the edge function passes the user and session from the verified JWT, never from the body): `pk_state`, `pk_new_challenge`, `pk_take_challenge`, `pk_check_setup_code`, `pk_take_setup_code`, `pk_add_credential` (max 10, unique credential id, name check, optional setup code), `pk_credentials`, `pk_credential`, `pk_use_counter` (clone detection: the counter must grow when either side is non-zero; 0 to 0 is accepted for synced passkeys), `pk_start_session`, `pk_end_session`, `pk_replace_recovery_codes` (exactly ten; replaces all older), `pk_use_recovery_code` (`ok`/`bad`/`locked`: five wrong per hour lock it, even for a right code), `pk_rename`, `pk_remove` (refuses the last passkey), `pk_note` (writes `security_events` and `audit_log` rows `admin_setup`, `admin_passkey_added`, `admin_passkey_removed`, `admin_passkey_renamed`, `admin_passkey_login`, `admin_recovery_used`, `admin_recovery_generated`, `admin_login_failed`).
+Service-role only (revoked from `public`, `anon`, `authenticated`; the edge function passes the user and session from the verified JWT, never from the body): `pk_state`, `pk_new_challenge`, `pk_take_challenge`, `pk_check_setup_code(user, session, code)`, `pk_take_setup_code`, `pk_add_credential` (max 10, unique credential id, name check, optional setup code used up in the same transaction), `pk_credentials`, `pk_credential`, `pk_use_counter` (clone detection: the counter must grow when either side is non-zero; 0 to 0 is accepted for synced passkeys), `pk_start_session`, `pk_set_step_up`, `pk_end_session`, `pk_replace_recovery_codes` (exactly ten; replaces all older), `pk_use_recovery_code(user, session, hash)` (returns `{status: ok|bad|locked|already, expires_at}`; `ok` also starts the 30 minute recovery session), `pk_rename`, `pk_remove` (refuses the last passkey), `pk_note(user, kind, details, session)` (`login_failed` also counts against the lock-out; writes `security_events` and `audit_log` rows `admin_setup`, `admin_passkey_added`, `admin_passkey_removed`, `admin_passkey_renamed`, `admin_passkey_login`, `admin_recovery_used`, `admin_recovery_generated`, `admin_login_failed`).
 
-**Founder break-glass** (Supabase SQL editor only, not granted to any role): `private.new_admin_setup_code(email)`, `private.reset_admin_passkeys(email)`, `private.list_admins()`. The statements are:
+**Founder break-glass** (Supabase SQL editor only, not granted to any role, not even `service_role`): `private.new_admin_setup_code(email)`, `private.reset_admin_passkeys(email)`, `private.open_admin_session(email, minutes)`, `private.list_admins()`. The statements are:
 
 ```sql
 select * from private.list_admins();                           -- who is an admin, how many passkeys
 select private.new_admin_setup_code('admin@example.com');     -- a 12-character code, shown once, valid 15 minutes
 select private.reset_admin_passkeys('admin@example.com');     -- both devices AND all recovery codes lost: forget them all, then make a new setup code
+select private.open_admin_session('admin@example.com', 30);   -- the edge function is down / not deployed / secrets missing (see below)
 ```
+
+**Edge function down or not set up yet.** The founder signs in on the admin site with email and password first (that creates a Supabase session), then runs `select private.open_admin_session('admin@example.com', 30);` in the SQL editor (1 to 30 minutes, audited as `admin_session_opened`), then reloads the page. The newest session of that admin becomes a **recovery** session, so the admin site shows its usual recovery banner and nothing else is needed on the site. It can do everything an admin does except rename, remove or make codes for passkeys.
+
+**Manual unlock after a lock-out:** a new setup code (`new_admin_setup_code`) or a reset (`reset_admin_passkeys`) clears the admin's failed attempts at once; otherwise the lock ends an hour after the last failure.
 
 ### The edge function `admin-passkey`
 
@@ -244,7 +252,8 @@ Settings (Supabase Edge Function secrets): `ADMIN_RP_ID` (the admin site's domai
 | 404 | `not_found` | `rename`/`remove`: no such passkey of yours |
 | 409 | `last_passkey` | `remove` of the only passkey |
 | 409 | `already_registered` | the same authenticator again |
-| 429 | `too_many_attempts` | 10 failed attempts in an hour (passkey or recovery), 5 wrong recovery codes, 10 wrong setup codes |
+| 403 | `step_up_required` | `register_options`/`register_verify` (without a setup code), `rename`, `remove`, `recovery_generate` from a passkey session that has not given a fresh passkey proof in the last 5 minutes: call `step_up_options` + `step_up_verify`, then retry. Never sent to a caller who is not verified (they get `not_allowed`) |
+| 429 | `too_many_attempts` | 5 failures an hour from this session, or 20 for the user (failed passkey proofs, wrong recovery codes, wrong setup codes); a verified session is held back only by its own failures |
 | 502 | `try_again_later` | the database or the library failed |
 | 503 | `not_configured` | settings missing |
 
@@ -252,15 +261,17 @@ Every action first needs the caller to be in `admins` (otherwise `403 not_allowe
 
 | `action` | Body (besides `action`) | Allowed when | Success body |
 |---|---|---|---|
-| `status` | none | any admin | `{ok, status: "needs_setup"\|"needs_passkey"\|"admin", verified: bool, via: "passkey"\|"recovery"\|null, passkeys: [{id, name, created_at, last_used_at, device_type, backed_up}], recovery_codes_left: int}` |
-| `register_options` | `name?` (1 to 40), `setup_code?` | session verified (any `via`), **or** a valid `setup_code` | `{ok, options}`: pass `options` to `startRegistration({optionsJSON: options})` of `@simplewebauthn/browser`. rp `{id, name}`, attestation `none`, `userVerification: required`, `residentKey: preferred`, existing passkeys excluded, challenge valid 5 minutes |
-| `register_verify` | `response` (the browser's registration response), `name?`, `setup_code?` (the same one, when not yet verified) | as above | `{ok, passkey: {id, name}, session: {via: "passkey", expires_at}}`. The session is now verified for 8 hours. A setup code is used up here. Default name is `Passkey YYYY-MM-DD` |
+| `status` | none | any admin | `{ok, step_up: bool, status: "needs_setup"\|"needs_passkey"\|"admin", verified: bool, via: "passkey"\|"recovery"\|null, passkeys: [{id, name, created_at, last_used_at, device_type, backed_up}], recovery_codes_left: int}` |
+| `register_options` | `name?` (1 to 40), `setup_code?` | a valid `setup_code`, **or** a verified session (a passkey session also needs a fresh step-up, else `step_up_required`; a recovery session does not) | `{ok, options}`: pass `options` to `startRegistration({optionsJSON: options})` of `@simplewebauthn/browser`. rp `{id, name}`, attestation `none`, `userVerification: required`, `residentKey: preferred`, existing passkeys excluded, challenge valid 5 minutes |
+| `register_verify` | `response` (the browser's registration response), `name?`, `setup_code?` (the same one, when that was the gate) | as above | `{ok, passkey: {id, name}, session: {via: "passkey", expires_at}}`. The session is now verified for 8 hours. A setup code is used up here. Default name is `Passkey YYYY-MM-DD` |
+| `step_up_options` | none | session verified **via passkey** | `{ok, options}`: like `login_options` (purpose `stepup`); pass to `startAuthentication({optionsJSON: options})` |
+| `step_up_verify` | `response` (the browser's authentication response) | via passkey | `{ok, until}`: sensitive actions are allowed on this session until `until` (5 minutes). A login or a registration also gives a fresh step-up |
 | `login_options` | none | at least one passkey | `{ok, options}`: pass to `startAuthentication({optionsJSON: options})`. `userVerification: required`, `allowCredentials` from the database |
 | `login_verify` | `response` (the browser's authentication response) | at least one passkey | `{ok, session: {via: "passkey", expires_at}}` |
-| `recovery_login` | `code` (any case, spaces or dashes allowed) | any admin | `{ok, session: {via: "recovery", expires_at}}` (30 minutes). A recovery session may read status, register a new passkey and sign out, nothing else of the passkey area |
-| `recovery_generate` | none | session verified **via passkey** | `{ok, codes: ["XXXX-XXXX-XXXX-XXXX", ... 10]}`: shown once, replaces every older code |
-| `rename` | `id` (uuid), `name` (1 to 40) | via passkey | `{ok}` |
-| `remove` | `id` (uuid) | via passkey | `{ok}`; the passkey's sessions end with it (call `status` again; the current session may be gone) |
+| `recovery_login` | `code` (any case, spaces or dashes allowed) | any admin; on a session already verified by a passkey it does nothing and uses no code | `{ok, session: {via: "recovery", expires_at}}` (30 minutes; the code and the session are one database step). A recovery session may read status, register a new passkey and sign out, nothing else of the passkey area |
+| `recovery_generate` | none | session verified **via passkey** + fresh step-up | `{ok, codes: ["XXXX-XXXX-XXXX-XXXX", ... 10]}`: shown once, replaces every older code |
+| `rename` | `id` (uuid), `name` (1 to 40) | via passkey + fresh step-up | `{ok}` |
+| `remove` | `id` (uuid) | via passkey + fresh step-up | `{ok}`; the passkey's sessions end with it (call `status` again; the current session may be gone) |
 | `sign_out` | none | any admin | `{ok}`; also call `supabase.auth.signOut()` |
 
 A challenge is single use and tied to the user, the session and the purpose, so an answer cannot be replayed or moved to another session. A failed `login_verify` or `register_verify` writes a generic `admin_login_failed` audit row (with a short reason such as `verify`, `challenge`, `unknown_credential`, `counter`; never the library message).
@@ -269,7 +280,7 @@ A challenge is single use and tied to the user, the session and the purpose, so 
 `signInWithPassword` → `admin_status()` (SQL) → `not_admin`: sign out. `needs_setup`: ask for the setup code, `register_options` + `register_verify`, then show recovery codes (`recovery_generate`) once. `needs_passkey`: `login_options` + `login_verify` (or `recovery_login`). `admin`: continue; refresh the token is not needed because the session id stays the same.
 
 ### Residual risks
-Someone with **both** the password and an unused recovery code (or the founder's setup code) can enrol a passkey of their own: keep recovery codes offline, regenerate them after using one, and watch the audit log for `admin_passkey_added` and `admin_recovery_used`. Whoever controls the founder's Gmail or the Supabase account can reset passkeys and issue setup codes (break-glass runs in the SQL editor), so those two accounts need their own strong second factor. A password holder can make an admin's passkey login return 429 for an hour by failing on purpose (a lock-out, not a break-in).
+Someone with **both** the password and an unused recovery code (or the founder's setup code) can enrol a passkey of their own: keep recovery codes offline, regenerate them after using one, and watch the audit log for `admin_passkey_added` and `admin_recovery_used`. Whoever controls the founder's Gmail or the Supabase account can reset passkeys and issue setup codes (break-glass runs in the SQL editor), so those two accounts need their own strong second factor. A password holder can make **unverified** sessions of an admin return 429 for up to an hour by failing on purpose (a lock-out, not a break-in: it cannot touch a session that is already verified, and the founder clears it with a new setup code or a reset). The admin site keeps the Supabase session in browser storage and its content-security policy needs `'unsafe-inline'` (a Next.js limit), so a cross-site-scripting bug there could steal an access token; step-up (a fresh passkey proof for enrolling, removing, renaming and recovery codes), the 8 hour passkey session and the `auth.sessions` check limit what a stolen token can do. Recommended on a Pro plan: Supabase session timebox and inactivity timeout (`[auth.sessions]` in `supabase/config.toml`, commented hints only).
 
 ## 11. Rules every part must follow
 

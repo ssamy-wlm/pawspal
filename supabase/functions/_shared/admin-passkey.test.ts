@@ -54,7 +54,7 @@ async function call(deps: AdminPasskeyDeps, body: unknown, headers?: Record<stri
 }
 const REFUSED = { error: 'not_allowed' };
 /** Makes the fake session verified, as if a passkey (or recovery code) had just answered. */
-const verify = (db: FakePasskeyDb, via: 'passkey' | 'recovery' = 'passkey', user = ADMIN, session = SID) => { db.sessions.set(session, { user, via, minutes: 480 }); };
+const verify = (db: FakePasskeyDb, via: 'passkey' | 'recovery' = 'passkey', user = ADMIN, session = SID, stepUp = via === 'passkey') => { db.sessions.set(session, { user, via, minutes: 480, stepUp }); };
 const addCred = (db: FakePasskeyDb, id = 'c1', user = ADMIN) => (db.rpc('pk_add_credential', { p_user: user, p_credential_id: id, p_public_key: 'AQID', p_counter: 0, p_transports: [], p_device_type: 'multiDevice', p_backed_up: true, p_name: 'Phone', p_setup_code: null }));
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 
@@ -222,7 +222,7 @@ test('register_options: the same user handle every time, different for another a
 test('register_options: the setup code is locked after too many wrong tries; a bad name is refused; ten passkeys is the limit', async () => {
   const { deps, db } = setup();
   db.setupCodes.set(ADMIN, { code: 'ABCDEFGHJKLM', used: false });
-  for (let i = 0; i < 10; i++) assert.equal((await call(deps, { action: 'register_options', setup_code: 'NOPENOPENOPE' })).status, 403);
+  for (let i = 0; i < 5; i++) assert.equal((await call(deps, { action: 'register_options', setup_code: 'NOPENOPENOPE' })).status, 403);
   const locked = await call(deps, { action: 'register_options', setup_code: 'ABCDEFGHJKLM' });
   assert.equal(locked.status, 429);
   assert.deepEqual(locked.body, { error: 'too_many_attempts' });
@@ -402,9 +402,9 @@ test('login_verify: a counter that does not grow (a cloned passkey) is refused a
   assert.equal((await call(z.deps, { action: 'login_verify', response: { id: 'c1' } })).status, 200);
 });
 
-test('rate limit: ten failures in an hour and login is 429 (options and verify), the status still works', async () => {
+test('rate limit: five failures from one session lock it (options and verify); another session is free; status still works', async () => {
   const t = setup({ wa: { verifyAuthenticationResponse: async () => ({ verified: false, authenticationInfo: { newCounter: 1 } }) } }); await addCred(t.db, 'c1');
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 5; i++) {
     await call(t.deps, { action: 'login_options' });
     assert.equal((await call(t.deps, { action: 'login_verify', response: { id: 'c1' } })).status, 403);
   }
@@ -412,7 +412,16 @@ test('rate limit: ten failures in an hour and login is 429 (options and verify),
   assert.equal(o.status, 429); assert.deepEqual(o.body, { error: 'too_many_attempts' });
   assert.equal((await call(t.deps, { action: 'login_verify', response: { id: 'c1' } })).status, 429);
   assert.equal((await call(t.deps, { action: 'recovery_login', code: 'ABCD-EFGH-JKLM-NPQR' })).status, 429);
+  assert.equal((await call(t.deps, { action: 'register_options', setup_code: 'ABCDEFGHJKLM' })).status, 429);
   assert.equal((await call(t.deps, { action: 'status' })).status, 200);
+  // a second session of the same user (the attacker's budget is spent, the owner's is not)
+  const other = { ...t.deps, authUser: async () => ({ id: ADMIN, sessionId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }) };
+  assert.equal((await call(other, { action: 'login_options' })).status, 200);
+  // twenty failures over several sessions lock the user everywhere ... except a session that is already verified
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 5; j++) t.db.failures.set(ADMIN, [...(t.db.failures.get(ADMIN) ?? []), { kind: 'login_failed', session: 'dddddddd-0000-4000-8000-00000000000' + i }]);
+  assert.equal((await call(other, { action: 'login_options' })).status, 429, 'the user budget is spent');
+  verify(t.db, 'passkey', ADMIN, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+  assert.equal((await call(other, { action: 'step_up_options' })).status, 200, "strangers' failures do not block a verified session");
 });
 
 // ---------------------------------------------------------------- recovery
@@ -471,7 +480,7 @@ test('recovery_login: a locked user is 429 even with a right code', async () => 
   const t = setup(); await addCred(t.db); verify(t.db);
   const codes = (await call(t.deps, { action: 'recovery_generate' })).body.codes as string[];
   t.db.sessions.clear();
-  t.db.failures.set(ADMIN, Array.from({ length: 5 }, () => ({ kind: 'recovery_failed' })));
+  t.db.failures.set(ADMIN, Array.from({ length: 5 }, () => ({ kind: 'recovery_failed', session: SID })));
   const r = await call(t.deps, { action: 'recovery_login', code: codes[2] });
   assert.equal(r.status, 429);
   assert.deepEqual(r.body, { error: 'too_many_attempts' });
@@ -529,4 +538,108 @@ test('the user and the session always come from the token, never from the body',
   const r = await call(t.deps, { action: 'status', user_id: OTHER, p_user: OTHER, session_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' });
   assert.equal(r.body.passkeys.length, 0, "the other admin's passkeys are not shown");
   for (const c of t.db.calls) { assert.equal(c.args.p_user, ADMIN); if ('p_session' in c.args) assert.equal(c.args.p_session, SID); }
+});
+
+// ---------------------------------------------------------------- step-up (a stolen access token is not enough)
+const STEP_UP_REQUIRED = { error: 'step_up_required' };
+
+test('step-up: a passkey session without a fresh proof cannot enrol, rename, remove or make recovery codes (distinct body)', async () => {
+  const t = setup(); await addCred(t.db, 'c1'); await addCred(t.db, 'c2'); verify(t.db, 'passkey', ADMIN, SID, false);
+  const id = t.db.creds[0].id;
+  for (const body of [{ action: 'register_options' }, { action: 'register_verify', response: { id: 'x' } }, { action: 'rename', id, name: 'x' }, { action: 'remove', id }, { action: 'recovery_generate' }]) {
+    const r = await call(t.deps, body);
+    assert.equal(r.status, 403, JSON.stringify(body));
+    assert.deepEqual(r.body, STEP_UP_REQUIRED, JSON.stringify(body));
+  }
+  assert.equal(t.db.creds.length, 2);
+  assert.equal(t.db.recovery.size, 0);
+  assert.equal(t.wa.calls.length, 0, 'no registration options were made');
+  assert.equal((await call(t.deps, { action: 'status' })).body.step_up, false);
+  // a fresh proof opens them for this session
+  t.db.sessions.get(SID)!.stepUp = true;
+  assert.equal((await call(t.deps, { action: 'register_options' })).status, 200);
+  assert.equal((await call(t.deps, { action: 'rename', id, name: 'x' })).status, 200);
+  assert.equal((await call(t.deps, { action: 'recovery_generate' })).status, 200);
+  assert.equal((await call(t.deps, { action: 'remove', id })).status, 200);
+});
+
+test('step-up: every other refusal keeps the generic body; a setup code and a recovery session are exempt', async () => {
+  // not verified at all: generic refusal, not the step-up hint (nothing is revealed)
+  const n = setup(); await addCred(n.db, 'c1');
+  for (const body of [{ action: 'register_options' }, { action: 'rename', id: n.db.creds[0].id, name: 'x' }, { action: 'recovery_generate' }]) {
+    assert.deepEqual((await call(n.deps, body)).body, REFUSED);
+  }
+  // a recovery session: no step-up for registering, but still no rename/remove/codes (generic refusal)
+  const r = setup(); await addCred(r.db, 'c1'); verify(r.db, 'recovery');
+  assert.equal((await call(r.deps, { action: 'register_options' })).status, 200);
+  assert.deepEqual((await call(r.deps, { action: 'rename', id: r.db.creds[0].id, name: 'x' })).body, REFUSED);
+  assert.deepEqual((await call(r.deps, { action: 'recovery_generate' })).body, REFUSED);
+  assert.deepEqual((await call(r.deps, { action: 'step_up_options' })).body, REFUSED, 'a recovery session has no passkey proof to give');
+  // a founder setup code needs no step-up, even from a passkey session without a fresh proof
+  const s = setup(); await addCred(s.db, 'c1'); verify(s.db, 'passkey', ADMIN, SID, false);
+  s.db.setupCodes.set(ADMIN, { code: 'ABCDEFGHJKLM', used: false });
+  assert.equal((await call(s.deps, { action: 'register_options', setup_code: 'ABCDEFGHJKLM' })).status, 200);
+  assert.equal((await call(s.deps, { action: 'register_verify', setup_code: 'ABCDEFGHJKLM', response: { id: 'x' } })).status, 200);
+  assert.equal(s.db.setupCodes.get(ADMIN)!.used, true);
+});
+
+test('step_up_options / step_up_verify: a fresh assertion with a real passkey sets the 5 minute window', async () => {
+  const t = setup(); await addCred(t.db, 'c1'); verify(t.db, 'passkey', ADMIN, SID, false);
+  const o = await call(t.deps, { action: 'step_up_options' });
+  assert.equal(o.status, 200);
+  assert.equal(t.wa.calls[0].opts.userVerification, 'required');
+  assert.equal(t.db.challenges.get(`${ADMIN}|${SID}|stepup`), 'auth-challenge-012345678', 'a step-up challenge of its own purpose');
+  assert.equal(t.db.challenges.has(`${ADMIN}|${SID}|login`), false);
+  const v = await call(t.deps, { action: 'step_up_verify', response: { id: 'c1' } });
+  assert.equal(v.status, 200);
+  assert.ok(v.body.until);
+  assert.equal(t.db.sessions.get(SID)!.stepUp, true);
+  assert.equal(t.db.creds[0].counter, 1);
+  // single use: the same challenge cannot be used again
+  t.db.sessions.get(SID)!.stepUp = false;
+  assert.equal((await call(t.deps, { action: 'step_up_verify', response: { id: 'c1' } })).status, 403);
+  assert.equal(t.db.sessions.get(SID)!.stepUp, false);
+  // a login challenge is not a step-up challenge
+  await call(t.deps, { action: 'login_options' });
+  assert.equal((await call(t.deps, { action: 'step_up_verify', response: { id: 'c1' } })).status, 403);
+});
+
+test('step_up_verify refusals: not verified, bad proof, cloned counter; each is counted', async () => {
+  const n = setup(); await addCred(n.db, 'c1');
+  assert.deepEqual((await call(n.deps, { action: 'step_up_options' })).body, REFUSED);
+  assert.deepEqual((await call(n.deps, { action: 'step_up_verify', response: { id: 'c1' } })).body, REFUSED);
+  const bad = setup({ wa: { verifyAuthenticationResponse: async () => ({ verified: false, authenticationInfo: { newCounter: 1 } }) } });
+  await addCred(bad.db, 'c1'); verify(bad.db, 'passkey', ADMIN, SID, false);
+  await call(bad.deps, { action: 'step_up_options' });
+  assert.equal((await call(bad.deps, { action: 'step_up_verify', response: { id: 'c1' } })).status, 403);
+  assert.equal(bad.db.sessions.get(SID)!.stepUp, false);
+  assert.equal(bad.db.failures.get(ADMIN)?.length, 1);
+  const clone = setup({ wa: { verifyAuthenticationResponse: async () => ({ verified: true, authenticationInfo: { newCounter: 0 } }) } });
+  await addCred(clone.db, 'c1'); clone.db.creds[0].counter = 4; verify(clone.db, 'passkey', ADMIN, SID, false);
+  await call(clone.deps, { action: 'step_up_options' });
+  assert.equal((await call(clone.deps, { action: 'step_up_verify', response: { id: 'c1' } })).status, 403);
+  assert.equal(clone.db.sessions.get(SID)!.stepUp, false);
+  assert.deepEqual(clone.db.notes.at(-1)?.details, { reason: 'counter' });
+  // failures carry the session id (per-session lock-out)
+  assert.equal(clone.db.calls.filter((c) => c.name === 'pk_note' && c.args.p_kind === 'login_failed').every((c) => c.args.p_session === SID), true);
+});
+
+test('recovery_login on a session already verified by a passkey uses no code', async () => {
+  const t = setup(); await addCred(t.db); verify(t.db);
+  t.db.recovery.set(ADMIN, [{ hash: sha('ABCDEFGHJKLMNPQR'), used: false }]);
+  const r = await call(t.deps, { action: 'recovery_login', code: 'ABCD-EFGH-JKLM-NPQR' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.session.via, 'passkey');
+  assert.equal(t.db.recovery.get(ADMIN)![0].used, false);
+  assert.equal(t.db.calls.filter((c) => c.name === 'pk_use_recovery_code').length, 0);
+});
+
+test('recovery_login: the database starts the session with the code (one call), the handler adds no second step', async () => {
+  const t = setup(); await addCred(t.db);
+  t.db.recovery.set(ADMIN, [{ hash: sha('ABCDEFGHJKLMNPQR'), used: false }]);
+  const r = await call(t.deps, { action: 'recovery_login', code: 'abcd efgh jklm npqr' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.session.via, 'recovery');
+  assert.equal(t.db.calls.filter((c) => c.name === 'pk_start_session').length, 0, 'no separate session call that could fail after the code was used');
+  assert.equal(t.db.calls.find((c) => c.name === 'pk_use_recovery_code')!.args.p_session, SID);
 });
