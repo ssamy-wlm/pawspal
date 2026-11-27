@@ -5,7 +5,9 @@
 
 Never allowed in config.toml: test phone numbers (a fixed code anyone could use), phone sign-in, a hook that points at a
 local address, and any secret written out in plain text (secrets must be env(NAME) references). Admin settings
-(password rules, email confirmation, authenticator codes) must not be loosened.
+(password rules, email confirmation) must not be loosened. The admin second step is a passkey, enforced by the database
+(migration 0014) and the `admin-passkey` edge function, so the authenticator-app (TOTP) settings are no longer checked; that
+function must keep verify_jwt = true.
 """
 import re
 import sys
@@ -43,9 +45,10 @@ def problems(cfg: dict) -> list[str]:
             out.append(f'{tag}: [auth] password_requirements must be set (letters and digits).')
         if not auth.get('email', {}).get('enable_confirmations', False):
             out.append(f'{tag}: [auth.email] enable_confirmations must stay true (it stops someone registering an invited admin email).')
-        totp = auth.get('mfa', {}).get('totp', {})
-        if not (totp.get('enroll_enabled') and totp.get('verify_enabled')):
-            out.append(f'{tag}: [auth.mfa.totp] enroll_enabled and verify_enabled must be true (admins need the authenticator code).')
+        # The passkey step is enforced by public.is_admin() and the admin-passkey function, which needs a verified user token.
+        fn = root.get('functions', {}).get('admin-passkey')
+        if fn is not None and fn.get('verify_jwt') is not True:
+            out.append(f'{tag}: [functions.admin-passkey] verify_jwt must be true (the passkey step needs the signed-in admin\'s token).')
 
     check_table('config.toml', cfg)
     check_admin_settings('config.toml', cfg)

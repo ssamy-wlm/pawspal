@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from './auth';
 import { Turnstile, turnstileSiteKey } from './turnstile';
+import { CodesScreen, PasskeyScreen, RecoveryBanner, SetupScreen, StepUpHost } from './passkey-ui';
 import { Btn, C, Card, Err, Field, inputStyle } from './ui';
+import { needsNewPasskey } from './passkey-rules';
 import tokens from './tokens.json';
 
 const NAV: [string, string][] = [
   ['/', 'Overview'], ['/verification', 'Verification'], ['/payments', 'Payments'], ['/reports', 'Reports'], ['/users', 'Users'],
-  ['/appeals', 'Appeals'], ['/bookings', 'Bookings'], ['/photos', 'Photo review'], ['/settings', 'Settings'], ['/rules', 'Rules'], ['/audit', 'Audit log'],
+  ['/appeals', 'Appeals'], ['/bookings', 'Bookings'], ['/photos', 'Photo review'], ['/settings', 'Settings'], ['/rules', 'Rules'], ['/audit', 'Audit log'], ['/security', 'Security'],
 ];
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -25,12 +27,12 @@ function Centered({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SignIn() {
+function SignIn({ notice }: { notice?: string }) {
   const { signIn } = useAuth();
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(notice ?? null);
   const [token, setToken] = React.useState<string | null>(null);
   const [attempt, setAttempt] = React.useState(0);
   const needsToken = turnstileSiteKey() !== '';
@@ -47,41 +49,21 @@ function SignIn() {
   );
 }
 
-function Code({ enroll }: { enroll?: { qr: string; secret: string } }) {
-  const { submitCode, signOut } = useAuth();
-  const [code, setCode] = React.useState('');
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  return (
-    <Card>
-      {enroll ? (
-        <>
-          <p style={{ margin: 0, color: C.text }}>First sign-in: scan this with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password or similar), then enter the six digit code it shows.</p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={enroll.qr} alt="QR code for your authenticator app" width={200} height={200} style={{ alignSelf: 'center', background: C.surface, padding: 8, borderRadius: 12 }} />
-          <p style={{ margin: 0, color: C.textMuted, fontSize: 13 }}>Cannot scan? Type this key into the app: <code style={{ overflowWrap: 'anywhere' }}>{enroll.secret}</code></p>
-        </>
-      ) : <p style={{ margin: 0, color: C.text }}>Enter the six digit code from your authenticator app.</p>}
-      <form onSubmit={(e) => { e.preventDefault(); setBusy(true); setError(null); submitCode(code).then((m) => { setError(m); setBusy(false); }, () => { setError('Could not check the code. Try again.'); setBusy(false); }); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <Field label="Code"><input style={inputStyle} inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} /></Field>
-        <Err>{error}</Err>
-        <Btn type="submit" disabled={busy || code.replace(/\s/g, '').length !== 6}>Continue</Btn>
-      </form>
-      <Btn kind="secondary" onClick={() => { signOut().catch(() => {}); }}>Sign out</Btn>
-    </Card>
-  );
-}
-
 /** Everything the site shows goes through here: nothing but the sign-in screens appears until the database says "admin". */
 export function Shell({ children }: { children: React.ReactNode }) {
+  return <><StepUpHost /><ShellBody>{children}</ShellBody></>;
+}
+
+function ShellBody({ children }: { children: React.ReactNode }) {
   const { state, signOut } = useAuth();
   const path = usePathname();
   if (state.kind === 'loading') return <Centered><p style={{ color: C.dark.textMuted }}>One moment</p></Centered>;
   if (state.kind === 'not_configured') return <Centered><p style={{ color: C.dark.text }}>This site is not connected to Supabase yet. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel.</p></Centered>;
-  if (state.kind === 'signed_out') return <Centered><SignIn /></Centered>;
+  if (state.kind === 'signed_out') return <Centered><SignIn notice={state.notice} /></Centered>;
   if (state.kind === 'denied') return <Centered><Card><p style={{ margin: 0, color: C.text }}>This account is not an admin. You have been signed out.</p><Btn kind="secondary" onClick={() => window.location.assign('/')}>Back</Btn></Card></Centered>;
-  if (state.kind === 'enroll') return <Centered><Code enroll={{ qr: state.qr, secret: state.secret }} /></Centered>;
-  if (state.kind === 'ask_code') return <Centered><Code /></Centered>;
+  if (state.kind === 'passkey') return <Centered><PasskeyScreen /></Centered>;
+  if (state.kind === 'setup') return <Centered><SetupScreen /></Centered>;
+  if (state.kind === 'codes') return <Centered><CodesScreen codes={state.codes} /></Centered>;
   return (
     <div className="shell" style={{ display: 'flex', minHeight: '100vh', background: C.background }}>
       <nav aria-label="Main" className="sidenav" style={{ position: 'sticky', top: 0, height: '100vh', overflowY: 'auto', width: 230, flexShrink: 0, background: C.dark.background, color: C.dark.text, padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -93,10 +75,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
         })}
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: C.dark.textMuted }}>
           <span style={{ overflowWrap: 'anywhere' }}>{state.email}</span>
-          <button onClick={() => { signOut().catch(() => {}); }} style={{ minHeight: 40, borderRadius: 999, border: `2px solid ${C.dark.primary}`, background: 'transparent', color: C.dark.text, fontWeight: 600, cursor: 'pointer' }}>Sign out</button>
+          <Btn kind="onDark" onClick={() => { signOut().catch(() => {}); }}>Sign out</Btn>
         </div>
       </nav>
-      <main className="page" style={{ flex: 1, minWidth: 0, color: C.text }}>{children}</main>
+      <main className="page" style={{ flex: 1, minWidth: 0, color: C.text }}>
+        {needsNewPasskey(state.via, state.added) ? <RecoveryBanner /> : null}
+        {children}
+      </main>
     </div>
   );
 }

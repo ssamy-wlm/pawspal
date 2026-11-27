@@ -34,16 +34,40 @@ export function Badge({ children, tone = 'neutral' }: { children: React.ReactNod
 }
 export const statusTone = (s: string): Tone => (s === 'active' || s === 'resolved' || s === 'completed' || s === 'confirmed' ? 'good' : s === 'suspended' || s === 'removed' || s === 'dismissed' || s === 'cancelled' ? 'bad' : 'warn');
 
-export function Btn({ children, onClick, kind = 'primary', disabled, type = 'button' }:
-  { children: React.ReactNode; onClick?: () => void; kind?: 'primary' | 'secondary' | 'danger' | 'accent'; disabled?: boolean; type?: 'button' | 'submit' }) {
-  const bg = kind === 'primary' ? C.primary : kind === 'danger' ? C.danger : kind === 'accent' ? C.accent : 'transparent';
-  const fg = kind === 'secondary' ? C.primary : kind === 'accent' ? C.onAccent : C.onPrimary;
-  return (
-    <button type={type} onClick={onClick} disabled={disabled}
-      style={{ minHeight: 40, padding: '0 18px', borderRadius: 999, border: kind === 'secondary' ? `2px solid ${C.primary}` : 'none', background: bg, color: fg, fontWeight: 600, fontSize: font.small, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, borderStyle: disabled ? 'dashed' : undefined }}>
-      {children}
-    </button>
-  );
+/**
+ * Every button on the site gets its colours from here, as pairs of theme tokens. Brand orange with navy text is the default
+ * (docs/design-system.md); outlined buttons use navy text; the danger button keeps a red look. A test checks that each pair
+ * below passes AA contrast, and that no other file draws a raw button element.
+ */
+export type BtnKind = 'primary' | 'accent' | 'secondary' | 'danger' | 'onDark';
+export const BUTTON_PAIRS: Record<BtnKind, { fg: string; bg: string; border: string; /** the colour the button sits on */ on: string[] }> = {
+  primary: { fg: C.onAccent, bg: C.accent, border: C.accent, on: [C.surface, C.background] },
+  accent: { fg: C.onAccent, bg: C.accent, border: C.accent, on: [C.surface, C.background] },
+  secondary: { fg: C.text, bg: 'transparent', border: C.text, on: [C.surface, C.background, C.surfaceTint] },
+  danger: { fg: C.onDanger, bg: C.danger, border: C.danger, on: [C.surface, C.background] },
+  onDark: { fg: C.dark.text, bg: 'transparent', border: C.dark.text, on: [C.dark.background] },
+};
+/** A toggle (a pressed filter button): pressed is orange with navy text, not pressed is outlined with navy text. */
+export const TOGGLE_PAIRS = { on: BUTTON_PAIRS.accent, off: BUTTON_PAIRS.secondary } as const;
+
+const look = (p: (typeof BUTTON_PAIRS)[BtnKind], disabled?: boolean): React.CSSProperties => ({
+  minHeight: 44, padding: '0 18px', borderRadius: tokens.radius.button, border: `2px solid ${p.border}`, background: p.bg, color: p.fg,
+  fontWeight: 600, fontSize: font.small, fontFamily: 'inherit', cursor: disabled ? 'not-allowed' : 'pointer',
+  opacity: disabled ? 0.45 : 1, textDecoration: disabled ? 'line-through' : undefined,
+});
+
+export function Btn({ children, onClick, kind = 'primary', disabled, type = 'button', big, full }:
+  { children: React.ReactNode; onClick?: () => void; kind?: BtnKind; disabled?: boolean; type?: 'button' | 'submit'; big?: boolean; full?: boolean }) {
+  const style: React.CSSProperties = { ...look(BUTTON_PAIRS[kind], disabled), ...(big ? { minHeight: 56, fontSize: font.body, padding: '0 28px' } : null), ...(full ? { width: '100%' } : null) };
+  delete style.textDecoration;           // a faded button is enough; striking the words through would make them harder to read
+  return <button type={type} onClick={onClick} disabled={disabled} aria-disabled={disabled || undefined} style={style}>{children}</button>;
+}
+
+/** A filter or mode button that is either pressed or not. */
+export function Toggle({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: React.ReactNode }) {
+  const style: React.CSSProperties = { ...look(pressed ? TOGGLE_PAIRS.on : TOGGLE_PAIRS.off), ...(pressed ? { border: `2px solid ${C.text}` } : null) };
+  delete style.textDecoration;
+  return <button type="button" aria-pressed={pressed} onClick={onClick} style={style}>{children}</button>;
 }
 
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -84,7 +108,7 @@ export function useLoad<T>(fn: () => Promise<T>, deps: React.DependencyList) {
   return { data, error, loading, reload: () => { setLoading(true); setTick((n) => n + 1); } };
 }
 
-/** A photo from a private bucket. The admin's own sign-in (with the code) is what allows the link. */
+/** A photo from a private bucket. The admin's own sign-in (with the passkey) is what allows the link. */
 export function Photo({ bucket, path, size = 140, alt }: { bucket: 'faces' | 'pets' | 'homes' | 'ids' | 'payments'; path: string | null | undefined; size?: number; alt: string }) {
   const [url, setUrl] = React.useState<string | null>(null);
   React.useEffect(() => {

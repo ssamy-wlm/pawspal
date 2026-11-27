@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { getAudit, type AuditRow } from '../../src/data';
-import { Badge, C, Card, Err, H1, Muted, pageStyle, PersonLink, Table, Td, when } from '../../src/ui';
+import { Badge, Btn, C, Card, Err, H1, Muted, pageStyle, PersonLink, Table, Td, when } from '../../src/ui';
 
 const brief = (d: Record<string, unknown>) =>
   Object.entries(d).filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && v.length === 0)).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' · ');
@@ -33,7 +33,7 @@ export default function Audit() {
             ))}
           </Table>
         )}
-        {more && rows.length > 0 ? <div><button onClick={() => { load(rows[rows.length - 1].id).catch(() => {}); }} style={{ minHeight: 40, borderRadius: 999, border: `2px solid ${C.primary}`, background: 'transparent', color: C.primary, fontWeight: 600, padding: '0 18px', cursor: 'pointer' }}>Load more</button></div> : null}
+        {more && rows.length > 0 ? <div><Btn kind="secondary" onClick={() => { load(rows[rows.length - 1].id).catch(() => {}); }}>Load more</Btn></div> : null}
       </Card>
     </div>
   );

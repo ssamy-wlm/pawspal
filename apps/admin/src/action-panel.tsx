@@ -2,7 +2,7 @@
 import React from 'react';
 import { refusal, takeAction } from './data';
 import { actionsFor, confirmLabel, LADDER, needsReason, RULES, validateAction, ZERO_TOLERANCE, type AccountStatus, type ActionForm, type ActionKind, type SuspensionLength } from './rules';
-import { Btn, C, Card, Err, Field, H2, inputStyle, Muted } from './ui';
+import { Btn, C, Toggle, Card, Err, Field, H2, inputStyle, Muted } from './ui';
 
 const removedNote = (status: AccountStatus, action: ActionKind) =>
   status === 'removed' && action === 'reinstatement' ? <Muted>Reinstating a removed person also lifts the bans on their email and device that no one else still needs.</Muted> : null;
@@ -35,10 +35,7 @@ export function ActionPanel({ userId, status, onDone, only }: { userId: string; 
       <H2>Take action</H2>
       <div role="group" aria-label="Action" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {options.map((a) => (
-          <button key={a} type="button" aria-pressed={form.action === a} onClick={() => set({ action: a })}
-            style={{ minHeight: 40, padding: '0 16px', borderRadius: 999, border: `2px solid ${form.action === a ? C.primary : C.border}`, background: form.action === a ? C.primary : 'transparent', color: form.action === a ? C.onPrimary : C.text, fontWeight: 600, cursor: 'pointer' }}>
-            {LABEL[a]}
-          </button>
+          <Toggle key={a} pressed={form.action === a} onClick={() => set({ action: a })}>{LABEL[a]}</Toggle>
         ))}
       </div>
       {form.action === 'suspension' ? (

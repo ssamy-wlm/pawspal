@@ -9,7 +9,7 @@ cc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cc)
 
 
-SAFE_ADMIN = '[auth]\nminimum_password_length = 12\npassword_requirements = "lower_upper_letters_digits"\n[auth.email]\nenable_confirmations = true\n[auth.mfa.totp]\nenroll_enabled = true\nverify_enabled = true\n'
+SAFE_ADMIN = '[auth]\nminimum_password_length = 12\npassword_requirements = "lower_upper_letters_digits"\n[auth.email]\nenable_confirmations = true\n'
 
 
 def p(text, admin=SAFE_ADMIN):
@@ -22,7 +22,19 @@ class CheckConfig(unittest.TestCase):
         self.assertTrue(p('', admin=SAFE_ADMIN.replace('= 12', '= 8')))
         self.assertTrue(p('', admin=SAFE_ADMIN.replace('password_requirements = "lower_upper_letters_digits"\n', '')))
         self.assertTrue(p('', admin=SAFE_ADMIN.replace('enable_confirmations = true', 'enable_confirmations = false')))
-        self.assertTrue(p('', admin=SAFE_ADMIN.replace('verify_enabled = true', 'verify_enabled = false')))
+        self.assertTrue(p('', admin=''))
+
+    def test_totp_is_no_longer_required(self):
+        # The admin second step is a passkey now (migration 0014): a config without the authenticator-app block is fine,
+        # and so is one that still has it.
+        self.assertEqual(p(''), [])
+        self.assertEqual(p('[auth.mfa.totp]\nenroll_enabled = true\nverify_enabled = true\n'), [])
+        self.assertEqual(p('[auth.mfa.totp]\nenroll_enabled = false\nverify_enabled = false\n'), [])
+
+    def test_passkey_function_needs_a_jwt(self):
+        self.assertEqual(p('[functions.admin-passkey]\nverify_jwt = true\n'), [])
+        self.assertTrue(p('[functions.admin-passkey]\nverify_jwt = false\n'))
+        self.assertTrue(p('[functions.admin-passkey]\n'))
         self.assertTrue(p('', admin=''))
 
 

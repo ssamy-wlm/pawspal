@@ -2,9 +2,8 @@
 import React from 'react';
 import { getReportChat, getReports, refusal, setReportStatus, type ChatLine, type ReportRow } from '../../src/data';
 import { nice, REPORT_REASONS } from '../../src/rules';
-import { Badge, Btn, Card, C, Err, Field, H1, inputStyle, Muted, pageStyle, PersonLink, Status, statusTone, useLoad, when } from '../../src/ui';
+import { Badge, Btn, Card, C, Err, Field, H1, inputStyle, Muted, pageStyle, PersonLink, Status, statusTone, Toggle, useLoad, when } from '../../src/ui';
 
-const toggle = (on: boolean): React.CSSProperties => ({ minHeight: 40, padding: '0 18px', borderRadius: 999, border: `2px solid ${C.primary}`, background: on ? C.primary : 'transparent', color: on ? C.onPrimary : C.primary, fontWeight: 600, cursor: 'pointer' });
 
 function Report({ r, onChanged }: { r: ReportRow; onChanged: () => void }) {
   const [note, setNote] = React.useState('');
@@ -69,8 +68,8 @@ export default function Reports() {
     <div style={pageStyle}>
       <H1 sub="High priority first. Emergencies come from the Safety Center in the app.">Reports</H1>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button aria-pressed={open} onClick={() => setOpen(true)} style={toggle(open)}>Open</button>
-        <button aria-pressed={!open} onClick={() => setOpen(false)} style={toggle(!open)}>Closed</button>
+        <Toggle pressed={open} onClick={() => setOpen(true)}>Open</Toggle>
+        <Toggle pressed={!open} onClick={() => setOpen(false)}>Closed</Toggle>
       </div>
       <Status l={list} />
       {!list.loading && list.data && list.data.length === 0 ? <Muted>{open ? 'No open reports.' : 'No closed reports yet.'}</Muted> : null}

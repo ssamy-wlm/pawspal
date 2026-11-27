@@ -1,5 +1,5 @@
 // Every read and write the dashboard does. Reads rely on the database's rules (an admin session that passed the
-// authenticator code can read; anyone else gets nothing). Every change goes through an audited database function.
+// passkey step can read; anyone else gets nothing). Every change goes through an audited database function.
 import type { ActionForm, AccountStatus } from './rules';
 import { actionArgs } from './rules';
 import { supabase } from './supabase';

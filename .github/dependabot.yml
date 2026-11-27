@@ -43,6 +43,14 @@ updates:
       other-dependencies:
         patterns: ['*']
 
+  # Edge function test tooling. @simplewebauthn/server is also named in supabase/functions/admin-passkey/index.ts and a test
+  # keeps the two in step, so it is moved by hand (together with @simplewebauthn/browser in the admin site), never by Dependabot.
+  - package-ecosystem: npm
+    directory: /supabase/functions
+    schedule: { interval: weekly }
+    ignore:
+      - dependency-name: '@simplewebauthn/server'
+
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
