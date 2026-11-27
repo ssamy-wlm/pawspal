@@ -221,20 +221,21 @@ describe('check your email', () => {
   it('lets the person resend only after 60 seconds, then waits another 60', async () => {
     fake();
     await renderIn(<CheckEmailStep />);
-    expect(screen.getByText('Send again in 60s')).toBeTruthy();
-    await fireEvent.press(screen.getByText('Send again in 60s'));
+    expect(screen.getByText("Didn't get it? Check your spam folder.")).toBeTruthy();
+    expect(screen.getByText('Resend email in 60s')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Resend email in 60s'));
     expect(mockAuth.resend).not.toHaveBeenCalled();
     await tick(30);
-    expect(screen.getByText('Send again in 30s')).toBeTruthy();
+    expect(screen.getByText('Resend email in 30s')).toBeTruthy();
     await tick(30);
-    await fireEvent.press(screen.getByText('Send the email again'));
+    await fireEvent.press(screen.getByText('Resend email'));
     await waitFor(() => expect(mockAuth.resend).toHaveBeenCalledWith({ type: 'signup', email: 'salma@example.com', options: { emailRedirectTo: 'pawspal://auth/callback' } }));
     await waitFor(() => expect(screen.getByText('We sent it again.')).toBeTruthy());
-    expect(screen.getByText('Send again in 60s')).toBeTruthy();
+    expect(screen.getByText('Resend email in 60s')).toBeTruthy();
     // a second resend that the server refuses shows a plain sentence
     mockAuth.resend.mockResolvedValueOnce({ data: {}, error: { code: 'over_email_send_rate_limit', status: 429, message: 'x' } });
     await tick(60);
-    await fireEvent.press(screen.getByText('Send the email again'));
+    await fireEvent.press(screen.getByText('Resend email'));
     await waitFor(() => expect(screen.getByText('Too many tries. Wait a few minutes and try again.')).toBeTruthy());
   });
 });

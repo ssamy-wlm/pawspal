@@ -147,6 +147,17 @@ People join with an email and password and must click a confirmation link. Supab
 
 Running things on your own computer: `bash scripts/local-supabase.sh start` starts Supabase locally; sign-up emails then go to a local inbox (open http://127.0.0.1:54324 once Mailpit is running; the helper script excludes it by default, remove `mailpit` from the exclude list to use it). `bash scripts/test-db-supabase.sh` runs the security tests against it. The full list of function settings is in `supabase/functions/README.md`.
 
+## E5b. Interim: sending sign-up emails with Gmail (until you have a domain)
+
+Until you own a domain, sign-up, confirmation and password-reset emails go out through the Gmail account **pawspal.app@gmail.com**. When you buy a domain, switch to Resend (E5).
+1. In the Google account **pawspal.app@gmail.com** (2-step verification on), open https://myaccount.google.com/apppasswords, create an app password named `PawsPal mail`, and keep the 16 letters open.
+2. Supabase > **Authentication > Emails > SMTP Settings** > **Enable custom SMTP**: **Sender email address** `pawspal.app@gmail.com`, **Sender name** `PawsPal` (this is the name people see in their inbox), **Host** `smtp.gmail.com`, **Port** `465`, **Username** `pawspal.app@gmail.com`, **Password** the 16 letters with no spaces. **Save changes**.
+3. Supabase > **Authentication > Rate Limits**: keep emails per hour at `30` or lower. Gmail sends about 500 emails a day in total, so this is only for a small start.
+4. Test: **Authentication > Users** > the admin row > **Send password recovery**. It should arrive in the inbox from **PawsPal**. Do not click the link.
+5. If the log says `535 Username and Password not accepted`, the username and the app password belong to different Google accounts. Make the app password again in the account whose address you typed as the username.
+6. The 7-day membership reminder emails need Resend (E5), so they do not go out yet. People still see the membership banner in the app.
+7. On the sign-up "Check your email" screen people see "Didn't get it? Check your spam folder." and a **Resend email** button (once a minute). Ask early testers to mark the first email **Not spam**, which helps Gmail trust the sender.
+
 ## E6. Photo clean-up (every night)
 
 Photos that were uploaded but never saved (a pet photo you added and then left the screen, a sign-up photo that was never used) are removed by a small function, `cleanup-photos`, that runs once a night.
