@@ -417,9 +417,12 @@ test('rate limit: five failures from one session lock it (options and verify); a
   // a second session of the same user (the attacker's budget is spent, the owner's is not)
   const other = { ...t.deps, authUser: async () => ({ id: ADMIN, sessionId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }) };
   assert.equal((await call(other, { action: 'login_options' })).status, 200);
-  // twenty failures over several sessions lock the user everywhere ... except a session that is already verified
+  // an attacker with four more sessions spamming passkey logins does not block anybody else
   for (let i = 0; i < 4; i++) for (let j = 0; j < 5; j++) t.db.failures.set(ADMIN, [...(t.db.failures.get(ADMIN) ?? []), { kind: 'login_failed', session: 'dddddddd-0000-4000-8000-00000000000' + i }]);
-  assert.equal((await call(other, { action: 'login_options' })).status, 429, 'the user budget is spent');
+  assert.equal((await call(other, { action: 'login_options' })).status, 200, 'passkey failures of other sessions do not lock a fresh session');
+  // wrong recovery and setup codes are capped per user at 100 an hour
+  t.db.failures.set(ADMIN, Array.from({ length: 100 }, (_, i) => ({ kind: i % 2 ? 'recovery_failed' : 'setup_code_failed', session: 'eeeeeeee-0000-4000-8000-' + String(i).padStart(12, '0') })));
+  assert.equal((await call(other, { action: 'login_options' })).status, 429, 'the user budget for code guessing is spent');
   verify(t.db, 'passkey', ADMIN, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
   assert.equal((await call(other, { action: 'step_up_options' })).status, 200, "strangers' failures do not block a verified session");
 });
@@ -642,4 +645,12 @@ test('recovery_login: the database starts the session with the code (one call), 
   assert.equal(r.body.session.via, 'recovery');
   assert.equal(t.db.calls.filter((c) => c.name === 'pk_start_session').length, 0, 'no separate session call that could fail after the code was used');
   assert.equal(t.db.calls.find((c) => c.name === 'pk_use_recovery_code')!.args.p_session, SID);
+});
+
+test('register_verify never sends an empty setup code to the database', async () => {
+  const t = setup(); verify(t.db);
+  await call(t.deps, { action: 'register_options' });
+  const r = await call(t.deps, { action: 'register_verify', response: { id: 'x' }, setup_code: '' });
+  assert.equal(r.status, 200);
+  assert.equal(t.db.calls.find((c) => c.name === 'pk_add_credential')!.args.p_setup_code, null);
 });

@@ -87,7 +87,7 @@ select pg_temp.check(pg_temp.svc($$select public.pk_state(gen_random_uuid(), nul
 -- the founder-only functions and the internal ones: no app role and not even the service role
 select pg_temp.check(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace, (values ('anon'), ('authenticated'), ('service_role')) r(role)
                                   where n.nspname = 'private'
-                                    and p.proname in ('new_admin_setup_code', 'reset_admin_passkeys', 'open_admin_session', 'revoke_admin', 'list_admins', 'pk_prune', 'pk_event', 'pk_lock', 'pk_sec', 'pk_fail', 'pk_locked', 'pk_open_session', 'random_code', 'code_hash')
+                                    and p.proname in ('new_admin_setup_code', 'reset_admin_passkeys', 'open_admin_session', 'list_admin_sessions', 'revoke_admin', 'list_admins', 'pk_prune', 'pk_event', 'pk_lock', 'pk_sec', 'pk_fail', 'pk_locked', 'pk_open_session', 'random_code', 'code_hash')
                                     and has_function_privilege(r.role, p.oid, 'execute')), 'a role besides the owner can run a break-glass or internal function');
 select pg_temp.fails_as('authenticated', 'e7e7e7e7-0000-0000-0000-000000000001', $$select private.new_admin_setup_code('ada-pk@example.com')$$, 'an admin made their own setup code');
 select pg_temp.fails_as('service_role', null, $$select private.new_admin_setup_code('ada-pk@example.com')$$, 'the service role made a setup code');
@@ -156,6 +156,10 @@ select pg_temp.check(not pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-00000000
 select pg_temp.check(not pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000001', '{"session_id":null}'), 'a null session_id counted as admin');
 select pg_temp.check(not pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000001', '{"session_id":["e7e7e7e7-0000-0000-0000-0000000000a1"]}'), 'an array session_id counted as admin');
 select pg_temp.check(not pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000001', 'this is not json'), 'garbage claims counted as admin (or raised)');
+select pg_temp.check(not pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000001', '5'), 'a scalar claims value counted as admin');
+select pg_temp.check(not pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000001', '"e7e7e7e7-0000-0000-0000-0000000000a1"'), 'a string claims value counted as admin');
+select pg_temp.check(not pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000001', '[{"session_id":"e7e7e7e7-0000-0000-0000-0000000000a1"}]'), 'an array claims value counted as admin');
+select pg_temp.check(not pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000001', 'null'), 'a null claims value counted as admin');
 select pg_temp.check(pg_temp.status_with('e7e7e7e7-0000-0000-0000-000000000001', 'this is not json') = 'needs_passkey', 'admin_status raised on garbage claims');
 -- an expired row
 update private.admin_passkey_sessions set expires_at = now() - interval '1 second' where session_id = 'e7e7e7e7-0000-0000-0000-0000000000a1';
@@ -440,7 +444,7 @@ select pg_temp.check(pg_temp.svc($$select public.pk_take_challenge('e7e7e7e7-000
 select pg_temp.check(pg_temp.svc($$select public.pk_take_challenge('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a3', 'stepup')$$) = 'challenge-step-abcdefghijklmnop', 'the step-up challenge was not returned');
 delete from private.admin_passkey_sessions where session_id = 'e7e7e7e7-0000-0000-0000-0000000000a3';
 
-\echo '--- P11c lock-outs: 5 per session, 20 per user, a verified session is held back only by its own failures'
+\echo '--- P11c lock-outs: 5 per session; 100 wrong codes per user; passkey failures never lock other sessions'
 create or replace function pg_temp.locked(p_user uuid, p_session uuid) returns boolean language sql as $$ select (pg_temp.st(p_user, p_session) ->> 'locked')::boolean $$;
 create or replace function pg_temp.fail_n(p_user uuid, p_session uuid, n integer) returns void language plpgsql as $$
 begin for i in 1..n loop perform pg_temp.svc(format($q$select public.pk_note(%L, 'login_failed', '{}'::jsonb, %L)$q$, p_user, p_session)); end loop; end $$;
@@ -451,21 +455,46 @@ select pg_temp.fail_n('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-000
 select pg_temp.check(pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a1'), 'five failures did not lock the session');
 select pg_temp.check(not pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a2'), 'one attacker session locked the others');
 select pg_temp.check(not pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000002', 'e7e7e7e7-0000-0000-0000-0000000000a1'), 'the lock leaked to another user');
--- the per-user budget: 20 failures spread over sessions
-select pg_temp.fail_n('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.rsession(20 + i), 3) from generate_series(1, 4) i;
-select pg_temp.fail_n('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.rsession(25), 2);
-select pg_temp.check(not pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a2'), 'locked at 20 minus one');
-select pg_temp.fail_n('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.rsession(30), 1);
-select pg_temp.check(pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a2'), 'twenty failures did not lock the user');
-select pg_temp.check(pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', null), 'a missing session is not held to the user limit');
+-- an attacker with four sessions spamming passkey logins does not block a fresh, unverified session of the owner
+select pg_temp.fail_n('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.rsession(20 + i), 5) from generate_series(1, 4) i;
+select pg_temp.fail_n('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.rsession(25), 5);
+select pg_temp.check(pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.rsession(21)), 'the spamming sessions are not locked themselves');
+select pg_temp.check(not pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.rsession(40)), 'passkey failures of other sessions locked a fresh unverified session');
+select pg_temp.check(not pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', null), 'passkey failures counted per user');
+-- a missing challenge is a session-level failure only: login_verify with no challenge, over and over, from many sessions
+select pg_temp.check((select count(*) = 0 from private.admin_passkey_events where user_id = 'e7e7e7e7-0000-0000-0000-000000000001' and kind <> 'login_failed'), 'passkey failures were stored with a user-level kind');
+-- wrong recovery or setup codes ARE capped per user, at 100 an hour
+insert into private.admin_passkey_events (user_id, session_id, kind) select 'e7e7e7e7-0000-0000-0000-000000000001', gen_random_uuid(), case when i % 2 = 0 then 'recovery_failed' else 'setup_code_failed' end from generate_series(1, 99) i;
+select pg_temp.check(not pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.rsession(40)), 'locked at 99 wrong codes');
+insert into private.admin_passkey_events (user_id, session_id, kind) values ('e7e7e7e7-0000-0000-0000-000000000001', gen_random_uuid(), 'recovery_failed');
+select pg_temp.check(pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.rsession(40)), '100 wrong codes did not lock the user');
+select pg_temp.check(pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', null), '100 wrong codes did not lock a request without a session');
+select pg_temp.check(pg_temp.rc('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.rsession(41), pg_temp.hash_of('X')) = 'locked', 'recovery was not locked by the user-level cap');
 -- a session that is already verified is not blocked by the others' failures, only by its own
 insert into private.admin_passkey_sessions (session_id, user_id, passkey_id, via, expires_at) values ('e7e7e7e7-0000-0000-0000-0000000000a4', 'e7e7e7e7-0000-0000-0000-000000000001', pg_temp.cred_id('cred-ada-new'), 'passkey', now() + interval '1 hour');
 select pg_temp.check(not pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a4'), 'strangers failures locked a verified session');
 select pg_temp.fail_n('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a4', 5);
 select pg_temp.check(pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a4'), 'a verified session is not held back by its own failures');
 delete from private.admin_passkey_sessions where session_id = 'e7e7e7e7-0000-0000-0000-0000000000a4';
+-- once locked, further login_failed notes add no rows
+select pg_temp.check((select count(*) from private.admin_passkey_events where session_id = 'e7e7e7e7-0000-0000-0000-0000000000a4') = 5, 'precondition: 5 events');
+create temp table t_cnt as select (select count(*) from public.audit_log where action = 'admin_login_failed') a, (select count(*) from public.security_events where kind = 'admin_login_failed') b;
+select pg_temp.fail_n('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a4', 3);
+select pg_temp.check((select count(*) from private.admin_passkey_events where session_id = 'e7e7e7e7-0000-0000-0000-0000000000a4') = 5
+                 and (select count(*) from public.audit_log where action = 'admin_login_failed') = (select a from t_cnt)
+                 and (select count(*) from public.security_events where kind = 'admin_login_failed') = (select b from t_cnt), 'a locked session still piled up failure rows');
+-- retention: failed-login rows older than 30 days are pruned, other kinds stay
+insert into public.security_events (kind, created_at) values ('admin_login_failed', now() - interval '31 days'), ('admin_login_failed', now() - interval '29 days'), ('admin_passkey_added', now() - interval '31 days');
+insert into public.audit_log (admin_id, action, created_at) values ('00000000-0000-0000-0000-000000000000', 'admin_login_failed', now() - interval '31 days'), ('00000000-0000-0000-0000-000000000000', 'admin_login_failed', now() - interval '29 days'), ('00000000-0000-0000-0000-000000000000', 'admin_passkey_added', now() - interval '31 days');
+select private.pk_prune();
+select pg_temp.check((select count(*) = 0 from public.security_events where kind = 'admin_login_failed' and created_at < now() - interval '30 days')
+                 and (select count(*) = 1 from public.security_events where kind = 'admin_login_failed' and created_at between now() - interval '30 days' and now() - interval '28 days')
+                 and (select count(*) = 1 from public.security_events where kind = 'admin_passkey_added' and created_at < now() - interval '30 days'), 'security_events retention is wrong');
+select pg_temp.check((select count(*) = 0 from public.audit_log where action = 'admin_login_failed' and created_at < now() - interval '30 days')
+                 and (select count(*) = 1 from public.audit_log where action = 'admin_login_failed' and created_at between now() - interval '30 days' and now() - interval '28 days')
+                 and (select count(*) = 1 from public.audit_log where action = 'admin_passkey_added' and created_at < now() - interval '30 days'), 'audit_log retention is wrong');
 -- the break-glass functions clear it
-select pg_temp.check(pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a2'), 'precondition: locked');
+select pg_temp.check(pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a2'), 'precondition: locked (user-level code cap)');
 select private.new_admin_setup_code('ada-pk@example.com') is not null;
 select pg_temp.check(not pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a2') and not pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a1'), 'a new setup code did not clear the lock-out');
 select pg_temp.fail_n('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a1', 5);
@@ -479,24 +508,42 @@ select pg_temp.check(not exists (select 1 from private.admin_passkey_events wher
 select pg_temp.check((select count(*) = 2 from private.admin_passkey_events where user_id = 'e7e7e7e7-0000-0000-0000-000000000002'), 'the reset cleared another admin');
 select pg_temp.check(not pg_temp.locked('e7e7e7e7-0000-0000-0000-000000000001', 'e7e7e7e7-0000-0000-0000-0000000000a1'), 'still locked after the reset');
 
-\echo '--- P11d open_admin_session: the founder opens the newest session when the function is down'
+\echo '--- P11d open_admin_session: the founder picks the session by its 8 character code'
 delete from auth.sessions where user_id = 'e7e7e7e7-0000-0000-0000-000000000001';
-select pg_temp.fails($$select private.open_admin_session('ada-pk@example.com')$$, 'a session was opened with no signed-in session');
-insert into auth.sessions (id, user_id, created_at) values
-  ('e7e7e7e7-0000-0000-0000-0000000000e1', 'e7e7e7e7-0000-0000-0000-000000000001', now() - interval '2 hours'),
-  ('e7e7e7e7-0000-0000-0000-0000000000e2', 'e7e7e7e7-0000-0000-0000-000000000001', now() - interval '1 minute');
-select pg_temp.fails($$select private.open_admin_session('cy-pk@example.com')$$, 'a normal user got an admin session');
-select pg_temp.fails($$select private.open_admin_session('nobody@example.com')$$, 'nobody got an admin session');
-select pg_temp.check(private.open_admin_session('ADA-pk@example.com', 999) like 'session opened for 30 minute%', 'the minutes were not capped at 30');
-select pg_temp.check((select via = 'recovery' and passkey_id is null and expires_at <= now() + interval '30 minutes' from private.admin_passkey_sessions where session_id = 'e7e7e7e7-0000-0000-0000-0000000000e2'), 'the newest session was not marked as a recovery session');
-select pg_temp.check(not exists (select 1 from private.admin_passkey_sessions where session_id = 'e7e7e7e7-0000-0000-0000-0000000000e1'), 'an older session was opened');
-select pg_temp.check(pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.claims_for('e7e7e7e7-0000-0000-0000-0000000000e2')), 'the opened session is not admin');
-select pg_temp.check(not pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.claims_for('e7e7e7e7-0000-0000-0000-0000000000e1')), 'the older session is admin');
-select pg_temp.check(exists (select 1 from public.audit_log where action = 'admin_session_opened' and target_user = 'e7e7e7e7-0000-0000-0000-000000000001'), 'opening a session was not audited');
-select private.open_admin_session('ada-pk@example.com', 0);
-select pg_temp.check((select expires_at <= now() + interval '1 minute 5 seconds' from private.admin_passkey_sessions where session_id = 'e7e7e7e7-0000-0000-0000-0000000000e2'), 'zero minutes was not raised to 1');
+select pg_temp.fails($$select private.open_admin_session('ada-pk@example.com', '11111111')$$, 'a session was opened with no signed-in session');
+insert into auth.sessions (id, user_id, created_at, ip, user_agent) values
+  ('11111111-0000-0000-0000-0000000000e1', 'e7e7e7e7-0000-0000-0000-000000000001', now() - interval '2 hours', '203.0.113.7', 'Firefox on Linux'),
+  ('22222222-0000-0000-0000-0000000000e2', 'e7e7e7e7-0000-0000-0000-000000000001', now() - interval '1 minute', '198.51.100.9', 'Chrome on Windows'),
+  ('33333333-0000-0000-0000-0000000000e3', 'e7e7e7e7-0000-0000-0000-000000000001', now() - interval '3 days', '192.0.2.1', 'Old browser'),
+  ('44444444-0000-0000-0000-0000000000e4', 'e7e7e7e7-0000-0000-0000-000000000003', now(), '192.0.2.2', 'Cy browser');
+select pg_temp.check((select count(*) = 2 from private.list_admin_sessions('ADA-pk@example.com ')), 'list_admin_sessions should show the last 24 hours of that admin only');
+select pg_temp.check((select short_id = left(id::text, 8) and ip = '198.51.100.9' and user_agent = 'Chrome on Windows' from private.list_admin_sessions('ada-pk@example.com') order by created_at desc limit 1), 'list_admin_sessions shows the wrong short id, ip or browser');
+select pg_temp.check((select count(*) = 0 from private.list_admin_sessions('cy-pk@example.com')), 'list_admin_sessions listed a normal user');
+select pg_temp.fails($$select private.open_admin_session('cy-pk@example.com', '44444444')$$, 'a normal user got an admin session');
+select pg_temp.fails($$select private.open_admin_session('nobody@example.com', '22222222')$$, 'nobody got an admin session');
+select pg_temp.fails($$select private.open_admin_session('ada-pk@example.com', '')$$, 'an empty code opened a session');
+select pg_temp.fails($$select private.open_admin_session('ada-pk@example.com', null)$$, 'a null code opened a session');
+select pg_temp.fails($$select private.open_admin_session('ada-pk@example.com', 'e7e7e7')$$, 'a short code opened a session');
+select pg_temp.fails($$select private.open_admin_session('ada-pk@example.com', 'zzzzzzzz')$$, 'a non-hex code opened a session');
+select pg_temp.fails($$select private.open_admin_session('ada-pk@example.com', 'ffffffff')$$, 'a code matching nothing opened a session');
+select pg_temp.fails($$select private.open_admin_session('ada-pk@example.com', '44444444')$$, 'another user''s session was opened for Ada');
+select pg_temp.fails($$select private.open_admin_session('ada-pk@example.com', '33333333')$$, 'a session older than 24 hours was opened');
+select pg_temp.check((select count(*) = 0 from private.admin_passkey_sessions where session_id::text like 'e7e7e7e7-0000-0000-0000-0000000000e%'), 'a refused call opened a session');
+-- two sessions that share the first 8 characters are refused (a short code must name exactly one)
+insert into auth.sessions (id, user_id, created_at) values ('22222222-1111-0000-0000-0000000000e5', 'e7e7e7e7-0000-0000-0000-000000000001', now());
+select pg_temp.fails($$select private.open_admin_session('ada-pk@example.com', '22222222')$$, 'an ambiguous code opened a session');
+delete from auth.sessions where id = '22222222-1111-0000-0000-0000000000e5';
+select pg_temp.check((select count(*) = 0 from private.admin_passkey_sessions where user_id = 'e7e7e7e7-0000-0000-0000-000000000001'), 'a refused ambiguous call opened a session');
+select pg_temp.check(private.open_admin_session('ADA-pk@example.com', '22222222', 999) like 'session 22222222 opened for 30 minute(s) (ip 198.51.100.9, browser Chrome on Windows)%', 'the result does not name the session, minutes, ip and browser (or minutes were not capped at 30)');
+select pg_temp.check((select via = 'recovery' and passkey_id is null and expires_at <= now() + interval '30 minutes' from private.admin_passkey_sessions where session_id = '22222222-0000-0000-0000-0000000000e2'), 'the chosen session was not marked as a recovery session');
+select pg_temp.check((select count(*) = 1 from private.admin_passkey_sessions where user_id = 'e7e7e7e7-0000-0000-0000-000000000001'), 'another session was opened too');
+select pg_temp.check(pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.claims_for('22222222-0000-0000-0000-0000000000e2')), 'the opened session is not admin');
+select pg_temp.check(not pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000001', pg_temp.claims_for('11111111-0000-0000-0000-0000000000e1')), 'another session of the admin is admin');
+select pg_temp.check(exists (select 1 from public.audit_log where action = 'admin_session_opened' and target_user = 'e7e7e7e7-0000-0000-0000-000000000001'
+                                and details ->> 'ip' = '198.51.100.9' and details ->> 'user_agent' = 'Chrome on Windows' and details ->> 'short_id' = '22222222'), 'the audit row lacks the ip, browser or code');
+select private.open_admin_session('ada-pk@example.com', '22222222', 0);
+select pg_temp.check((select expires_at <= now() + interval '1 minute 5 seconds' from private.admin_passkey_sessions where session_id = '22222222-0000-0000-0000-0000000000e2'), 'zero minutes was not raised to 1');
 delete from private.admin_passkey_sessions where user_id = 'e7e7e7e7-0000-0000-0000-000000000001';
-
 \echo '--- P11e failures and audit need no profile; revoke_admin wipes the passkey data'
 select pg_temp.new_user('e7e7e7e7-0000-0000-0000-000000000005', 'ed-pk@example.com', 'owner');
 select pg_temp.make_admin('e7e7e7e7-0000-0000-0000-000000000005');
@@ -532,7 +579,9 @@ select pg_temp.check(not exists (select 1 from public.admins where user_id = 'e7
 select pg_temp.check(exists (select 1 from public.audit_log where action = 'admin_revoked' and target_user = 'e7e7e7e7-0000-0000-0000-000000000006'), 'revoke_admin was not audited');
 select pg_temp.check(not pg_temp.is_admin_with('e7e7e7e7-0000-0000-0000-000000000006', pg_temp.claims_for('e7e7e7e7-0000-0000-0000-0000000000f6')), 'a revoked admin stayed admin');
 select pg_temp.fails_as('authenticated', 'e7e7e7e7-0000-0000-0000-000000000003', $$select private.revoke_admin('ada-pk@example.com')$$, 'a user revoked an admin');
-select pg_temp.fails_as('authenticated', 'e7e7e7e7-0000-0000-0000-000000000003', $$select private.open_admin_session('ada-pk@example.com')$$, 'a user opened an admin session');
-select pg_temp.fails_as('service_role', null, $$select private.open_admin_session('ada-pk@example.com')$$, 'the service role opened an admin session');
+select pg_temp.fails_as('authenticated', 'e7e7e7e7-0000-0000-0000-000000000003', $$select private.open_admin_session('ada-pk@example.com', '22222222')$$, 'a user opened an admin session');
+select pg_temp.fails_as('authenticated', 'e7e7e7e7-0000-0000-0000-000000000003', $$select * from private.list_admin_sessions('ada-pk@example.com')$$, 'a user listed admin sessions');
+select pg_temp.fails_as('service_role', null, $$select * from private.list_admin_sessions('ada-pk@example.com')$$, 'the service role listed admin sessions');
+select pg_temp.fails_as('service_role', null, $$select private.open_admin_session('ada-pk@example.com', '22222222')$$, 'the service role opened an admin session');
 
 \echo 'passkey assertions OK'

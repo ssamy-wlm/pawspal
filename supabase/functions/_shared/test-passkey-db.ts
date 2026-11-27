@@ -21,13 +21,13 @@ export class FakePasskeyDb {
   constructor(admins: string[] = []) { admins.forEach((a) => this.admins.add(a)); }
 
   private addFailure(user: string, kind: string, session: string | null) { this.failures.set(user, [...(this.failures.get(user) ?? []), { kind, session }]); }
-  /** 5 failures for one session; 20 for the user (a verified session only counts its own). */
+  /** 5 failures for one session; 100 wrong recovery/setup codes for the user (a verified session only counts its own). */
   private locked(user: string, session: string | null) {
     const all = this.failures.get(user) ?? [];
     if (session && all.filter((e) => e.session === session).length >= 5) return true;
     const s = session ? this.sessions.get(session) : undefined;
     if (s && s.user === user) return false;
-    return all.length >= 20;
+    return all.filter((e) => e.kind !== 'login_failed').length >= 100;     // passkey failures never count per user
   }
   private norm = (c: string) => c.toUpperCase().replace(/[^A-Z0-9]/g, '');
   private mine(user: string) { return this.creds.filter((c) => c.user === user); }
