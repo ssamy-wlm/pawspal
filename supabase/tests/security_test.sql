@@ -101,6 +101,7 @@ select first_name from public.profile_cards order by 1;
 select public.admin_take_action('aaaaaaaa-0000-0000-0000-000000000001','warning','x',null,false,'[]','x');
 reset role;
 -- the admin's session passed a passkey: the database knows it by the session_id claim
+insert into auth.sessions (id, user_id) values ('d4d4d4d4-0000-0000-0000-0000000000a1', 'dddddddd-0000-0000-0000-000000000004');
 insert into private.admin_passkey_sessions (session_id, user_id, via, expires_at) values ('d4d4d4d4-0000-0000-0000-0000000000a1', 'dddddddd-0000-0000-0000-000000000004', 'passkey', now() + interval '8 hours');
 set role authenticated; set request.jwt.claim.sub = 'dddddddd-0000-0000-0000-000000000004'; set request.jwt.claims = '{"session_id":"d4d4d4d4-0000-0000-0000-0000000000a1"}';
 select public.admin_take_action('cccccccc-0000-0000-0000-000000000003','suspension','Keep chats respectful',null,true,'["Stop rude messages"]','Please keep payments in the app') is not null as action_ok;

@@ -2,7 +2,7 @@
 // Talks to the `admin-passkey` edge function and to the browser's passkey prompt. The function checks everything again:
 // nothing here decides who may come in.
 import { browserSupportsWebAuthn, startAuthentication, startRegistration } from '@simplewebauthn/browser';
-import { browserErrorKind, functionErrorKind, type ErrorKind, type PasskeyStatus } from './passkey-rules';
+import { browserErrorKind, functionErrorKind, withStepUp, type ErrorKind, type PasskeyStatus } from './passkey-rules';
 import { supabase } from './supabase';
 
 /** An error with only its kind: the screen shows one calm sentence for it. */
@@ -38,6 +38,25 @@ async function prompt<T>(run: () => Promise<T>): Promise<T> {
 
 export const getStatus = () => callFn<PasskeyStatus>('status');
 
+// ---- Step-up: sensitive actions need a passkey touch from the last 5 minutes ----
+
+/** The prompt that asks for the touch (a small dialog). It receives the ceremony to run and settles when it worked or was cancelled. */
+type StepUpPrompter = (run: () => Promise<void>) => Promise<void>;
+let prompter: StepUpPrompter | null = null;
+export const setStepUpPrompter = (p: StepUpPrompter | null) => { prompter = p; };
+
+/** step_up_options, the prompt (Face ID, fingerprint, Windows Hello), then step_up_verify. */
+export async function performStepUp(): Promise<void> {
+  if (!browserSupportsWebAuthn()) throw new PasskeyError('unsupported');
+  const { options } = await callFn<{ options: Parameters<typeof startAuthentication>[0]['optionsJSON'] }>('step_up_options');
+  const response = await prompt(() => startAuthentication({ optionsJSON: options }));
+  await callFn('step_up_verify', { response });
+}
+const askStepUp = () => (prompter ? prompter(performStepUp) : performStepUp());
+
+/** Every sensitive call goes through here: on "step_up_required" the person is asked to touch the passkey, then the call is retried once. */
+export const guarded = <T>(call: () => Promise<T>) => withStepUp(call, askStepUp);
+
 /** Sign in with a passkey: options, the prompt (Face ID, fingerprint, Windows Hello), then the check. */
 export async function loginWithPasskey(): Promise<void> {
   if (!browserSupportsWebAuthn()) throw new PasskeyError('unsupported');
@@ -46,17 +65,18 @@ export async function loginWithPasskey(): Promise<void> {
   await callFn('login_verify', { response });
 }
 
-/** Make a passkey on this device. `setupCode` is only for the very first one; later ones need the signed-in session. */
+/** Make a passkey on this device. `setupCode` is only for the first one (or a lost-device reset); later ones need the signed-in session and a fresh touch. */
 export async function createPasskey(name: string, setupCode?: string): Promise<void> {
   if (!browserSupportsWebAuthn()) throw new PasskeyError('unsupported');
   const extra = setupCode ? { setup_code: setupCode } : {};
-  const { options } = await callFn<{ options: Parameters<typeof startRegistration>[0]['optionsJSON'] }>('register_options', { name, ...extra });
+  const run = <T,>(call: () => Promise<T>) => (setupCode ? call() : guarded(call));       // a setup code needs no step-up
+  const { options } = await run(() => callFn<{ options: Parameters<typeof startRegistration>[0]['optionsJSON'] }>('register_options', { name, ...extra }));
   const response = await prompt(() => startRegistration({ optionsJSON: options }));
-  await callFn('register_verify', { response, name, ...extra });
+  await run(() => callFn('register_verify', { response, name, ...extra }));
 }
 
 export const recoveryLogin = (code: string) => callFn('recovery_login', { code });
-export const makeRecoveryCodes = async () => (await callFn<{ codes: string[] }>('recovery_generate')).codes;
-export const renamePasskey = (id: string, name: string) => callFn('rename', { id, name });
-export const removePasskey = (id: string) => callFn('remove', { id });
+export const makeRecoveryCodes = async () => (await guarded(() => callFn<{ codes: string[] }>('recovery_generate'))).codes;
+export const renamePasskey = (id: string, name: string) => guarded(() => callFn('rename', { id, name }));
+export const removePasskey = (id: string) => guarded(() => callFn('remove', { id }));
 export const endPasskeySession = () => callFn('sign_out');

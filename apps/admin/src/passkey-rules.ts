@@ -20,8 +20,8 @@ export const CHECK_FAILED = 'We could not check your account. Try signing in aga
 // ---- Errors ----
 
 /** What the edge function answers, plus the three things that happen in the browser. */
-export type ErrorKind = 'not_allowed' | 'invalid_request' | 'too_many_attempts' | 'not_configured' | 'try_again_later' | 'cancelled' | 'already_registered' | 'unsupported';
-const FUNCTION_ERRORS: readonly string[] = ['not_allowed', 'invalid_request', 'too_many_attempts', 'not_configured', 'try_again_later'];
+export type ErrorKind = 'not_allowed' | 'invalid_request' | 'too_many_attempts' | 'not_configured' | 'try_again_later' | 'step_up_required' | 'cancelled' | 'already_registered' | 'unsupported';
+const FUNCTION_ERRORS: readonly string[] = ['not_allowed', 'invalid_request', 'too_many_attempts', 'not_configured', 'try_again_later', 'step_up_required'];
 
 /** The kind of error in an edge function answer. Anything unexpected becomes "try again later". */
 export function functionErrorKind(answer: unknown): ErrorKind {
@@ -47,6 +47,7 @@ export const ERROR_TEXT: Record<ErrorKind, string> = {
   too_many_attempts: 'Too many tries. Wait a few minutes, then try again.',
   not_configured: 'Passkeys are not switched on for this site yet. Finish the setup in SETUP.md, section E10, then try again.',
   try_again_later: 'Something went wrong. Try again in a moment.',
+  step_up_required: 'Touch your passkey again to do this, then try once more.',
   cancelled: 'The passkey prompt was closed. Press the button to try again.',
   already_registered: 'This device already has a passkey for this site. Use it, or pick another device.',
   unsupported: 'This browser cannot use passkeys. Try an up to date Chrome, Safari, Edge or Firefox.',
@@ -126,6 +127,21 @@ export const needsNewPasskey = (via: PasskeyStatus['via'] | undefined, addedSinc
 export function codesLeftText(n: number): string {
   if (n <= 0) return 'You have no recovery codes left. Make new ones.';
   return n === 1 ? 'You have 1 recovery code left.' : `You have ${n} recovery codes left.`;
+}
+
+// ---- Step-up: a fresh passkey touch for sensitive actions ----
+
+const isStepUp = (e: unknown) => (e as { kind?: unknown } | null)?.kind === 'step_up_required';
+/**
+ * Runs `call`. When the function answers "step_up_required", asks for a fresh passkey touch (`stepUp`, which throws when the
+ * person cancels or it fails) and runs `call` once more. A second "step_up_required" is thrown as it is: never a loop.
+ */
+export async function withStepUp<T>(call: () => Promise<T>, stepUp: () => Promise<void>): Promise<T> {
+  try { return await call(); } catch (e) {
+    if (!isStepUp(e)) throw e;
+    await stepUp();
+    return await call();
+  }
 }
 
 // ---- Signing out ----

@@ -25,20 +25,23 @@ const SETUP_CODE = 'SETUP-TEST-1234';
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 
 // ---------------------------------------------------------------- the stand-in for Supabase
-const db = { passkeys: [], codes: [], challenge: null, verified: false, via: null, userId: '00000000-0000-4000-8000-000000000001' };
+const db = { freshUntil: 0, stepUps: 0, passkeys: [], codes: [], challenge: null, verified: false, via: null, userId: '00000000-0000-4000-8000-000000000001' };
 const status = () => (db.passkeys.length === 0 ? 'needs_setup' : db.verified ? 'admin' : 'needs_passkey');
 const freshCodes = () => { db.codes = Array.from({ length: 10 }, () => randomBytes(5).toString('hex').match(/.{5}/g).join('-')); return db.codes.slice(); };
 const token = () => `${b64u({ alg: 'HS256', typ: 'JWT' })}.${b64u({ sub: db.userId, role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 })}.stub`;
+
+const fresh = () => db.freshUntil > Date.now();
 
 async function fn(body) {
   const { action } = body;
   const fail = (error) => ({ code: 400, json: { error } });
   const ok = (json = { ok: true }) => ({ code: 200, json });
+  const stepUp = () => ({ code: 403, json: { error: 'step_up_required' } });
   if (action === 'status') {
     return ok({ passkeys: db.passkeys.map((p) => ({ id: p.id, name: p.name, created_at: p.created_at, last_used_at: p.last_used_at, device_type: p.deviceType, backed_up: p.backedUp })), verified: db.verified, via: db.verified ? db.via : null, recovery_codes_left: db.codes.length });
   }
   if (action === 'register_options') {
-    if (!db.verified && body.setup_code !== SETUP_CODE) return fail('not_allowed');   // a valid setup code also works when passkeys exist
+    if (body.setup_code !== SETUP_CODE) { if (!db.verified) return fail('not_allowed'); if (!fresh()) return stepUp(); }   // a valid setup code also works when passkeys exist
     const options = await generateRegistrationOptions({
       rpName: 'PawsPal Admin', rpID: RP_ID, userName: EMAIL, userID: new TextEncoder().encode(db.userId),
       excludeCredentials: db.passkeys.map((p) => ({ id: p.credential.id, transports: p.credential.transports })),
@@ -48,12 +51,13 @@ async function fn(body) {
     return ok({ options });
   }
   if (action === 'register_verify') {
-    if (!db.verified && body.setup_code !== SETUP_CODE) return fail('not_allowed');
+    if (body.setup_code !== SETUP_CODE) { if (!db.verified) return fail('not_allowed'); if (!fresh()) return stepUp(); }
     const v = await verifyRegistrationResponse({ response: body.response, expectedChallenge: db.challenge, expectedOrigin: ORIGIN, expectedRPID: RP_ID, requireUserVerification: true }).catch(() => null);
     if (!v?.verified) return fail('not_allowed');
     const { credential, credentialDeviceType, credentialBackedUp } = v.registrationInfo;
     db.passkeys.push({ id: randomBytes(8).toString('hex'), name: body.name || 'This device', created_at: new Date().toISOString(), last_used_at: null, credential, deviceType: credentialDeviceType, backedUp: credentialBackedUp });
     db.verified = true; db.via = 'passkey';
+    if (body.setup_code) db.freshUntil = Date.now() + 5 * 60_000;       // the first-time flow goes on to make recovery codes
     return ok();
   }
   if (action === 'login_options') {
@@ -77,6 +81,21 @@ async function fn(body) {
     return ok();
   }
   if (!db.verified) return fail('not_allowed');
+  if (action === 'step_up_options') {
+    const options = await generateAuthenticationOptions({ rpID: RP_ID, userVerification: 'required', allowCredentials: db.passkeys.map((p) => ({ id: p.credential.id, transports: p.credential.transports })) });
+    db.challenge = options.challenge;
+    return ok({ options });
+  }
+  if (action === 'step_up_verify') {
+    const p = db.passkeys.find((x) => x.credential.id === body.response?.id);
+    if (!p) return fail('not_allowed');
+    const v = await verifyAuthenticationResponse({ response: body.response, expectedChallenge: db.challenge, expectedOrigin: ORIGIN, expectedRPID: RP_ID, credential: p.credential, requireUserVerification: true }).catch(() => null);
+    if (!v?.verified) return fail('not_allowed');
+    p.credential.counter = v.authenticationInfo.newCounter;
+    db.freshUntil = Date.now() + 5 * 60_000; db.stepUps += 1;
+    return ok({ ok: true, until: new Date(db.freshUntil).toISOString() });
+  }
+  if (['rename', 'remove', 'recovery_generate'].includes(action) && !fresh()) return stepUp();
   if (action === 'recovery_generate') return ok({ codes: freshCodes() });
   if (action === 'rename') { const p = db.passkeys.find((x) => x.id === body.id); if (!p) return fail('invalid_request'); p.name = body.name; return ok(); }
   if (action === 'remove') { if (db.passkeys.length < 2) return fail('not_allowed'); db.passkeys = db.passkeys.filter((x) => x.id !== body.id); return ok(); }
@@ -116,8 +135,10 @@ const stub = createServer(async (req, res) => {
 // ---------------------------------------------------------------- the site
 const env = { ...process.env, NEXT_PUBLIC_SUPABASE_URL: SUPABASE, NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon-test-key', NEXT_PUBLIC_TURNSTILE_SITE_KEY: '', NEXT_DIST_DIR: '.next-passkey-check', NEXT_TELEMETRY_DISABLED: '1' };
 let site;
-const stop = () => { site?.kill(); stub.close(); };
-process.on('exit', () => site?.kill());
+// The site runs in its own process group so that stopping it also stops the server npx started (a leftover one would serve an old build).
+const killSite = () => { try { if (site?.pid) process.kill(-site.pid); } catch { /* already gone */ } };
+const stop = () => { killSite(); stub.close(); };
+process.on('exit', killSite);
 
 async function startSite() {
   console.log('building the admin site against the stand-in ...');
@@ -125,7 +146,7 @@ async function startSite() {
   let build = spawnSync('npx', ['next', 'build'], { env, stdio: 'pipe', encoding: 'utf8' });
   if (build.status !== 0) build = spawnSync('npx', ['next', 'build'], { env, stdio: 'pipe', encoding: 'utf8' });
   if (build.status !== 0) { console.error(build.stdout + build.stderr); throw new Error('build failed'); }
-  site = spawn('npx', ['next', 'start', '-p', String(SITE)], { env, stdio: 'pipe' });
+  site = spawn('npx', ['next', 'start', '-p', String(SITE)], { env, stdio: 'pipe', detached: true });
   for (let i = 0; i < 100; i++) {
     try { const r = await fetch(ORIGIN); if (r.ok) return; } catch { /* not up yet */ }
     await new Promise((r) => setTimeout(r, 300));
@@ -195,20 +216,41 @@ async function main() {
   assert.ok(await button('Remove').isDisabled(), 'the only passkey cannot be removed');
   await page.getByText('cannot be removed').waitFor();
   step('Security lists "Test laptop"; the last passkey cannot be removed and says why');
+  // Step-up: the fresh touch has run out. A cancelled touch stops the rename; a real one lets it through.
+  db.freshUntil = 0;
   await button('Rename').click();
   await page.getByLabel('New name').fill('My laptop');
+  await cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: false });
   await button('Save name').click();
-  await page.getByText('My laptop').first().waitFor();
-  step('rename works');
+  await heading('Touch your passkey to continue').waitFor();
+  await button('Touch your passkey').click();
+  await page.getByRole('dialog').getByRole('alert').filter({ hasText: 'passkey prompt was closed' }).waitFor();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: 'passkey prompt was closed' }).waitFor();
+  assert.equal(db.passkeys[0].name, 'Test laptop', 'a cancelled touch changes nothing');
+  step('step-up: a cancelled passkey touch shows a calm message and the rename does not happen');
+  await cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: true });
+  await button('Save name').click();
+  await heading('Touch your passkey to continue').waitFor();
+  await button('Touch your passkey').click();
+  await page.locator('strong', { hasText: 'My laptop' }).waitFor();
+  assert.equal(db.stepUps, 1);
+  assert.equal(db.passkeys[0].name, 'My laptop');
+  step('step-up: "Touch your passkey to continue" appears, the touch passes, and the rename is retried and works');
   await page.getByLabel('Name of this device').fill('Same device again');
   await button('Add a passkey').click();
   await page.getByRole('alert').filter({ hasText: 'already has a passkey' }).waitFor();
   step('adding a second passkey on the same device gives the "already registered" message');
   await page.getByText('You have 10 recovery codes left.').waitFor();
+  db.freshUntil = 0;
   await button('Make new codes').click();
   await page.getByText('The old codes stop working at once.').waitFor();
   await button('Yes, make new codes').click();
+  await heading('Touch your passkey to continue').waitFor();
+  await button('Touch your passkey').click();
   await heading('Save your recovery codes').waitFor();
+  assert.equal(db.stepUps, 2);
+  step('step-up: making new recovery codes asks for a touch first');
   let newCodes = await page.getByRole('list', { name: 'Recovery codes' }).getByRole('listitem').allTextContents();
   assert.equal(newCodes.length, 10);
   assert.equal(newCodes.filter((c) => codes.includes(c)).length, 0, 'the new codes are all new');

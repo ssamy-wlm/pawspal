@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import {
   browserErrorKind, canRemovePasskey, cleanCode, cleanName, codesLeftText, describeError, ERROR_TEXT, functionErrorKind, gateFor, needsNewPasskey,
-  passkeyHint, PASSKEY_NAME_MAX, recoveryCodesText, signOutEverywhere, validateCode, validatePasskeyName,
+  passkeyHint, PASSKEY_NAME_MAX, recoveryCodesText, signOutEverywhere, validateCode, validatePasskeyName, withStepUp,
 } from './passkey-rules.ts';
 
 test('the database answer decides the screen, and anything unknown never reaches the site', () => {
@@ -118,4 +118,40 @@ test('the passkey screen offers the recovery code and the setup code ways in', (
   assert.match(ui, /Use a recovery code/);
   assert.match(ui, /I have a setup code/);
   assert.match(ui, /if \(setup\) return <SetupScreen onBack=/);
+});
+
+const stepUpError = () => Object.assign(new Error('step_up_required'), { kind: 'step_up_required' });
+
+test('step-up: a call that needs a fresh touch asks once and is retried once', async () => {
+  let calls = 0; let touches = 0;
+  const out = await withStepUp(async () => { calls += 1; if (calls === 1) throw stepUpError(); return 'done'; }, async () => { touches += 1; });
+  assert.equal(out, 'done'); assert.equal(calls, 2); assert.equal(touches, 1);
+  // a call that works the first time never asks
+  let t2 = 0;
+  assert.equal(await withStepUp(async () => 'fine', async () => { t2 += 1; }), 'fine');
+  assert.equal(t2, 0);
+});
+
+test('step-up: cancelling stops the call, and a second refusal is never retried (no loop)', async () => {
+  let calls = 0;
+  await assert.rejects(withStepUp(async () => { calls += 1; throw stepUpError(); }, async () => { throw { kind: 'cancelled' }; }), (e: { kind?: string }) => e.kind === 'cancelled');
+  assert.equal(calls, 1, 'the call is not retried after a cancel');
+  let calls2 = 0; let touches = 0;
+  await assert.rejects(withStepUp(async () => { calls2 += 1; throw stepUpError(); }, async () => { touches += 1; }), (e: { kind?: string }) => e.kind === 'step_up_required');
+  assert.equal(calls2, 2); assert.equal(touches, 1);
+  // other errors pass straight through without a prompt
+  let touched = false;
+  await assert.rejects(withStepUp(async () => { throw { kind: 'not_allowed' }; }, async () => { touched = true; }), (e: { kind?: string }) => e.kind === 'not_allowed');
+  assert.equal(touched, false);
+  assert.equal(functionErrorKind({ error: 'step_up_required' }), 'step_up_required');
+});
+
+test('the sensitive actions all go through the step-up wrapper, and setup-code registration does not', () => {
+  const api = readFileSync(new URL('./passkey-api.ts', import.meta.url), 'utf8');
+  assert.match(api, /renamePasskey = .*guarded\(/);
+  assert.match(api, /removePasskey = .*guarded\(/);
+  assert.match(api, /recovery_generate'\)\)\)\.codes|guarded\(\(\) => callFn<\{ codes: string\[\] \}>\('recovery_generate'\)\)/);
+  assert.match(api, /setupCode \? call\(\) : guarded\(call\)/);
+  const ui = readFileSync(new URL('./passkey-ui.tsx', import.meta.url), 'utf8');
+  assert.match(ui, /Touch your passkey to continue/);
 });

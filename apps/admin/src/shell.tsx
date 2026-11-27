@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from './auth';
 import { Turnstile, turnstileSiteKey } from './turnstile';
-import { CodesScreen, PasskeyScreen, RecoveryBanner, SetupScreen } from './passkey-ui';
+import { CodesScreen, PasskeyScreen, RecoveryBanner, SetupScreen, StepUpHost } from './passkey-ui';
 import { Btn, C, Card, Err, Field, inputStyle } from './ui';
 import { needsNewPasskey } from './passkey-rules';
 import tokens from './tokens.json';
@@ -51,6 +51,10 @@ function SignIn({ notice }: { notice?: string }) {
 
 /** Everything the site shows goes through here: nothing but the sign-in screens appears until the database says "admin". */
 export function Shell({ children }: { children: React.ReactNode }) {
+  return <><StepUpHost /><ShellBody>{children}</ShellBody></>;
+}
+
+function ShellBody({ children }: { children: React.ReactNode }) {
   const { state, signOut } = useAuth();
   const path = usePathname();
   if (state.kind === 'loading') return <Centered><p style={{ color: C.dark.textMuted }}>One moment</p></Centered>;

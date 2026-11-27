@@ -2,7 +2,8 @@
 import React from 'react';
 import Link from 'next/link';
 import { useAuth } from './auth';
-import { DEFAULT_PASSKEY_NAME, recoveryCodesText, validateCode, validatePasskeyName } from './passkey-rules';
+import { setStepUpPrompter } from './passkey-api';
+import { describeError, DEFAULT_PASSKEY_NAME, recoveryCodesText, validateCode, validatePasskeyName } from './passkey-rules';
 import { Btn, C, Card, Err, Field, inputStyle, Muted } from './ui';
 import tokens from './tokens.json';
 
@@ -131,6 +132,38 @@ export function RecoveryBanner() {
   return (
     <div role="alert" style={{ background: C.tint.orange, color: C.navy, padding: '12px 32px', fontWeight: 600, borderBottom: `2px solid ${C.accent}` }}>
       You came in with a recovery code. <Link href="/security" style={{ color: C.navy, textDecoration: 'underline' }}>Add a new passkey now.</Link>
+    </div>
+  );
+}
+
+/**
+ * The small dialog for "touch your passkey again". Mounted once; passkey-api asks it to run a step-up and waits. Cancelling
+ * rejects with the "closed" kind, so the screen that asked shows its calm one-line message and stops.
+ */
+export function StepUpHost() {
+  const [ask, setAsk] = React.useState<{ run: () => Promise<void>; done: () => void; cancel: () => void } | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setStepUpPrompter((run) => new Promise<void>((resolve, reject) => {
+      setError(null); setBusy(false);
+      setAsk({ run, done: () => { setAsk(null); resolve(); }, cancel: () => { setAsk(null); reject({ kind: 'cancelled' }); } });
+    }));
+    return () => setStepUpPrompter(null);
+  }, []);
+  if (!ask) return null;
+  const touch = () => { setBusy(true); setError(null); ask.run().then(() => { setBusy(false); ask.done(); }, (e) => { setBusy(false); setError(describeError(e)); }); };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(31,45,61,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 50 }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="stepup-title" style={{ background: C.surface, borderRadius: tokens.radius.card, padding: 24, maxWidth: 420, width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <h2 id="stepup-title" style={{ margin: 0, fontSize: tokens.font.size.title, color: C.text }}>Touch your passkey to continue</h2>
+        <p style={p}>This change needs a fresh check that it is you. It takes a second.</p>
+        <Err>{error}</Err>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Btn kind="accent" disabled={busy} onClick={touch}>{busy ? 'Waiting for your passkey' : 'Touch your passkey'}</Btn>
+          <Btn kind="secondary" disabled={busy} onClick={ask.cancel}>Cancel</Btn>
+        </div>
+      </div>
     </div>
   );
 }
