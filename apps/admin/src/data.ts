@@ -2,6 +2,7 @@
 // passkey step can read; anyone else gets nothing). Every change goes through an audited database function.
 import type { ActionForm, AccountStatus } from './rules';
 import { actionArgs } from './rules';
+import { looksNotAllowed, reportNotAllowed, SESSION_RAN_OUT } from './session-watch';
 import { supabase } from './supabase';
 
 function must<T>(r: { data: T | null; error: { message: string } | null }): T {
@@ -11,10 +12,11 @@ function must<T>(r: { data: T | null; error: { message: string } | null }): T {
 /** The database's refusal as a sentence for the page. */
 export const refusal = (e: unknown) => {
   const m = e instanceof Error ? e.message : '';
+  if (/admins only/.test(m) || looksNotAllowed(null, m)) reportNotAllowed();      // the page re-checks the passkey session at once
   return /account deleted/.test(m) ? 'This account was closed by the person. Nothing can be done for it.'
     : /not allowed for this status/.test(m) ? 'This action does not fit the account status.'
     : /cannot act on an admin/.test(m) ? 'Admins cannot be acted on here.'
-    : /admins only/.test(m) ? 'Your session no longer has admin rights. Sign in again.'
+    : /admins only/.test(m) ? SESSION_RAN_OUT
     : /rule and a message/.test(m) ? 'A rule and a message are required.'
     : /pets_photo_paths_check/.test(m) ? 'This is the pet\'s only photo, and a pet needs one. Send the owner a warning from their page instead.'
     : /photo not found/.test(m) ? 'That photo is already gone.'
