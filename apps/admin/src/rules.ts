@@ -125,7 +125,7 @@ export const NUMBER_DIGITS: Record<keyof typeof NUMBER_SETTINGS, number> = {
 /** On/off settings: the value is the word 'true' or 'false'. */
 export const SWITCH_SETTINGS = ['push_enabled'] as const;
 export const isSwitchSetting = (key: string): key is (typeof SWITCH_SETTINGS)[number] => (SWITCH_SETTINGS as readonly string[]).includes(key);
-export const TEXT_SETTINGS = ['instapay_link', 'instapay_qr_url', 'instapay_address', 'vodafone_cash_number', 'vodafone_cash_name', 'vodafone_cash_link', 'payment_note'] as const;
+export const TEXT_SETTINGS = ['instapay_address', 'instapay_link', 'vodafone_cash_number', 'vodafone_cash_link', 'payment_note'] as const;
 export type SettingKey = keyof typeof NUMBER_SETTINGS | (typeof TEXT_SETTINGS)[number] | (typeof SWITCH_SETTINGS)[number];
 export const isNumberSetting = (key: string): key is keyof typeof NUMBER_SETTINGS => key in NUMBER_SETTINGS;
 
@@ -143,10 +143,9 @@ export function validateSetting(key: string, raw: string): string | null {
   if ((TEXT_SETTINGS as readonly string[]).includes(key)) {
     if (v.length > 500) return 'This is too long (500 characters at most).';
     // These patterns are the same as in admin_set_setting (migration 0019). An empty value is allowed: it clears the field.
-    if ((key === 'instapay_link' || key === 'instapay_qr_url' || key === 'vodafone_cash_link') && v !== '' && !/^https:\/\/\S{3,255}$/.test(v)) return 'Use a full link that starts with https://';
+    if ((key === 'instapay_link' || key === 'vodafone_cash_link') && v !== '' && !/^https:\/\/\S{3,255}$/.test(v)) return 'Use a full link that starts with https://';
     if (key === 'instapay_address' && v !== '' && !/^[A-Za-z0-9._-]{2,40}@[A-Za-z0-9.-]{2,30}$/.test(v)) return 'Use an InstaPay address like yourname@instapay, with no spaces.';
     if (key === 'vodafone_cash_number' && v !== '' && !/^(\+20|0)1[0-9]{9}$/.test(v)) return 'Use an Egyptian mobile number like 01012345678 (or +201012345678), with no spaces.';
-    if (key === 'vodafone_cash_name' && v !== '' && ([...v].length > 60 || /[\u0000-\u001f\u007f-\u009f]/.test(v))) return 'Use a name of 60 characters or fewer, on one line.';
     return null;
   }
   return 'Unknown setting.';

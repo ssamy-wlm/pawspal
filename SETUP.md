@@ -200,9 +200,9 @@ There is no payment company in the app. People pay you **registration (75 EGP)**
 
 **One-time: give people your payment details** (admin site → **Settings**)
 1. Open the admin site and sign in (E10). Click **Settings** in the left menu.
-2. Under **InstaPay**, click the box **InstaPay address**, type your address (for example `yourname@instapay`, no spaces) and click **Save** next to it. If you have an InstaPay payment link, paste it into **InstaPay link (optional)** (it must start with `https://`) and click **Save**. Leave **InstaPay QR image address** empty: it is not used for now.
-3. Under **Vodafone Cash**, click **Vodafone Cash number**, type your wallet number (for example `01012345678`, or `+201012345678`, no spaces) and click **Save**. Click **Account holder name**, type the name on the wallet (for example `Sara Ali`) and click **Save**. If you have a Vodafone Cash payment link, paste it into **Vodafone Cash link (optional)** (it must start with `https://`) and click **Save**.
-   Under **Note for people paying**, click **Payment note**, type a short line (for example "Write your email in the payment note") and click **Save**.
+2. Under **InstaPay**, click **InstaPay address**, type your address (for example `yourname@instapay`, no spaces) and click **Save** next to it. If you have an InstaPay payment link, paste it into **InstaPay link (optional)** (it must start with `https://`) and click **Save**.
+3. Under **Vodafone Cash**, click **Vodafone Cash number**, type your wallet number (for example `01012345678`, or `+201012345678`, no spaces) and click **Save**. If you have a Vodafone Cash payment link, paste it into **Vodafone Cash link (optional)** (it must start with `https://`) and click **Save**.
+   Under **Note for people paying**, click **Payment note (optional)**, type a short line (for example "Write your email in the payment note") and click **Save**.
    You can fill in only one of InstaPay or Vodafone Cash. The app shows an option only when it is filled in, and a box you clear and save disappears from the app.
 4. Under **Fees** you can change 75, 25, 6 months and the 7-day reminder. People see the new amounts for their next payment.
 Until you fill these in, the app tells people "Payment details are coming soon".

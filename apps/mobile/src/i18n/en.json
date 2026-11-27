@@ -507,8 +507,6 @@
   "membership.vodafoneOpen": "Open Vodafone Cash",
   "membership.vodafoneNumber": "Vodafone Cash number",
   "membership.amount": "Amount to pay: {amount} EGP",
-  "membership.qr": "InstaPay QR code",
-  "membership.accountName": "Account holder name",
   "membership.soon": "Payment details are coming soon. Please check back shortly.",
   "membership.byHand": "PawsPal confirms your payment by hand.",
   "membership.loadFailed": "We could not load the payment details. Try again.",

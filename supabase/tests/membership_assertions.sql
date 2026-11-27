@@ -138,14 +138,14 @@ select pg_temp.check(pg_temp.as_aal('aal2', pg_temp.u(5), 'select count(*) from 
 select pg_temp.check(pg_temp.as_aal('aal1', pg_temp.u(5), 'select count(*) from public.memberships')::bigint = 1, 'an admin without the authenticator code read other memberships');
 
 \echo '--- M2 payment settings'
-select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(10), 'select count(*) from jsonb_object_keys(public.get_payment_settings())')::bigint = 11, 'get_payment_settings should have 11 keys');
-select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(10), 'select string_agg(k, '','' order by k) from jsonb_object_keys(public.get_payment_settings()) k') = 'instapay_address,instapay_link,instapay_qr_url,membership_months,payment_note,registration_fee_egp,reminder_days,renewal_fee_egp,vodafone_cash_link,vodafone_cash_name,vodafone_cash_number', 'the payment setting keys are wrong');
+select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(10), 'select count(*) from jsonb_object_keys(public.get_payment_settings())')::bigint = 9, 'get_payment_settings should have 9 keys');
+select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(10), 'select string_agg(k, '','' order by k) from jsonb_object_keys(public.get_payment_settings()) k') = 'instapay_address,instapay_link,membership_months,payment_note,registration_fee_egp,reminder_days,renewal_fee_egp,vodafone_cash_link,vodafone_cash_number', 'the payment setting keys are wrong');
 select pg_temp.check((pg_temp.as_role('authenticated', pg_temp.u(10), $$select (public.get_payment_settings() ->> 'registration_fee_egp')$$)) = '75' and (pg_temp.as_role('authenticated', pg_temp.u(10), $$select (public.get_payment_settings() ->> 'renewal_fee_egp')$$)) = '25', 'default fees are not 75 and 25');
-select pg_temp.check((select count(*) = 14 from public.app_settings), 'app_settings should hold exactly 14 settings (11 payment settings + the 3 phase 9 settings: push_enabled, deletion_grace_days, shared_history_months)');
+select pg_temp.check((select count(*) = 12 from public.app_settings), 'app_settings should hold exactly 12 settings (9 payment settings + the 3 phase 9 settings: push_enabled, deletion_grace_days, shared_history_months)');
 select pg_temp.fails_as('anon', null, $$select public.get_payment_settings()$$, 'anon read the payment settings');
 select pg_temp.check(pg_temp.as_role('authenticated', null, $$select public.get_payment_settings()::text$$) = '{}', 'a session without a person read the settings');
 select pg_temp.check(pg_temp.as_role('anon', null, 'select count(*) from public.app_settings')::bigint = 0, 'anon read app_settings');
-select pg_temp.check(pg_temp.count_as(pg_temp.u(10), 'select count(*) from public.app_settings') = 11, 'a signed-in person should read the settings');
+select pg_temp.check(pg_temp.count_as(pg_temp.u(10), 'select count(*) from public.app_settings') = 9, 'a signed-in person should read the settings');
 select pg_temp.fails_as('authenticated', pg_temp.u(10), $$update public.app_settings set value = '1' where key = 'registration_fee_egp'$$, 'a user updated a setting');
 select pg_temp.fails_as('authenticated', pg_temp.u(10), $$insert into public.app_settings (key, value) values ('evil', 'x')$$, 'a user inserted a setting');
 select pg_temp.fails_as('authenticated', pg_temp.u(10), $$delete from public.app_settings$$, 'a user deleted settings');
@@ -186,8 +186,8 @@ select pg_temp.fails_adm($$select public.admin_set_setting('instapay_link', 'dat
 select pg_temp.fails_adm($$select public.admin_set_setting('instapay_link', 'https://')$$, 'empty https link');
 select pg_temp.fails_adm($$select public.admin_set_setting('instapay_link', 'https://a b.example')$$, 'link with a space');
 select pg_temp.fails_adm($$select public.admin_set_setting('instapay_link', 'HTTPS://ipn.eg/S/x')$$, 'upper-case scheme');
-select pg_temp.fails_adm($$select public.admin_set_setting('instapay_qr_url', 'ftp://x.example/q.png')$$, 'ftp qr link');
-select pg_temp.fails_adm($$select public.admin_set_setting('instapay_qr_url', '//x.example/q.png')$$, 'scheme-less qr link');
+select pg_temp.fails_adm($$select public.admin_set_setting('instapay_qr_url', 'https://x.example/q.png')$$, 'the removed instapay_qr_url setting is still accepted');
+select pg_temp.fails_adm($$select public.admin_set_setting('vodafone_cash_name', 'Sara Ali')$$, 'the removed vodafone_cash_name setting is still accepted');
 select pg_temp.fails_adm(format($$select public.admin_set_setting('instapay_link', 'https://%s')$$, repeat('a', 500)), 'link of 500+ characters');
 -- text and unknown keys
 select pg_temp.fails_adm($$select public.admin_set_setting('bank_name', 'x')$$, 'the removed bank_name setting is still accepted');
@@ -196,7 +196,7 @@ select pg_temp.fails_adm($$select public.admin_set_setting('nope', 'x')$$, 'unkn
 select pg_temp.fails_adm($$select public.admin_set_setting('Registration_fee_egp', '80')$$, 'key in the wrong case');
 select pg_temp.fails_adm($$select public.admin_set_setting('registration_fee_egp ', '80')$$, 'key with a trailing space');
 select pg_temp.fails_adm($$select public.admin_set_setting(null, '80')$$, 'null key');
-select pg_temp.check((select count(*) = 14 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp') and (select value = '' from public.app_settings where key = 'instapay_link'), 'a refused setting change changed the settings');
+select pg_temp.check((select count(*) = 12 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp') and (select value = '' from public.app_settings where key = 'instapay_link'), 'a refused setting change changed the settings');
 select pg_temp.check(not exists (select 1 from public.audit_log where action = 'setting_changed' and admin_id = pg_temp.u(5)), 'refused setting changes were audited');
 -- accepted ones
 select pg_temp.adm($$select public.admin_set_setting('registration_fee_egp', ' 80 ')$$);
@@ -206,7 +206,6 @@ select pg_temp.check((pg_temp.as_role('authenticated', pg_temp.u(10), $$select p
 select pg_temp.adm($$select public.admin_set_setting('registration_fee_egp', '75')$$);
 select pg_temp.adm($$select public.admin_set_setting('instapay_link', '')$$);        -- clearing a link is allowed
 select pg_temp.check((select value = '' from public.app_settings where key = 'instapay_link'), 'a link could not be cleared');
-select pg_temp.adm($$select public.admin_set_setting('instapay_qr_url', '')$$);
 select pg_temp.adm(format($$select public.admin_set_setting('payment_note', %L)$$, repeat('n', 500)));
 select pg_temp.adm($$select public.admin_set_setting('payment_note', '')$$);
 select pg_temp.adm($$select public.admin_set_setting('membership_months', '12')$$);
@@ -215,10 +214,10 @@ select pg_temp.adm($$select public.admin_set_setting('reminder_days', '14')$$);
 select pg_temp.adm($$select public.admin_set_setting('reminder_days', '7')$$);
 select pg_temp.adm($$select public.admin_set_setting('renewal_fee_egp', '100000')$$);
 select pg_temp.adm($$select public.admin_set_setting('renewal_fee_egp', '25')$$);
-select pg_temp.check((select count(*) = 14 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp')
+select pg_temp.check((select count(*) = 12 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp')
                  and (select value = '25' from public.app_settings where key = 'renewal_fee_egp') and (select value = '6' from public.app_settings where key = 'membership_months')
                  and (select value = '7' from public.app_settings where key = 'reminder_days'), 'settings were not restored to the defaults');
-select pg_temp.check((select count(*) = 12 from public.audit_log where action = 'setting_changed' and admin_id = pg_temp.u(5)), 'every accepted setting change should be audited exactly once (got ' || (select count(*) from public.audit_log where action = 'setting_changed' and admin_id = pg_temp.u(5)) || ')');
+select pg_temp.check((select count(*) = 11 from public.audit_log where action = 'setting_changed' and admin_id = pg_temp.u(5)), 'every accepted setting change should be audited exactly once (got ' || (select count(*) from public.audit_log where action = 'setting_changed' and admin_id = pg_temp.u(5)) || ')');
 
 \echo '--- M3 payment claims'
 select pg_temp.new_user(pg_temp.u(20), 'p20-b1@example.com', 'owner');     -- C: new, unpaid, still in verification
@@ -650,12 +649,12 @@ select pg_temp.check((select count(*) = 0 from pg_proc p where p.pronamespace = 
                    and (p.proconfig is null or not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'))), 'a security definer function has no fixed search_path');
 
 \echo '--- M2c InstaPay and Vodafone Cash settings (migration 0019)'
-select pg_temp.check((select count(*) = 0 from public.app_settings where key in ('bank_name', 'bank_account_name', 'bank_account_number', 'bank_iban')), 'a bank setting row is still there');
-select pg_temp.check((select count(*) = 4 from public.app_settings where key in ('instapay_address', 'vodafone_cash_number', 'vodafone_cash_name', 'vodafone_cash_link') and value = ''), 'the new payment settings should exist and default to empty');
-select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(10), $$select public.get_payment_settings()::text$$) !~ 'bank_|push_enabled|deletion_grace_days|shared_history_months', 'get_payment_settings shows a bank or phase 9 key');
+select pg_temp.check((select count(*) = 0 from public.app_settings where key in ('bank_name', 'bank_account_name', 'bank_account_number', 'bank_iban', 'instapay_qr_url', 'vodafone_cash_name')), 'a bank or QR setting row is still there');
+select pg_temp.check((select count(*) = 3 from public.app_settings where key in ('instapay_address', 'vodafone_cash_number', 'vodafone_cash_link') and value = ''), 'the new payment settings should exist and default to empty');
+select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(10), $$select public.get_payment_settings()::text$$) !~ 'bank_|qr_url|vodafone_cash_name|push_enabled|deletion_grace_days|shared_history_months', 'get_payment_settings shows a bank or phase 9 key');
 select pg_temp.check(pg_temp.count_as(pg_temp.u(10), $$select count(*) from public.app_settings where key like 'bank\_%' or key in ('push_enabled', 'deletion_grace_days', 'shared_history_months')$$) = 0, 'a signed-in person can read a bank or phase 9 key');
-select pg_temp.check(pg_temp.as_aal('aal2', pg_temp.u(5), 'select count(*) from public.app_settings')::bigint = 14, 'an admin with a passkey should read all 14 settings');
-select pg_temp.check(pg_temp.as_aal('aal1', pg_temp.u(5), 'select count(*) from public.app_settings')::bigint = 11, 'an admin without a passkey should read only the 11 payment settings');
+select pg_temp.check(pg_temp.as_aal('aal2', pg_temp.u(5), 'select count(*) from public.app_settings')::bigint = 12, 'an admin with a passkey should read all 12 settings');
+select pg_temp.check(pg_temp.as_aal('aal1', pg_temp.u(5), 'select count(*) from public.app_settings')::bigint = 9, 'an admin without a passkey should read only the 9 payment settings');
 select pg_temp.fails_adm($$select public.admin_set_setting('bank_iban', 'EG000000')$$, 'the removed bank_iban setting is still accepted');
 select pg_temp.fails_adm($$select public.admin_set_setting('bank_account_name', 'x')$$, 'the removed bank_account_name setting is still accepted');
 select pg_temp.fails_adm($$select public.admin_set_setting('bank_account_number', '1')$$, 'the removed bank_account_number setting is still accepted');
@@ -697,18 +696,6 @@ select pg_temp.check((select value = '01012345678' from public.app_settings wher
 select pg_temp.adm($$select public.admin_set_setting('vodafone_cash_number', '+201012345678')$$);
 select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(10), $$select public.get_payment_settings() ->> 'vodafone_cash_number'$$) = '+201012345678', 'the vodafone number is not shown to a signed-in person');
 select pg_temp.adm($$select public.admin_set_setting('vodafone_cash_number', '')$$);
--- vodafone_cash_name
-select pg_temp.fails_adm(format($$select public.admin_set_setting('vodafone_cash_name', %L)$$, repeat('x', 61)), 'vodafone name of 61 characters');
-select pg_temp.fails_adm(format($$select public.admin_set_setting('vodafone_cash_name', %L)$$, E'Sara\nAli'), 'vodafone name with a line break');
-select pg_temp.fails_adm(format($$select public.admin_set_setting('vodafone_cash_name', %L)$$, E'Sara\tAli'), 'vodafone name with a tab');
-select pg_temp.fails_adm(format($$select public.admin_set_setting('vodafone_cash_name', %L)$$, E'Sara\x01Ali'), 'vodafone name with a control character');
-select pg_temp.adm(format($$select public.admin_set_setting('vodafone_cash_name', %L)$$, repeat('x', 60)));
-select pg_temp.adm($$select public.admin_set_setting('vodafone_cash_name', 'Sara Ali')$$);
-select pg_temp.check((select value = 'Sara Ali' from public.app_settings where key = 'vodafone_cash_name'), 'a valid vodafone name was not stored');
-select pg_temp.adm($$select public.admin_set_setting('vodafone_cash_name', 'سارة علي')$$);
-select pg_temp.check((select value = 'سارة علي' from public.app_settings where key = 'vodafone_cash_name'), 'an Arabic vodafone name was not stored');
-select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(10), $$select public.get_payment_settings() ->> 'vodafone_cash_name'$$) = 'سارة علي', 'the vodafone name is not shown to a signed-in person');
-select pg_temp.adm($$select public.admin_set_setting('vodafone_cash_name', '')$$);
 -- vodafone_cash_link (same rules as instapay_link)
 select pg_temp.fails_adm($$select public.admin_set_setting('vodafone_cash_link', 'http://vf.example/pay')$$, 'vodafone http link');
 select pg_temp.fails_adm($$select public.admin_set_setting('vodafone_cash_link', 'javascript:alert(1)')$$, 'vodafone javascript link');
@@ -720,17 +707,15 @@ select pg_temp.fails_adm(format($$select public.admin_set_setting('vodafone_cash
 select pg_temp.adm($$select public.admin_set_setting('vodafone_cash_link', 'https://vf.example/pay/pawspal')$$);
 select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(10), $$select public.get_payment_settings() ->> 'vodafone_cash_link'$$) = 'https://vf.example/pay/pawspal', 'the vodafone link is not shown to a signed-in person');
 select pg_temp.adm($$select public.admin_set_setting('vodafone_cash_link', '')$$);
-select pg_temp.check((select count(*) = 14 from public.app_settings) and (select count(*) = 4 from public.app_settings where key in ('instapay_address', 'vodafone_cash_number', 'vodafone_cash_name', 'vodafone_cash_link') and value = ''), 'the new settings were not cleared again');
+select pg_temp.check((select count(*) = 12 from public.app_settings) and (select count(*) = 3 from public.app_settings where key in ('instapay_address', 'vodafone_cash_number', 'vodafone_cash_link') and value = ''), 'the new settings were not cleared again');
 
 -- put the shared settings back as every other file expects them
-select pg_temp.check((select count(*) = 14 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp') and (select value = '25' from public.app_settings where key = 'renewal_fee_egp'), 'the settings are not back to the defaults');
+select pg_temp.check((select count(*) = 12 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp') and (select value = '25' from public.app_settings where key = 'renewal_fee_egp'), 'the settings are not back to the defaults');
 
 \echo '--- M2b a valid https link is accepted (kept last: it fails today, see the report on migration 0013)'
 select pg_temp.adm($$select public.admin_set_setting('instapay_link', 'https://ipn.eg/S/pawspal')$$);
 select pg_temp.check((select value = 'https://ipn.eg/S/pawspal' from public.app_settings where key = 'instapay_link'), 'a valid https link was not stored');
-select pg_temp.adm($$select public.admin_set_setting('instapay_qr_url', 'https://x.example/qr.png')$$);
 select pg_temp.adm($$select public.admin_set_setting('instapay_link', '')$$);
-select pg_temp.adm($$select public.admin_set_setting('instapay_qr_url', '')$$);
 
 \echo 'membership assertions OK'
 

@@ -531,8 +531,6 @@
   "membership.vodafoneOpen": "افتح فودافون كاش",
   "membership.vodafoneNumber": "رقم فودافون كاش",
   "membership.amount": "المبلغ المطلوب: {amount} جنيه",
-  "membership.qr": "رمز QR الخاص بإنستاباي",
-  "membership.accountName": "اسم صاحب الحساب",
   "membership.soon": "تفاصيل الدفع ستتوفر قريباً. يرجى العودة بعد قليل.",
   "membership.byHand": "بوزبال تؤكد دفعتك يدوياً.",
   "membership.loadFailed": "تعذّر تحميل تفاصيل الدفع. حاول مرة أخرى.",

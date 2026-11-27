@@ -9,12 +9,12 @@ export type { MembershipInfo, MembershipState };
 
 /** The payment settings the server lets every signed-in person read. An empty string means "not filled in yet". */
 export interface PaymentSettings {
-  instapay_link: string; instapay_qr_url: string; instapay_address: string;
-  vodafone_cash_number: string; vodafone_cash_name: string; vodafone_cash_link: string; payment_note: string;
+  instapay_address: string; instapay_link: string;
+  vodafone_cash_number: string; vodafone_cash_link: string; payment_note: string;
   registration_fee_egp: string; renewal_fee_egp: string;
 }
 
-const KEYS: (keyof PaymentSettings)[] = ['instapay_link', 'instapay_qr_url', 'instapay_address', 'vodafone_cash_number', 'vodafone_cash_name', 'vodafone_cash_link', 'payment_note', 'registration_fee_egp', 'renewal_fee_egp'];
+const KEYS: (keyof PaymentSettings)[] = ['instapay_address', 'instapay_link', 'vodafone_cash_number', 'vodafone_cash_link', 'payment_note', 'registration_fee_egp', 'renewal_fee_egp'];
 
 export async function fetchPaymentSettings(): Promise<PaymentSettings> {
   const { data, error } = await supabase.rpc('get_payment_settings');
@@ -28,8 +28,8 @@ export async function fetchPaymentSettings(): Promise<PaymentSettings> {
 /** Only an https address is ever opened or shown as an image. */
 export const isHttps = (u: string | null | undefined): u is string => !!u && /^https:\/\/\S+$/i.test(u);
 
-/** The InstaPay option is shown once there is an address, a link or a QR image. */
-export const hasInstapay = (s: PaymentSettings) => !!s.instapay_address || isHttps(s.instapay_link) || isHttps(s.instapay_qr_url);
+/** The InstaPay option is shown once there is an address or a link. */
+export const hasInstapay = (s: PaymentSettings) => !!s.instapay_address || isHttps(s.instapay_link);
 
 /** The Vodafone Cash option is shown once there is a number or a link. */
 export const hasVodafoneCash = (s: PaymentSettings) => !!s.vodafone_cash_number || isHttps(s.vodafone_cash_link);

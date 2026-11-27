@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, KeyboardAvoidingView, Linking, Platform, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Linking, Platform, ScrollView, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from '../src/components/Button';
 import { EmptyState } from '../src/components/EmptyState';
@@ -96,17 +96,12 @@ export default function Membership() {
                     <Text accessibilityRole="header" style={{ color: c.text, fontSize: 17, fontFamily: fontFamily('bold', rtl) }}>{tr('membership.instapay')}</Text>
                     {settings.instapay_address ? <Row label={tr('membership.instapayAddress')} value={settings.instapay_address} /> : null}
                     {isHttps(settings.instapay_link) ? <Button title={tr('membership.instapayOpen')} onPress={() => { Linking.openURL(settings.instapay_link).catch(() => {}); }} /> : null}
-                    {isHttps(settings.instapay_qr_url) ? (
-                      <Image source={{ uri: settings.instapay_qr_url }} accessible accessibilityRole="image" accessibilityLabel={tr('membership.qr')}
-                        style={{ width: 220, height: 220, alignSelf: 'center', borderRadius: 16, backgroundColor: c.surface }} resizeMode="contain" />
-                    ) : null}
                   </View>
                 ) : null}
                 {hasVodafoneCash(settings) ? (
                   <View style={optionBox}>
                     <Text accessibilityRole="header" style={{ color: c.text, fontSize: 17, fontFamily: fontFamily('bold', rtl) }}>{tr('membership.vodafone')}</Text>
                     {settings.vodafone_cash_number ? <Row label={tr('membership.vodafoneNumber')} value={settings.vodafone_cash_number} /> : null}
-                    {settings.vodafone_cash_name ? <Row label={tr('membership.accountName')} value={settings.vodafone_cash_name} /> : null}
                     {isHttps(settings.vodafone_cash_link) ? <Button title={tr('membership.vodafoneOpen')} onPress={() => { Linking.openURL(settings.vodafone_cash_link).catch(() => {}); }} /> : null}
                   </View>
                 ) : null}

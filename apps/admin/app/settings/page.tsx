@@ -13,17 +13,15 @@ const GROUPS: { title: string; items: Def[] }[] = [
     { key: 'reminder_days', label: 'Reminder days', help: 'How many days before the end people get a renewal reminder, from 1 to 60.' },
   ] },
   { title: 'InstaPay', items: [
-    { key: 'instapay_address', label: 'InstaPay address', help: 'Shown to people when they pay with InstaPay. For example yourname@instapay' },
-    { key: 'instapay_link', label: 'InstaPay link (optional)', help: 'Adds an "Open InstaPay" button. A full link that starts with https://, for example https://ipn.eg/S/yourname' },
-    { key: 'instapay_qr_url', label: 'InstaPay QR image address (optional)', help: 'Not used for now. If you fill it in, people see the code to scan. A full link that starts with https://' },
+    { key: 'instapay_address', label: 'InstaPay address', help: 'For example yourname@instapay' },
+    { key: 'instapay_link', label: 'InstaPay link (optional)', help: 'Adds an "Open InstaPay" button. Starts with https://' },
   ] },
   { title: 'Vodafone Cash', items: [
-    { key: 'vodafone_cash_number', label: 'Vodafone Cash number', help: 'Shown to people when they pay with Vodafone Cash. For example 01012345678 (or +201012345678).' },
-    { key: 'vodafone_cash_name', label: 'Account holder name', help: 'The name on the Vodafone Cash wallet, so people can check they are paying the right person. For example Sara Ali' },
-    { key: 'vodafone_cash_link', label: 'Vodafone Cash link (optional)', help: 'Adds an "Open Vodafone Cash" button. A full link that starts with https://' },
+    { key: 'vodafone_cash_number', label: 'Vodafone Cash number', help: 'For example 01012345678' },
+    { key: 'vodafone_cash_link', label: 'Vodafone Cash link (optional)', help: 'Adds an "Open Vodafone Cash" button. Starts with https://' },
   ] },
   { title: 'Note for people paying', items: [
-    { key: 'payment_note', label: 'Payment note', help: 'A short line shown under the payment details, for example "Write your email in the payment note".', long: true },
+    { key: 'payment_note', label: 'Payment note (optional)', help: 'A short line shown under the payment options.', long: true },
   ] },
   { title: 'Notifications and data', items: [
     { key: 'push_enabled', label: 'Push notifications', help: 'Nothing is sent to anyone\'s phone until this is on. Push also needs the notification cron job set up first (see SETUP).' },

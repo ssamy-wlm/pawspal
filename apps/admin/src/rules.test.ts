@@ -169,7 +169,7 @@ test('the users filter for closed accounts', () => {
 });
 
 test('the InstaPay and Vodafone Cash settings mirror admin_set_setting exactly', () => {
-  for (const k of ['instapay_address', 'vodafone_cash_number', 'vodafone_cash_name', 'vodafone_cash_link']) assert.equal(validateSetting(k, ''), null, k);
+  for (const k of ['instapay_address', 'vodafone_cash_number', 'vodafone_cash_link']) assert.equal(validateSetting(k, ''), null, k);
   assert.equal(validateSetting('instapay_address', '  your.name-1_x@instapay '), null);
   assert.equal(validateSetting('instapay_address', 'ab@cd'), null);
   assert.equal(validateSetting('instapay_address', `${'a'.repeat(40)}@${'b'.repeat(30)}`), null);
@@ -180,14 +180,8 @@ test('the InstaPay and Vodafone Cash settings mirror admin_set_setting exactly',
   for (const bad of ['1012345678', '0101234567', '010123456789', '02012345678', '+2001012345678', '+20101234567', '0101 234 5678', '010-1234-5678', '0101234567a', '+1 01012345678', '0020101234567']) {
     assert.match(validateSetting('vodafone_cash_number', bad)!, /01012345678/, bad);
   }
-  assert.equal(validateSetting('vodafone_cash_name', 'Sara Ali'), null);
-  assert.equal(validateSetting('vodafone_cash_name', 'سارة علي'), null);
-  assert.equal(validateSetting('vodafone_cash_name', 'x'.repeat(60)), null);
-  assert.match(validateSetting('vodafone_cash_name', 'x'.repeat(61))!, /60 characters/);
-  assert.match(validateSetting('vodafone_cash_name', 'Sara\nAli')!, /one line/);
-  assert.match(validateSetting('vodafone_cash_name', 'Sara\tAli')!, /one line/);
-  assert.match(validateSetting('vodafone_cash_name', 'Sara\u0001Ali')!, /one line/);
-  for (const k of ['instapay_link', 'instapay_qr_url', 'vodafone_cash_link']) {
+  for (const gone of ['vodafone_cash_name', 'instapay_qr_url', 'bank_name']) assert.equal(validateSetting(gone, 'x'), 'Unknown setting.', gone);
+  for (const k of ['instapay_link', 'vodafone_cash_link']) {
     assert.equal(validateSetting(k, 'https://vf.example/pay'), null, k);
     for (const bad of ['http://vf.example', 'javascript:alert(1)', 'data:text/html;base64,AAAA', 'https://', 'https://a b.example', 'HTTPS://vf.example/pay', '//vf.example', `https://${'a'.repeat(500)}`]) {
       assert.match(validateSetting(k, bad)!, /https|too long/, `${k} ${bad.slice(0, 20)}`);
