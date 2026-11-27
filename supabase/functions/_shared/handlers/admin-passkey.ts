@@ -7,10 +7,12 @@
 import { bearerToken, json, readJson, type Rpc } from '../http.ts';
 import type { Env } from '../config.ts';
 
+type Bytes = Uint8Array<ArrayBuffer>;
+
 /** The four library calls this handler needs (the real @simplewebauthn/server fits; tests may pass a fake). */
 export interface WebAuthnApi {
   generateRegistrationOptions(opts: {
-    rpName: string; rpID: string; userName: string; userDisplayName: string; userID: Uint8Array; challenge: Uint8Array;
+    rpName: string; rpID: string; userName: string; userDisplayName: string; userID: Bytes; challenge: Bytes;
     timeout: number; attestationType: 'none';
     excludeCredentials: { id: string; transports?: string[] }[];
     authenticatorSelection: { residentKey: 'preferred'; userVerification: 'required' };
@@ -26,11 +28,11 @@ export interface WebAuthnApi {
     };
   }>;
   generateAuthenticationOptions(opts: {
-    rpID: string; allowCredentials: { id: string; transports?: string[] }[]; userVerification: 'required'; challenge: Uint8Array; timeout: number;
+    rpID: string; allowCredentials: { id: string; transports?: string[] }[]; userVerification: 'required'; challenge: Bytes; timeout: number;
   }): Promise<{ challenge: string }>;
   verifyAuthenticationResponse(opts: {
     response: any; expectedChallenge: string; expectedOrigin: string; expectedRPID: string;
-    credential: { id: string; publicKey: Uint8Array; counter: number; transports?: string[] };
+    credential: { id: string; publicKey: Bytes; counter: number; transports?: string[] };
     requireUserVerification: boolean;
   }): Promise<{ verified: boolean; authenticationInfo: { newCounter: number } }>;
 }
@@ -41,7 +43,7 @@ export interface AdminPasskeyDeps {
   rpc: Rpc;
   webauthn: WebAuthnApi;
   env: Env;
-  random(bytes: number): Uint8Array;
+  random(bytes: number): Bytes;
   now(): number;
 }
 
@@ -58,7 +60,7 @@ export function b64urlEncode(bytes: Uint8Array): string {
   for (const b of bytes) s += String.fromCharCode(b);
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-export function b64urlDecode(text: string): Uint8Array {
+export function b64urlDecode(text: string): Bytes {
   const s = atob(text.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((text.length + 3) % 4));
   const out = new Uint8Array(s.length);
   for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
@@ -87,7 +89,7 @@ async function sha256Hex(text: string): Promise<string> {
 export const normaliseCode = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 /** One recovery code: 16 characters from a 32-character alphabet (80 bits), shown as XXXX-XXXX-XXXX-XXXX. */
-function makeRecoveryCode(random: (n: number) => Uint8Array): string {
+function makeRecoveryCode(random: (n: number) => Bytes): string {
   const bytes = random(16);
   let out = '';
   for (let i = 0; i < 16; i++) out += ALPHABET[bytes[i] & 31];

@@ -52,6 +52,7 @@ Run one phase at a time with `/phase N`. A phase is done only when every accepta
 - Login for admins only; pages from HANDOVER section 7; every action through `admin_take_action`.
 - Scheduled job (pg_cron) to lift fixed-length suspensions when `ends_at` passes, with an audit entry.
 - **Accept:** a non-admin gets nothing; every action appears in the audit log.
+- **Update (migration `0014_admin_passkeys.sql`):** the admin second step is a passkey (WebAuthn) checked by the edge function `admin-passkey` and enforced by `is_admin()`, replacing the authenticator-app code. Founder break-glass, recovery codes and the edge function contract: `docs/ARCHITECTURE.md` section 10c. Accept: `supabase/tests/passkey_assertions.sql` and the handler tests (including the real-library round trip) pass.
 
 ## Phase 9: hardening and launch prep
 - Run the `docs/security.md` checklist, the Supabase Security Advisor, `npm audit` and an accessibility pass.

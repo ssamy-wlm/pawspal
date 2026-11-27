@@ -58,6 +58,12 @@ jobs:
       - name: Install the TypeScript checker used by the app
         run: npm ci
         working-directory: apps/mobile
+      - name: Install the test-only packages of the edge functions (@simplewebauthn/server, for the passkey round-trip test)
+        run: npm ci
+        working-directory: supabase/functions
+      - name: Dependency audit (the library also runs in the live admin-passkey function, so every advisory counts)
+        run: npm audit --audit-level=high
+        working-directory: supabase/functions
       - run: apps/mobile/node_modules/.bin/tsc -p supabase/functions/tsconfig.json
       - run: node --experimental-strip-types --test supabase/functions/_shared/*.test.ts
   admin:

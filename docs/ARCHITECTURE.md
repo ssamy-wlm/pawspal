@@ -15,7 +15,7 @@ This file replaces the parts of `HANDOVER.md` that it contradicts (accounts, sig
 | Search | Cards, swipe, list, area map | Same, plus a **map of host availability with the price per night on each pin** (MapLibre GL JS + OpenStreetMap, approximate areas only). |
 | Disclaimer | none | Shown at sign-up and in the Terms (section 6). |
 
-Unchanged: the safety design (RLS everywhere, server enforces every rule), handover photos, reviews, reports, blocks, emergency, appeals, the admin dashboard with audit log and second factor, the suspension ladder.
+Unchanged: the safety design (RLS everywhere, server enforces every rule), handover photos, reviews, reports, blocks, emergency, appeals, the admin dashboard with audit log and second step (now a passkey, section 10c), the suspension ladder.
 
 ## 2. Accounts and roles
 
@@ -30,7 +30,7 @@ Unchanged: the safety design (RLS everywhere, server enforces every rule), hando
 3. Supabase emails a confirmation link (custom SMTP, see SETUP). The person cannot sign in until confirmed. The link verifies the email and redirects to `pawspal://auth/callback#access_token=...&refresh_token=...`; the app turns that into a session. If the link is opened on another device, the email is still confirmed and the person signs in with email + password.
 4. The database trigger `handle_new_user` (migration 0013) **refuses** the sign-up unless: the role is `owner` or `sitter`; `terms_version` equals the current Terms version (this records the disclaimer acceptance server-side); the email (hashed) and the device (hashed) are not banned. It creates the profile, the membership row, and the `legal_acceptances` rows for `terms` and `privacy`.
 5. Sign-in: email + password. "Forgot password": `resetPasswordForEmail(email, { redirectTo: 'pawspal://auth/reset' })`; the app shows a "choose a new password" screen on that deep link.
-6. Admin accounts are normal email accounts that are also invited (`private.invite_admin`) and granted (`private.grant_admin`) in the SQL editor, and then need the authenticator code (unchanged from phase 8).
+6. Admin accounts are normal email accounts that are also invited (`private.invite_admin`) and granted (`private.grant_admin`) in the SQL editor, and then sign in with a **passkey** as the second step (section 10c; it replaces the authenticator-app code of phase 8).
 
 ## 4. Profile completion, verification, membership
 
@@ -45,7 +45,7 @@ Unchanged: the safety design (RLS everywhere, server enforces every rule), hando
 ### 4.3 Verification
 
 - Selfie: uploaded raw to `incoming/<uid>/`, then `process-upload` kind `face` (strips metadata) puts a clean copy in bucket `faces`.
-- ID photo: same with kind `id` into the private bucket `ids`. **No app user can read the `ids` bucket, not even their own upload.** Only an admin session that passed the authenticator code can.
+- ID photo: same with kind `id` into the private bucket `ids`. **No app user can read the `ids` bucket, not even their own upload.** Only an admin session that passed the passkey step can.
 - `submit_verification(p_face_path, p_id_path)` records a `verification_requests` row (`pending`).
 - The founder opens **Verification** in the admin site: sees the selfie, the ID photo and the profile, ticks "I checked the person is 18 or older and the photos match", and presses Approve or Reject (a reason is required for Reject).
 - `admin_decide_verification(...)` records the decision, sets `face_verified`, `id_verified`, `is_adult` on approval, moves the account to `active` (approval) or back to `pending_verification` (rejection), **clears `id_path`, and returns the ID file path so the admin site deletes the file at once** (`supabase.storage.from('ids').remove`). The nightly clean-up deletes any ID file that is no longer referenced by a pending request (a safety net).
@@ -137,7 +137,7 @@ Storage buckets (all private): `faces`, `pets`, `homes`, `handovers`, `ids` (new
 }
 ```
 
-### Admin functions (role `authenticated`, require `is_admin()` = admin + authenticator code; all write the audit log)
+### Admin functions (role `authenticated`, require `is_admin()` = admin + a session that passed a passkey; all write the audit log)
 
 | Function | Returns | Notes |
 |---|---|---|
@@ -152,7 +152,7 @@ Storage buckets (all private): `faces`, `pets`, `homes`, `handovers`, `ids` (new
 
 ### Edge functions (final list)
 
-`process-upload` (kinds `face`, `id`, `payment`, `pet`, `home`, `handover`), `cleanup-photos`, `handover-photo-url`, `emergency`, `membership-reminders` (new). **Removed:** `request-otp`, `verify-otp`, `send-sms`, `verify-identity`, `create-fee-payment`, `paymob-webhook`, `process-refunds`.
+`process-upload` (kinds `face`, `id`, `payment`, `pet`, `home`, `handover`), `cleanup-photos`, `handover-photo-url`, `emergency`, `membership-reminders` (new), `admin-passkey` (migration 0014, section 10c). **Removed:** `request-otp`, `verify-otp`, `send-sms`, `verify-identity`, `create-fee-payment`, `paymob-webhook`, `process-refunds`.
 
 ### Banned people
 
@@ -175,6 +175,101 @@ The Expo app also builds for the browser (`npm run build:web` in `apps/mobile`, 
 - **Language:** `dir` and `lang` on the page follow the saved language; switching reloads the page.
 - **Install prompt:** Chrome/Edge/Android use `beforeinstallprompt`; iPhone/iPad show three steps. Hidden when installed; dismissal is remembered on the device.
 - Vibration does nothing on the web. Nothing new is collected, so the privacy policy is unchanged (section 8).
+
+## 10c. Admin sign-in: password then passkey (migration 0014)
+
+**Why our own.** Supabase's built-in passkey sign-in is experimental, and registering a passkey there needs only a normal session: a stolen password could enrol a rogue passkey, and the database could not tell which credential made a session. So the passkey is implemented here with WebAuthn (`@simplewebauthn/server`, exact version `14.1.0`, imported as `npm:@simplewebauthn/server@14.1.0` in `supabase/functions/admin-passkey/index.ts` and pinned in `supabase/functions/package.json`; a test fails if the two differ). The authenticator-app (TOTP, `aal2`) step is gone; the settings in `supabase/config.toml` are left as they were but nothing relies on them.
+
+### Design
+
+1. The admin signs in with email + password (Supabase Auth). The access token carries a `session_id` claim.
+2. The admin site calls the edge function `admin-passkey` with that token. The function checks a passkey (or a recovery code) and asks the database to record "this Supabase session passed": a row in `private.admin_passkey_sessions` (8 hours for a passkey, 30 minutes for a recovery code).
+3. `public.is_admin()` is true only if the caller is in `admins` **and** the JWT's `session_id` has a live, unexpired row for the same user. A missing or malformed claim is `false` (the function never raises). There is no `aal` check any more.
+4. An expired or signed-out Supabase session makes its row useless; the row is also deleted on sign-out and when the passkey that opened it is removed. Everything else the admin site does (`admin_*` functions, the audit log, the `ids`/`payments` buckets) keeps calling `is_admin()`, so nothing else changed.
+
+**Registering a passkey is never possible with a password alone.** It needs one of: a one-time **setup code** from the founder (first sign-in, or after everything was lost), a session already verified by a passkey (adding a device), or a **recovery** session (that is how lost-device recovery ends). The setup code is checked when the options are asked for and used up atomically with saving the passkey (a failed proof never burns it).
+
+**Where this differs from the first design (found while building):**
+- The user handle in the passkey is derived (`sha256("pawspal-admin-passkey:" + user id)`), so it is stable per user and holds no email or personal data.
+- `pk_check_setup_code` was added (checks without using up) and `pk_add_credential` takes the setup code and uses it up in the same transaction.
+- Setup-code guesses are limited too: 10 wrong tries per hour per admin lock the codes (`admin_setup_code_failed` events).
+- Removing a passkey also ends every session it opened (foreign key `on delete cascade`), so removing a stolen device cuts its access at once. Removing the passkey you are signed in with therefore signs you out of the admin area.
+- A recovery login never replaces a live passkey session.
+- Wrong recovery codes and failed passkey attempts share one counter for the hourly login limit (10), on top of the recovery lock (5).
+- The audit/security-event details are filtered to a few harmless keys (`name`, `via`, `reason`, `device_type`, `backed_up`, `count`), so no code or credential can end up there even by mistake.
+- The edge function also refuses a request whose `Origin` header is not `ADMIN_ORIGIN` (defence in depth; a browser always sends it).
+
+### Tables (schema `private`: RLS on, no policies, no grants to `anon` or `authenticated`)
+
+| Table | Holds |
+|---|---|
+| `admin_passkeys` | `id`, `user_id`, `credential_id` (unique), `public_key` (base64url COSE), `counter bigint`, `transports`, `device_type`, `backed_up`, `name` (1 to 40 chars), `created_at`, `last_used_at`. At most 10 per admin. |
+| `admin_passkey_challenges` | one live challenge per (user, session, purpose `register`/`login`), valid 5 minutes, consumed by `delete ... returning` (single use) |
+| `admin_passkey_sessions` | `session_id` (primary key), `user_id`, `passkey_id` (null for recovery), `via` (`passkey`/`recovery`), `expires_at` |
+| `admin_setup_codes` | one per admin: sha256 hash, 15 minutes, `used_at` |
+| `admin_recovery_codes` | ten per admin: sha256 hashes, `used_at` |
+
+Codes are 12 (setup) or 16 (recovery, shown as `XXXX-XXXX-XXXX-XXXX`, 80 bits) random characters from the 32-character alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no 0, O, 1, I). They are stored only as sha256 of the upper-cased letters and digits. Expired rows are pruned when new ones are made and nightly by `pg_cron` (`private.pk_prune`, job `prune-admin-passkeys`).
+
+### Functions
+
+Public, for the signed-in person: `is_admin()`, `admin_status()` returning `not_admin` | `needs_setup` (admin with no passkey: ask the founder for a setup code) | `needs_passkey` (has one, this session has not used it) | `admin`. The browser never changes passkeys through SQL; it talks to the edge function.
+
+Service-role only (revoked from `public`, `anon`, `authenticated`; the edge function passes the user and session from the verified JWT, never from the body): `pk_state`, `pk_new_challenge`, `pk_take_challenge`, `pk_check_setup_code`, `pk_take_setup_code`, `pk_add_credential` (max 10, unique credential id, name check, optional setup code), `pk_credentials`, `pk_credential`, `pk_use_counter` (clone detection: the counter must grow when either side is non-zero; 0 to 0 is accepted for synced passkeys), `pk_start_session`, `pk_end_session`, `pk_replace_recovery_codes` (exactly ten; replaces all older), `pk_use_recovery_code` (`ok`/`bad`/`locked`: five wrong per hour lock it, even for a right code), `pk_rename`, `pk_remove` (refuses the last passkey), `pk_note` (writes `security_events` and `audit_log` rows `admin_setup`, `admin_passkey_added`, `admin_passkey_removed`, `admin_passkey_renamed`, `admin_passkey_login`, `admin_recovery_used`, `admin_recovery_generated`, `admin_login_failed`).
+
+**Founder break-glass** (Supabase SQL editor only, not granted to any role): `private.new_admin_setup_code(email)`, `private.reset_admin_passkeys(email)`, `private.list_admins()`. The statements are:
+
+```sql
+select * from private.list_admins();                           -- who is an admin, how many passkeys
+select private.new_admin_setup_code('admin@example.com');     -- a 12-character code, shown once, valid 15 minutes
+select private.reset_admin_passkeys('admin@example.com');     -- both devices AND all recovery codes lost: forget them all, then make a new setup code
+```
+
+### The edge function `admin-passkey`
+
+Settings (Supabase Edge Function secrets): `ADMIN_RP_ID` (the admin site's domain, for example `admin.pawspal.example`, no scheme), `ADMIN_ORIGIN` (its exact address, `https://admin.pawspal.example`: one origin, no path, https; `http://localhost` is allowed for local work; its host must be `ADMIN_RP_ID` or a subdomain), `ADMIN_RP_NAME` (the name the passkey prompt shows). Any missing or inconsistent value answers `503 {"error":"not_configured"}`. `verify_jwt = true` in `supabase/config.toml`.
+
+**RP ID caveat:** a passkey is bound to the website address it was made for. Moving the admin site to a new domain makes every old passkey useless: change the three settings, then each admin gets a setup code from the founder and registers again.
+
+**Request:** `POST` JSON `{"action": "...", ...}` with `Authorization: Bearer <the admin's access token>` (and the usual `apikey` header). CORS: `OPTIONS` is answered; `Access-Control-Allow-Origin` is sent **only** for `ADMIN_ORIGIN` (headers `authorization, content-type, apikey, x-client-info`; methods `POST, OPTIONS`; `Vary: Origin`). A request from another origin gets `403` and no CORS headers. Bodies over 16 KiB are refused. Nothing (tokens, codes, challenges, credential data) is logged.
+
+**Answers.** Success is `200 {"ok": true, ...}`. Errors are `{"error": "<code>"}`:
+
+| HTTP | `error` | When |
+|---|---|---|
+| 400 | `invalid_request` | bad JSON, bad field, unknown action (for an admin) |
+| 400 | `passkey_limit` | ten passkeys already |
+| 401 | `unauthorized` | no token, a bad token, or a token without a `session_id` |
+| 403 | `not_allowed` | **every** refusal: not an admin, no gate, wrong code, failed WebAuthn proof, not verified via a passkey, other origin. One body, so nothing is revealed |
+| 404 | `not_found` | `rename`/`remove`: no such passkey of yours |
+| 409 | `last_passkey` | `remove` of the only passkey |
+| 409 | `already_registered` | the same authenticator again |
+| 429 | `too_many_attempts` | 10 failed attempts in an hour (passkey or recovery), 5 wrong recovery codes, 10 wrong setup codes |
+| 502 | `try_again_later` | the database or the library failed |
+| 503 | `not_configured` | settings missing |
+
+Every action first needs the caller to be in `admins` (otherwise `403 not_allowed`).
+
+| `action` | Body (besides `action`) | Allowed when | Success body |
+|---|---|---|---|
+| `status` | none | any admin | `{ok, status: "needs_setup"\|"needs_passkey"\|"admin", verified: bool, via: "passkey"\|"recovery"\|null, passkeys: [{id, name, created_at, last_used_at, device_type, backed_up}], recovery_codes_left: int}` |
+| `register_options` | `name?` (1 to 40), `setup_code?` | session verified (any `via`), **or** a valid `setup_code` | `{ok, options}`: pass `options` to `startRegistration({optionsJSON: options})` of `@simplewebauthn/browser`. rp `{id, name}`, attestation `none`, `userVerification: required`, `residentKey: preferred`, existing passkeys excluded, challenge valid 5 minutes |
+| `register_verify` | `response` (the browser's registration response), `name?`, `setup_code?` (the same one, when not yet verified) | as above | `{ok, passkey: {id, name}, session: {via: "passkey", expires_at}}`. The session is now verified for 8 hours. A setup code is used up here. Default name is `Passkey YYYY-MM-DD` |
+| `login_options` | none | at least one passkey | `{ok, options}`: pass to `startAuthentication({optionsJSON: options})`. `userVerification: required`, `allowCredentials` from the database |
+| `login_verify` | `response` (the browser's authentication response) | at least one passkey | `{ok, session: {via: "passkey", expires_at}}` |
+| `recovery_login` | `code` (any case, spaces or dashes allowed) | any admin | `{ok, session: {via: "recovery", expires_at}}` (30 minutes). A recovery session may read status, register a new passkey and sign out, nothing else of the passkey area |
+| `recovery_generate` | none | session verified **via passkey** | `{ok, codes: ["XXXX-XXXX-XXXX-XXXX", ... 10]}`: shown once, replaces every older code |
+| `rename` | `id` (uuid), `name` (1 to 40) | via passkey | `{ok}` |
+| `remove` | `id` (uuid) | via passkey | `{ok}`; the passkey's sessions end with it (call `status` again; the current session may be gone) |
+| `sign_out` | none | any admin | `{ok}`; also call `supabase.auth.signOut()` |
+
+A challenge is single use and tied to the user, the session and the purpose, so an answer cannot be replayed or moved to another session. A failed `login_verify` or `register_verify` writes a generic `admin_login_failed` audit row (with a short reason such as `verify`, `challenge`, `unknown_credential`, `counter`; never the library message).
+
+### Login screen flow for the admin site
+`signInWithPassword` → `admin_status()` (SQL) → `not_admin`: sign out. `needs_setup`: ask for the setup code, `register_options` + `register_verify`, then show recovery codes (`recovery_generate`) once. `needs_passkey`: `login_options` + `login_verify` (or `recovery_login`). `admin`: continue; refresh the token is not needed because the session id stays the same.
+
+### Residual risks
+Someone with **both** the password and an unused recovery code (or the founder's setup code) can enrol a passkey of their own: keep recovery codes offline, regenerate them after using one, and watch the audit log for `admin_passkey_added` and `admin_recovery_used`. Whoever controls the founder's Gmail or the Supabase account can reset passkeys and issue setup codes (break-glass runs in the SQL editor), so those two accounts need their own strong second factor. A password holder can make an admin's passkey login return 429 for an hour by failing on purpose (a lock-out, not a break-in).
 
 ## 11. Rules every part must follow
 
