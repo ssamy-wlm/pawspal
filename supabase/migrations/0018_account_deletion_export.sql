@@ -60,6 +60,26 @@ alter table public.reviews drop constraint if exists reviews_booking_id_fkey;
 alter table public.reviews add constraint reviews_booking_id_fkey
   foreign key (booking_id) references public.bookings (id) on delete set null;
 
+-- The empty shell of a pet of a closed account points at the placeholder path 'deleted' (no file); everything else is checked as before.
+create or replace function public.validate_pet_photos()
+returns trigger language plpgsql security definer set search_path = public, storage as $$
+declare p text;
+begin
+  foreach p in array new.photo_paths loop
+    if p = 'deleted' and exists (select 1 from public.profiles where id = new.owner_id and deleted_at is not null) then
+      continue;
+    end if;
+    if split_part(p, '/', 1) <> new.owner_id::text
+       or not exists (select 1 from storage.objects o where o.bucket_id = 'pets' and o.name = p) then
+      raise exception 'invalid photo';
+    end if;
+  end loop;
+  if tg_op = 'INSERT' and (select count(*) from public.pets where owner_id = new.owner_id) >= 10 then
+    raise exception 'too many pets';
+  end if;
+  return new;
+end $$;
+
 -- Nobody can send a message to a closed account.
 create or replace function public.refuse_message_to_deleted()
 returns trigger language plpgsql security definer set search_path = public as $$

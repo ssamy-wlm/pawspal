@@ -67,3 +67,47 @@ export function signedUrlsOf(client: ReturnType<typeof adminClient>): SignedUrlO
     },
   };
 }
+
+// ---- phase 9: account deletion, data export, push
+
+/** Like authUserOf, plus the email (needed to check the password again). */
+export function authUserWithEmailOf(client: ReturnType<typeof adminClient>) {
+  return async (token: string) => {
+    const { data, error } = await client.auth.getUser(token);
+    return error || !data.user || !data.user.email ? null : { id: data.user.id, email: data.user.email };
+  };
+}
+
+/** Checks a password with a separate client that keeps no session (anon key). false = wrong password; throws when the check could
+ *  not run (outage, rate limit). The session it opens is closed at once. The password is never logged. */
+export function passwordVerifier() {
+  return async (email: string, password: string): Promise<boolean> => {
+    const url = env.get('SUPABASE_URL');
+    const anon = env.get('SUPABASE_ANON_KEY');
+    if (!url || !anon) throw new Error('missing Supabase settings');
+    const c = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+    const { data, error } = await c.auth.signInWithPassword({ email, password });
+    if (error) {
+      if (error.status === 400) return false;
+      throw new Error('password check unavailable');
+    }
+    if (data.session) await c.auth.signOut().catch(() => undefined);
+    return true;
+  };
+}
+
+/** Sign-out and ban through the Auth admin API. A ban of about 100 years: the person can never sign in again (the final purge deletes the user). */
+export function accountOpsOf(client: ReturnType<typeof adminClient>) {
+  return {
+    async signOutEverywhere(token: string): Promise<void> {
+      await client.auth.admin.signOut(token, 'global');
+    },
+    async banUser(userId: string): Promise<boolean> {
+      const { error } = await client.auth.admin.updateUserById(userId, { ban_duration: '876000h' });
+      return !error;
+    },
+    async removeMany(bucket: string, names: string[]): Promise<boolean> {
+      return !(await client.storage.from(bucket).remove(names)).error;
+    },
+  };
+}

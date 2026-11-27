@@ -406,3 +406,15 @@ verify_jwt = true
 
 [functions.admin-passkey]
 verify_jwt = true       # the admin site calls it with the person's own access token (needs ADMIN_RP_ID, ADMIN_ORIGIN, ADMIN_RP_NAME)
+
+[functions.delete-account]
+verify_jwt = true       # the signed-in person; the password is checked again inside
+
+[functions.export-my-data]
+verify_jwt = true
+
+[functions.purge-accounts]
+verify_jwt = false      # called by a timer, proves itself with CLEANUP_SECRET (the same secret as cleanup-photos)
+
+[functions.send-notifications]
+verify_jwt = false      # called by a timer, proves itself with NOTIFICATIONS_SECRET

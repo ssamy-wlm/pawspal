@@ -18,7 +18,7 @@ update public.profiles set first_name = 'Hana' where id = pg_temp.du(2);
 select pg_temp.make_admin(pg_temp.du(4));
 
 insert into storage.objects (bucket_id, name) values
-  ('pets', pg_temp.du(1)::text || '/p1.jpg'), ('pets', pg_temp.du(1)::text || '/p2.jpg'), ('faces', pg_temp.du(1)::text || '/face.jpg'),
+  ('pets', pg_temp.du(1)::text || '/p1.jpg'), ('pets', pg_temp.du(1)::text || '/p2.jpg'), ('pets', pg_temp.du(1)::text || '/p3.jpg'), ('faces', pg_temp.du(1)::text || '/face.jpg'),
   ('handovers', pg_temp.du(1)::text || '/h.jpg'), ('payments', pg_temp.du(1)::text || '/pay.jpg'), ('ids', pg_temp.du(1)::text || '/id.jpg'),
   ('pets', pg_temp.du(6)::text || '/o.jpg'), ('homes', pg_temp.du(6)::text || '/home.jpg'), ('faces', pg_temp.du(6)::text || '/face.jpg'), ('faces', pg_temp.du(2)::text || '/hface.jpg');
 update public.profiles set face_photo_path = pg_temp.du(1)::text || '/face.jpg' where id = pg_temp.du(1);
@@ -26,6 +26,7 @@ update public.profiles set face_photo_path = pg_temp.du(6)::text || '/face.jpg',
 insert into public.pets (id, owner_id, name, type, size, notes, photo_paths) values
   (pg_temp.du(101), pg_temp.du(1), 'Rexy', 'dog', 'small', 'bites sometimes', array[pg_temp.du(1)::text || '/p1.jpg']),
   (pg_temp.du(102), pg_temp.du(1), 'Lunny', 'cat', 'small', 'shy', array[pg_temp.du(1)::text || '/p2.jpg']),
+  (pg_temp.du(103), pg_temp.du(1), 'Neverbooked', 'cat', 'small', 'n', array[pg_temp.du(1)::text || '/p3.jpg']),
   (pg_temp.du(106), pg_temp.du(6), 'Obie', 'dog', 'large', 'owner O notes', array[pg_temp.du(6)::text || '/o.jpg']);
 insert into private.pet_care (pet_id, vet_name, vet_phone, care_notes) values
   (pg_temp.du(101), 'Dr Dee', '0100 111 2222', 'D care'), (pg_temp.du(106), 'Dr Oh', '0109 999 8888', 'O secret care notes');
@@ -35,9 +36,6 @@ insert into public.travel_posts (user_id, pet_type, starts_on, ends_on) values (
 insert into public.shortlist (user_id, host_id) values (pg_temp.du(1), pg_temp.du(2)), (pg_temp.du(2), pg_temp.du(1));
 insert into public.availability (user_id, starts_on, ends_on, pets_accepted, offers) values (pg_temp.du(2), current_date + 1, current_date + 20, array['dog']::public.pet_type[], array['paid']);
 insert into public.blocks (blocker_id, blocked_id) values (pg_temp.du(1), pg_temp.du(3));
-insert into public.handover_photos (booking_id, uploaded_by, kind, photo_path)
-  select b.id, pg_temp.du(1), 'dropoff', pg_temp.du(1)::text || '/h.jpg' from (select gen_random_uuid() id) x cross join lateral (select 1) y join public.bookings b on false;
--- a finished stay between D (owner) and H (host), with messages and reviews both ways
 insert into public.bookings (id, owner_id, sitter_id, pet_id, starts_on, ends_on, status, confirmed_at)
   values (pg_temp.du(201), pg_temp.du(1), pg_temp.du(2), pg_temp.du(101), current_date - 30, current_date - 27, 'completed', now() - interval '31 days');
 insert into public.handover_photos (booking_id, uploaded_by, kind, photo_path) values (pg_temp.du(201), pg_temp.du(1), 'dropoff', pg_temp.du(1)::text || '/h.jpg');
@@ -88,13 +86,14 @@ select pg_temp.check((select count(*) = 0 from public.availability where user_id
                       and (select count(*) = 0 from private.locations where user_id = pg_temp.du(1)) and (select count(*) = 0 from public.push_tokens where user_id = pg_temp.du(1))
                       and (select count(*) = 0 from public.notification_prefs where user_id = pg_temp.du(1)) and (select count(*) = 0 from public.verification_requests where user_id = pg_temp.du(1)),
                      'personal rows were left after closing');
-select pg_temp.check((select count(*) = 0 from public.pets where id = pg_temp.du(102)), 'a pet without shared bookings was kept');
+select pg_temp.check((select count(*) = 0 from public.pets where id = pg_temp.du(103)), 'a pet without shared bookings was kept');
+select pg_temp.check((select name = 'Pet' and photo_paths = array['deleted'] from public.pets where id = pg_temp.du(102)), 'a pet in a cancelled (kept) booking was not scrubbed');
 select pg_temp.check((select name = 'Pet' and notes is null and photo_paths = array['deleted'] and not locked from public.pets where id = pg_temp.du(101)), 'the pet in a shared booking was not scrubbed');
 select pg_temp.check((select count(*) = 0 from private.pet_care where pet_id = pg_temp.du(101)), 'vet details were kept');
 select pg_temp.check((select count(*) = 0 from public.handover_photos where uploaded_by = pg_temp.du(1)), 'handover photo rows were kept');
 select pg_temp.check((select status = 'rejected' and screenshot_path is null from public.payment_claims where reference = 'REF-PENDING')
                       and (select status = 'confirmed' from public.payment_claims where reference = 'REF-KEEP-1'), 'payment claims after closing are wrong');
-select pg_temp.check((select count(*) = 6 from public.list_user_files(pg_temp.du(1))), 'list_user_files should list the six files of D');
+select pg_temp.check((select count(*) = 7 from public.list_user_files(pg_temp.du(1))), 'list_user_files should list the seven files of D');
 select pg_temp.check((select count(*) = 0 from public.list_user_files(pg_temp.du(1)) where name not like pg_temp.du(1)::text || '/%'), 'list_user_files listed another folder');
 select pg_temp.check((public.close_account(pg_temp.du(1)) ->> 'status') = 'already_closed', 'closing twice was not idempotent');
 select pg_temp.check((select count(*) = 1 from public.audit_log where action = 'account_deleted' and target_user = pg_temp.du(1) and details = '{"grace_days": 45}'), 'no clean audit entry');
@@ -123,4 +122,99 @@ select pg_temp.check(pg_temp.count_as(pg_temp.du(2), 'select count(*) from publi
 select pg_temp.check(pg_temp.count_as(pg_temp.du(2), 'select count(*) from public.my_alerts()') = 0, 'my_alerts failed');
 select pg_temp.as_role('authenticated', pg_temp.du(2), format($$select count(*) from public.search_stays(current_date + 2, current_date + 4, 'dog')$$));
 select pg_temp.as_role('authenticated', pg_temp.du(2), $$select count(*) from public.browse_random()$$);
-select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.du(2), format($$select (public.export_user_data_probe_ok())$$)) is not null or true, 'noop');
+
+\echo '--- D5 the purge keeps what it must keep and removes the rest'
+select pg_temp.check((public.purge_deleted_accounts() ->> 'purged') = '0', 'the purge ran before the grace period ended');
+select pg_temp.check(exists (select 1 from auth.users where id = pg_temp.du(1)), 'the auth user was deleted before the grace period ended');
+-- a removed, banned person who then deletes the account stays banned
+select pg_temp.as_aal('aal2', pg_temp.du(4), format($$select public.admin_take_action(%L, 'removal', 'rule', null, false, '[]', 'bye')$$, pg_temp.du(5)));
+delete from public.banned_identifiers where hash = private.email_hash('del-r-removed@example.com');          -- as if the ban list had lost it
+select pg_temp.check((public.close_account(pg_temp.du(5)) ->> 'status') = 'closed', 'a removed person could not close the account');
+select pg_temp.check(exists (select 1 from public.banned_identifiers where kind = 'email' and hash = private.email_hash('del-r-removed@example.com')), 'closing did not keep the ban hash');
+alter table public.profiles disable trigger guard_deleted_profile_before_update;   -- the test moves the clock; nobody else can
+update public.profiles set purge_after = now() - interval '1 minute' where id in (pg_temp.du(1), pg_temp.du(5));
+alter table public.profiles enable trigger guard_deleted_profile_before_update;
+create temp table t_purge as select public.purge_deleted_accounts() as r;
+select pg_temp.check((select (r ->> 'purged')::int = 2 from t_purge), 'the purge should have purged two accounts');
+select pg_temp.check((select jsonb_array_length(r -> 'files') = 7 and (r -> 'files') @> jsonb_build_array(jsonb_build_object('bucket', 'faces', 'name', pg_temp.du(1)::text || '/face.jpg')) from t_purge), 'the purge did not list the leftover files');
+select pg_temp.check(not exists (select 1 from auth.users where id in (pg_temp.du(1), pg_temp.du(5))), 'the auth users were not deleted');
+select pg_temp.check((select purged_at is not null and deleted_at is not null and status = 'removed' and first_name = 'Deleted user' from public.profiles where id = pg_temp.du(1)), 'the stub is gone or not anonymised');
+select pg_temp.check((select count(*) = 0 from public.legal_acceptances where user_id = pg_temp.du(1)) and (select count(*) = 0 from public.memberships where user_id = pg_temp.du(1))
+                      and (select count(*) = 0 from public.security_events where user_id = pg_temp.du(1)), 'personal rows survived the purge');
+select pg_temp.check((select count(*) = 2 and bool_and(user_id is null) from public.payment_claims where reference in ('REF-KEEP-1', 'REF-PENDING')), 'payment records were not kept and detached');
+select pg_temp.check((select amount_egp = 75 and reference = 'REF-KEEP-1' and decided_at is not null from public.payment_claims where reference = 'REF-KEEP-1'), 'the payment record lost its content');
+select pg_temp.check((select count(*) = 2 from public.audit_log where action in ('account_deleted', 'account_purged') and target_user = pg_temp.du(1)), 'audit entries are missing');
+select pg_temp.check(not exists (select 1 from public.audit_log where target_user = pg_temp.du(1) and details::text ~* 'Dina|del-d-owner|REF-'), 'the audit log holds personal data');
+select pg_temp.check(exists (select 1 from public.banned_identifiers where kind = 'email' and hash = private.email_hash('del-r-removed@example.com')), 'the ban hash did not survive the purge');
+select pg_temp.fails_with($$select pg_temp.new_user(gen_random_uuid(), 'del-r-removed@example.com', 'owner')$$, '[E5]', 'a banned person signed up again after deleting the account');
+select pg_temp.check((select count(*) = 1 from public.enforcement_actions where user_id = pg_temp.du(1)) and (select count(*) = 1 from public.reports where reported_id = pg_temp.du(1)), 'moderation records were removed');
+-- shared history is still there for the other person
+select pg_temp.check(pg_temp.count_as(pg_temp.du(2), 'select count(*) from public.my_conversations() where first_name = ''Deleted user''') = 1, 'the conversation vanished after the purge');
+select pg_temp.check(pg_temp.count_as(pg_temp.du(2), format($$select count(*) from public.messages where conversation_id = %L$$, (select v from t_ids where k = 'cv'))) = 2, 'messages vanished after the purge');
+select pg_temp.check(pg_temp.count_as(pg_temp.du(2), format($$select count(*) from public.bookings where id = %L$$, pg_temp.du(201))) = 1, 'the booking vanished after the purge');
+select pg_temp.check((public.purge_deleted_accounts() ->> 'purged') = '0', 'the purge is not idempotent');
+-- an ordinary account's profile still goes with its auth user; the other tables of other people stay
+delete from auth.users where id = pg_temp.du(7);
+select pg_temp.check(not exists (select 1 from public.profiles where id = pg_temp.du(7)), 'deleting an ordinary auth user left the profile');
+
+\echo '--- D6 retention of shared history'
+update public.app_settings set value = '1' where key = 'shared_history_months';
+update public.messages set created_at = now() - interval '40 days' where conversation_id = (select v::uuid from t_ids where k = 'cv') and body = 'hello Hana';
+update public.conversations set created_at = now() - interval '40 days' where id = (select v::uuid from t_ids where k = 'cv');
+select pg_temp.check((public.purge_deleted_accounts() ->> 'messages_deleted') = '1', 'only the old message should go');
+select pg_temp.check(pg_temp.count_as(pg_temp.du(2), format($$select count(*) from public.messages where conversation_id = %L$$, (select v from t_ids where k = 'cv'))) = 1, 'a recent message was deleted by retention');
+select pg_temp.check(exists (select 1 from public.bookings where id = pg_temp.du(201)), 'a recent booking was deleted');   -- ended 27 days ago, 1 month = still kept
+update public.bookings set ends_on = current_date - 60, starts_on = current_date - 62 where id = pg_temp.du(201);
+update public.messages set created_at = now() - interval '40 days' where conversation_id = (select v::uuid from t_ids where k = 'cv');
+select pg_temp.check((public.purge_deleted_accounts() ->> 'bookings_deleted') = '1', 'the old booking was not deleted');
+select pg_temp.check(not exists (select 1 from public.bookings where id = pg_temp.du(201)) and not exists (select 1 from public.handover_photos where booking_id = pg_temp.du(201)), 'the booking or its photos survived retention');
+select pg_temp.check((select count(*) = 2 and bool_and(booking_id is null) from public.reviews where author_id in (pg_temp.du(1), pg_temp.du(2))), 'reviews did not survive the booking with booking_id null');
+select pg_temp.check(not exists (select 1 from public.conversations where id = (select v::uuid from t_ids where k = 'cv')), 'the empty old conversation was kept');
+select pg_temp.check(not exists (select 1 from public.pets where id = pg_temp.du(101)), 'the pet shell was kept with no booking left');
+select pg_temp.check(exists (select 1 from public.profiles where id = pg_temp.du(1)), 'the stub went while reports, reviews and moderation records still point to it');
+select pg_temp.check(exists (select 1 from public.profiles where id = pg_temp.du(1)), 'the stub went while a kept booking points to it');
+delete from public.bookings where id = pg_temp.du(202);
+delete from public.reports where reported_id = pg_temp.du(1);
+delete from public.reviews where pg_temp.du(1) in (author_id, subject_id);
+delete from public.enforcement_actions where user_id = pg_temp.du(1);
+select pg_temp.check((public.purge_deleted_accounts() ->> 'stubs_deleted')::int >= 1, 'no empty stub was removed');
+select pg_temp.check(not exists (select 1 from public.profiles where id = pg_temp.du(1)), 'an empty stub was not removed');
+update public.app_settings set value = '24' where key = 'shared_history_months';
+
+\echo '--- D7 the data export'
+select pg_temp.as_role('authenticated', pg_temp.du(2), format($$select public.start_conversation(%L)$$, pg_temp.du(6)));
+insert into public.messages (conversation_id, sender_id, body) values
+  ((select id from public.conversations where pg_temp.du(6) in (user_a, user_b) and pg_temp.du(2) in (user_a, user_b)), pg_temp.du(2), 'hello Olive'),
+  ((select id from public.conversations where pg_temp.du(6) in (user_a, user_b) and pg_temp.du(2) in (user_a, user_b)), pg_temp.du(6), 'hello Hana, text me on 0100 555 6677');
+insert into public.reports (reporter_id, reported_id, reason, details) values (pg_temp.du(6), pg_temp.du(2), 'other', 'O reports H'), (pg_temp.du(2), pg_temp.du(6), 'other', 'H reports O secret report');
+insert into public.verification_requests (user_id, face_path, status, note, decided_at) values (pg_temp.du(6), pg_temp.du(6)::text || '/face.jpg', 'approved', 'internal approval note', now());
+insert into public.payment_claims (user_id, kind, amount_egp, reference, status, note, decided_at) values (pg_temp.du(6), 'registration', 75, 'REF-O-1', 'confirmed', 'internal confirm note', now());
+insert into public.blocks (blocker_id, blocked_id) values (pg_temp.du(6), pg_temp.du(3));
+insert into public.reviews (booking_id, author_id, subject_id, rating, body) values (null, pg_temp.du(3), pg_temp.du(6), 3, 'review about O');
+create temp table t_export as select public.export_user_data(pg_temp.du(6)) as j;
+select pg_temp.check((select j -> 'profile' ->> 'id' = pg_temp.du(6)::text and j -> 'exact_location' ->> 'address' = 'Olive road 77' and j -> 'pets' -> 0 ->> 'vet_phone' = '0109 999 8888' from t_export), 'the export misses the person''s own profile, location or vet details');
+select pg_temp.check((select jsonb_array_length(j -> 'conversations') = 1 and jsonb_array_length(j -> 'conversations' -> 0 -> 'messages') = 2 and (j -> 'conversations' -> 0 -> 'messages' -> 0 ->> 'sent_by_me')::boolean = false from t_export), 'the export misses own conversations');
+select pg_temp.check((select (j -> 'reports_made' -> 0 ->> 'details') = 'O reports H' and jsonb_array_length(j -> 'reports_made') = 1 from t_export), 'reports made are wrong');
+select pg_temp.check((select jsonb_array_length(j -> 'reviews_received') = 1 and jsonb_array_length(j -> 'blocks_made') = 1 and jsonb_array_length(j -> 'legal_acceptances') >= 2 and j -> 'payment_claims' -> 0 ->> 'reference' = 'REF-O-1' from t_export), 'reviews, blocks, acceptances or payments are wrong');
+select pg_temp.check((select j -> 'notification_prefs' = '{"messages":true,"bookings":true,"membership":true,"verification":true}'::jsonb and j ? 'membership' and j ? 'files' from t_export), 'prefs or membership are missing');
+select pg_temp.check((select (j -> 'files') @> jsonb_build_array(jsonb_build_object('kind', 'face', 'bucket', 'faces', 'path', pg_temp.du(6)::text || '/face.jpg')) and jsonb_array_length(j -> 'files') = 3 from t_export), 'the file list is wrong');
+-- nothing private of other people, no admin notes, no hashes, no events
+select pg_temp.check((select j::text !~ 'H reports O secret|internal approval note|internal confirm note|del-h-host@|del-e-host@|del-o-owner@|Dina street|\$2|sha256' from t_export), 'the export holds notes, emails or other people''s data');
+select pg_temp.check((select not (j ? 'security_events') and not (j ? 'audit_log') and not (j ? 'admin_notes') and not (j ? 'push_tokens') from t_export), 'the export has internal sections');
+select pg_temp.check((select j::text !~ (select string_agg(hash, '|') from public.banned_identifiers) from t_export) or not exists (select 1 from public.banned_identifiers), 'the export holds a ban hash');
+-- the other person's export has nothing of O's private data
+create temp table t_export_h as select public.export_user_data(pg_temp.du(2)) as j;
+select pg_temp.check((select j::text !~ 'Olive road|O secret care|0109 999 8888|O reports H|O owner notes|REF-O-1|internal' from t_export_h), 'one person''s export holds another person''s private data');
+select pg_temp.check((select j::text ~ 'hello Hana, text me' and jsonb_array_length(j -> 'reports_made') = 1 and j::text !~ 'O reports H' from t_export_h), 'the other side of a conversation or the reports against me are wrong');
+select pg_temp.check((select j -> 'conversations' -> 0 ->> 'other_first_name' = 'N6' from t_export_h), 'the other person''s visible first name is not shown');
+-- a rejected decision note is the person's own (the app shows it), an approved one is not exported
+update public.verification_requests set status = 'rejected', note = 'photo was blurry' where user_id = pg_temp.du(6);
+select pg_temp.check((select public.export_user_data(pg_temp.du(6)) -> 'verification_requests' -> 0 ->> 'note') = 'photo was blurry', 'a rejection note is missing from the export');
+select pg_temp.check(public.export_user_data(gen_random_uuid()) is null, 'an unknown person exported something');
+select pg_temp.check(public.export_user_data(pg_temp.du(5)) is null, 'a deleted person can be exported');
+-- 3 exports a day
+select pg_temp.check(public.note_data_export(pg_temp.du(6)) and public.note_data_export(pg_temp.du(6)) and public.note_data_export(pg_temp.du(6)), 'three exports should pass');
+select pg_temp.check(public.note_data_export(pg_temp.du(6)) = false, 'a fourth export in a day passed');
+select pg_temp.check(public.note_data_export(pg_temp.du(2)), 'one person''s exports limited another');
+select pg_temp.check(public.note_data_export(gen_random_uuid()) = false, 'an unknown person was counted');
+\echo 'deletion assertions OK'
