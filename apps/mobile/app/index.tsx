@@ -7,7 +7,7 @@ import { AnimatedLogo } from '../src/components/AnimatedLogo';
 import { Blob } from '../src/components/Blob';
 import { Illustration } from '../src/components/Illustration';
 import { InstallPrompt } from '../src/components/InstallPrompt';
-import { fontFamily, useTheme } from '../src/theme';
+import { fontFamily, lightTheme, useTheme } from '../src/theme';
 import { isRTL, Key, t as tr } from '../src/i18n';
 
 const LEGAL: { slug: string; label: Key }[] = [
@@ -26,6 +26,11 @@ function Option({ title, sub, primary, onPress, delay }: { title: string; sub: s
   const t = useTheme();
   const rtl = isRTL();
   const c = t.color;
+  // "Create account" is the same deep teal with white text in both themes (the bright dark-theme teal was too loud).
+  // White on this teal is 4.9:1. The "Sign in" card keeps the theme's surface with a soft deep-teal border.
+  const fill = primary ? lightTheme.color.primary : c.surface;
+  const ink = primary ? lightTheme.color.onPrimary : c.text;
+  const inkMuted = primary ? lightTheme.color.onPrimary : c.textMuted;
   return (
     <Enter delay={delay}>
       <Pressable
@@ -34,8 +39,8 @@ function Option({ title, sub, primary, onPress, delay }: { title: string; sub: s
         onPress={onPress}
         style={({ pressed }) => ({
           flexDirection: 'row', alignItems: 'center', gap: 16, padding: 20, borderRadius: 24,
-          backgroundColor: primary ? c.primary : c.surface,
-          borderWidth: primary ? 0 : 3, borderColor: c.primary,
+          backgroundColor: fill,
+          borderWidth: primary ? 0 : 3, borderColor: t.brand.tealDeep,
           transform: [{ scale: pressed ? 0.96 : 1 }],
         })}>
         <View style={{ width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center',
@@ -43,10 +48,10 @@ function Option({ title, sub, primary, onPress, delay }: { title: string; sub: s
           <Illustration name={primary ? 'pawspalIcon' : 'heart'} width={30} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontFamily: fontFamily('bold', rtl), fontSize: 18, color: primary ? c.onPrimary : c.text }}>{title}</Text>
-          <Text style={{ fontFamily: fontFamily('regular', rtl), fontSize: 14, color: primary ? c.onPrimary : c.textMuted }}>{sub}</Text>
+          <Text style={{ fontFamily: fontFamily('bold', rtl), fontSize: 18, color: ink }}>{title}</Text>
+          <Text style={{ fontFamily: fontFamily('regular', rtl), fontSize: 14, color: inkMuted }}>{sub}</Text>
         </View>
-        <Text style={{ fontSize: 28, color: primary ? c.onPrimary : c.primary }}>{rtl ? '‹' : '›'}</Text>
+        <Text style={{ fontSize: 28, color: primary ? lightTheme.color.onPrimary : c.link }}>{rtl ? '‹' : '›'}</Text>
       </Pressable>
     </Enter>
   );
@@ -66,8 +71,8 @@ export default function Welcome() {
       <Blob x={width * 0.62} y={height * 0.42} size={110} color={t.name === 'navy' ? c.surface! : t.tint.sand} delay={300} />
 
       {/* On a short screen (a phone in a browser, with its bars) the page scrolls instead of squeezing the logo under the buttons. */}
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-      <View style={{ flex: 1, minHeight: 340, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, paddingTop: 24, gap: 6 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: 24 }} showsVerticalScrollIndicator={false}>
+      <View style={{ alignItems: 'center', paddingHorizontal: 24, gap: 6 }}>
         <AnimatedLogo size={170} />
         <Enter delay={500} rise={0}>
           <Text accessibilityRole="header" style={{ fontFamily: fontFamily('extrabold', false), fontSize: 36, color: c.text, marginTop: 12 }}>PawsPal</Text>
@@ -82,7 +87,7 @@ export default function Welcome() {
         </Enter>
       </View>
 
-      <View style={{ paddingHorizontal: 24, paddingBottom: 32, gap: 14 }}>
+      <View style={{ width: '100%', maxWidth: 420 + 48, alignSelf: 'center', paddingHorizontal: 24, marginTop: 28, gap: 14 }}>
         <Option primary title={tr('welcome.create')} sub={tr('welcome.createSub')} delay={1300} onPress={() => router.push('/signup/account')} />
         <Option title={tr('welcome.signin')} sub={tr('welcome.signinSub')} delay={1450} onPress={() => router.push('/signin')} />
         <InstallPrompt delay={1600} />

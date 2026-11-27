@@ -41,7 +41,11 @@
       input:focus-visible, textarea:focus-visible { outline-offset: 0 !important; }
     </style>
     <style id="pp-splash-style">
-      html { background-color: #1F2D3D; }
+      /* The page behind the app follows the system colour scheme until the app sets the chosen theme, so there is never a dark
+         strip under a light page (for example under an iPhone's home bar). The start-up screen itself stays navy. */
+      html { background-color: #FFF7EC; }
+      @media (prefers-color-scheme: dark) { html { background-color: #1F2D3D; } }
+      @supports (height: 100dvh) { html, body, #root { height: 100dvh; } }
       #pp-splash { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 2147483647; display: flex; align-items: center; justify-content: center; background-color: #1F2D3D; transition: opacity .3s ease-out; }
       #pp-splash[data-hidden="true"] { opacity: 0; pointer-events: none; }
       #pp-splash img { width: 120px; height: 120px; border-radius: 28px; animation: pp-breathe 3s ease-in-out infinite; }

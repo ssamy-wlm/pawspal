@@ -53,6 +53,15 @@ export function ThemeProvider({ children, initialMode = 'system' }: { children: 
     if (mode === 'light') return lightTheme;
     return system === 'dark' ? navyTheme : lightTheme;
   }, [mode, system]);
+  // Web: the page behind the app (and the strip under a phone's home bar) and the browser bar take the theme's background,
+  // so a light page never ends in a dark strip. A no-op on phones.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const bg = theme.color.background;
+    document.documentElement.style.backgroundColor = bg;
+    if (document.body) document.body.style.backgroundColor = bg;
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', bg));
+  }, [theme]);
   const value = useMemo(() => ({ theme, mode, setMode }), [theme, mode, setMode]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
