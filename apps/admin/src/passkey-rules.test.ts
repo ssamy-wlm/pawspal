@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import {
   browserErrorKind, canRemovePasskey, cleanCode, cleanName, codesLeftText, describeError, ERROR_TEXT, functionErrorKind, gateFor, needsNewPasskey,
-  passkeyHint, PASSKEY_NAME_MAX, recoveryCodesText, signOutEverywhere, validateCode, validatePasskeyName, withStepUp,
+  passkeyHint, PASSKEY_NAME_MAX, recoveryCodesText, sessionCodeFromToken, signOutEverywhere, validateCode, validatePasskeyName, withStepUp,
 } from './passkey-rules.ts';
 
 test('the database answer decides the screen, and anything unknown never reaches the site', () => {
@@ -154,4 +154,14 @@ test('the sensitive actions all go through the step-up wrapper, and setup-code r
   assert.match(api, /setupCode \? call\(\) : guarded\(call\)/);
   const ui = readFileSync(new URL('./passkey-ui.tsx', import.meta.url), 'utf8');
   assert.match(ui, /Touch your passkey to continue/);
+});
+
+test('the session code is the first 8 characters of the session id, upper case, or nothing', () => {
+  const token = (claims: unknown) => `e30.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.sig`;
+  assert.equal(sessionCodeFromToken(token({ session_id: '6f1c2a40-1111-4222-8333-444455556666' })), '6F1C2A40');
+  assert.equal(sessionCodeFromToken(token({ session_id: 'ab' })), null);
+  assert.equal(sessionCodeFromToken(token({ session_id: 42 })), null);
+  assert.equal(sessionCodeFromToken(token({ sub: 'x' })), null);
+  assert.equal(sessionCodeFromToken(token(null)), null);
+  for (const bad of ['garbage', '', 'a.b.c', 'a.!!!.c', 'a..c', null, undefined, 7, {}, 'a.' + 'A'.repeat(5) + '.c']) assert.equal(sessionCodeFromToken(bad), null, String(bad));
 });

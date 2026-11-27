@@ -25,10 +25,11 @@ const SETUP_CODE = 'SETUP-TEST-1234';
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 
 // ---------------------------------------------------------------- the stand-in for Supabase
-const db = { freshUntil: 0, stepUps: 0, passkeys: [], codes: [], challenge: null, verified: false, via: null, userId: '00000000-0000-4000-8000-000000000001' };
+const db = { freshUntil: 0, stepUps: 0, sessionId: 'a1b2c3d4-0000-4000-8000-000000000000', passkeys: [], codes: [], challenge: null, verified: false, via: null, userId: '00000000-0000-4000-8000-000000000001' };
 const status = () => (db.passkeys.length === 0 ? 'needs_setup' : db.verified ? 'admin' : 'needs_passkey');
 const freshCodes = () => { db.codes = Array.from({ length: 10 }, () => randomBytes(5).toString('hex').match(/.{5}/g).join('-')); return db.codes.slice(); };
-const token = () => `${b64u({ alg: 'HS256', typ: 'JWT' })}.${b64u({ sub: db.userId, role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 })}.stub`;
+const sessionId = () => db.sessionId;
+const token = () => `${b64u({ alg: 'HS256', typ: 'JWT' })}.${b64u({ sub: db.userId, session_id: sessionId(), role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 })}.stub`;
 
 const fresh = () => db.freshUntil > Date.now();
 
@@ -115,6 +116,7 @@ const stub = createServer(async (req, res) => {
   try {
     if (url.pathname === '/auth/v1/token') {
       db.verified = false; db.via = null;                                  // every password sign-in is a new session
+      db.sessionId = `${randomBytes(4).toString('hex')}-0000-4000-8000-000000000000`;
       const user = { id: db.userId, aud: 'authenticated', role: 'authenticated', email: EMAIL, app_metadata: {}, user_metadata: {}, created_at: new Date().toISOString() };
       return send(200, { access_token: token(), refresh_token: 'r', token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user });
     }
@@ -183,6 +185,8 @@ async function main() {
   await page.goto(ORIGIN);
   await signIn();
   await heading('Set up your passkey').waitFor();
+  await page.getByText(`Session code: ${db.sessionId.slice(0, 8).toUpperCase()}`).waitFor();
+  step('the setup screen shows "Session code" matching the session id in the token');
   step('sign in with the password leads to "Set up your passkey" (admin_status = needs_setup)');
 
   // 2. a wrong setup code is refused with one calm sentence
@@ -267,6 +271,8 @@ async function main() {
   step('Sign out ends the passkey session on the function and returns to the sign-in');
   await signIn();
   await heading('Use your passkey').waitFor();
+  await page.getByText(`Session code: ${db.sessionId.slice(0, 8).toUpperCase()}`).waitFor();
+  step('the passkey screen shows "Session code" too');
   step('sign in with the password leads to "Use your passkey" (admin_status = needs_passkey)');
   // A second device with a setup code, from the passkey screen ("I have a setup code").
   await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });

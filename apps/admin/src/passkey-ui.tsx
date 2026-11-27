@@ -3,7 +3,8 @@ import React from 'react';
 import Link from 'next/link';
 import { useAuth } from './auth';
 import { setStepUpPrompter } from './passkey-api';
-import { describeError, DEFAULT_PASSKEY_NAME, recoveryCodesText, validateCode, validatePasskeyName } from './passkey-rules';
+import { describeError, DEFAULT_PASSKEY_NAME, sessionCodeFromToken, recoveryCodesText, validateCode, validatePasskeyName } from './passkey-rules';
+import { supabase } from './supabase';
 import { Btn, C, Card, Err, Field, inputStyle, Muted } from './ui';
 import tokens from './tokens.json';
 
@@ -20,6 +21,17 @@ function useAction() {
     fn().then((m) => { setError(m); setBusy(false); }, () => { setError('Something went wrong. Try again in a moment.'); setBusy(false); });
   };
   return { busy, error, setError, run };
+}
+
+/** "Session code: XXXXXXXX", to match against the emergency SQL (SETUP.md E10). Hidden when the token has no session id. */
+function SessionCode() {
+  const [code, setCode] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    supabase().auth.getSession().then(({ data }) => { if (live) setCode(sessionCodeFromToken(data.session?.access_token)); }, () => {});
+    return () => { live = false; };
+  }, []);
+  return code ? <p style={{ margin: 0, color: C.textMuted, fontSize: tokens.font.size.caption }}>Session code: <span style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}>{code}</span></p> : null;
 }
 
 /** Shown after a sign-in with email and password when the account already has a passkey. */
@@ -48,6 +60,7 @@ export function PasskeyScreen() {
         <Btn kind="secondary" disabled={a.busy} onClick={() => { setSetup(true); a.setError(null); }}>I have a setup code</Btn>
         <Btn kind="secondary" disabled={a.busy} onClick={() => { signOut().catch(() => {}); }}>Sign out</Btn>
       </div>
+      <SessionCode />
     </Card>
   );
 }
@@ -78,6 +91,7 @@ export function SetupScreen({ onBack }: { onBack?: () => void } = {}) {
         {onBack ? <Btn kind="secondary" disabled={a.busy} onClick={onBack}>Back</Btn> : null}
         <Btn kind="secondary" disabled={a.busy} onClick={() => { signOut().catch(() => {}); }}>Sign out</Btn>
       </div>
+      <SessionCode />
     </Card>
   );
 }

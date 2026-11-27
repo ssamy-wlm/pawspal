@@ -129,6 +129,23 @@ export function codesLeftText(n: number): string {
   return n === 1 ? 'You have 1 recovery code left.' : `You have ${n} recovery codes left.`;
 }
 
+// ---- Session code ----
+
+/** The `session_id` claim of an access token: base64url decoded with care, never trusted for anything but display. */
+export function sessionCodeFromToken(token: unknown): string | null {
+  if (typeof token !== 'string') return null;
+  const part = token.split('.')[1];
+  if (!part || !/^[A-Za-z0-9_-]+$/.test(part)) return null;
+  try {
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=');
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const claims = JSON.parse(new TextDecoder().decode(bytes)) as { session_id?: unknown };
+    const id = claims && typeof claims === 'object' ? claims.session_id : undefined;
+    if (typeof id !== 'string' || !/^[0-9a-fA-F-]{8,}$/.test(id)) return null;
+    return id.slice(0, 8).toUpperCase();
+  } catch { return null; }
+}
+
 // ---- Step-up: a fresh passkey touch for sensitive actions ----
 
 const isStepUp = (e: unknown) => (e as { kind?: unknown } | null)?.kind === 'step_up_required';

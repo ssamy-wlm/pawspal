@@ -250,7 +250,7 @@ async function route(action: string, body: Record<string, unknown>, user: { id: 
       const added = (await call('pk_add_credential', {
         p_user: user.id, p_credential_id: info.credential.id, p_public_key: b64urlEncode(info.credential.publicKey),
         p_counter: info.credential.counter, p_transports: info.credential.transports ?? null,
-        p_device_type: info.credentialDeviceType, p_backed_up: info.credentialBackedUp, p_name: label, p_setup_code: setupCode, p_session: user.sessionId,
+        p_device_type: info.credentialDeviceType, p_backed_up: info.credentialBackedUp, p_name: label, p_setup_code: setupCode || null, p_session: user.sessionId,
       })) as { status: string; id?: string } | null;
       switch (added?.status) {
         case 'ok': break;

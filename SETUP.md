@@ -218,7 +218,11 @@ The dashboard is the website in `apps/admin` (Vercel). Admin power needs **three
 **If something locks you out** (for example after too many wrong tries, or the passkey function is down):
 1. **Wait one hour.** Failed tries are counted per hour, and the lock lifts by itself.
 2. **Or get a new setup code.** In the Supabase SQL Editor run `select private.new_admin_setup_code('you@example.com');` (your admin email). It also clears a lockout. Use it on **Use your passkey** with **I have a setup code**.
-3. **If the passkey function cannot be reached** (for example a secret is wrong or the function is not deployed): sign in with email and password on the admin site, then in the SQL Editor run `select private.open_admin_session('you@example.com', 30);` and reload the admin page. That gives a 30 minute emergency session. Use it to fix the function or its secrets (Supabase → **Edge Functions**) or to add a new passkey on **Security**, then press **Sign out**.
+3. **If the passkey function cannot be reached** (for example a secret is wrong or the function is not deployed), open an emergency session:
+   1. On the admin site sign in with email and password. The next screen shows a small line **Session code: XXXXXXXX**. Write the 8 characters down (it also shows on the recovery code and setup code screens).
+   2. In the Supabase SQL Editor run `select * from private.list_admin_sessions('you@example.com');`. Find the row whose `short_id` matches your Session code, and whose IP address and browser (user agent) look like yours. If no row matches, stop: it is not your session.
+   3. Run `select private.open_admin_session('you@example.com', 'XXXXXXXX', 30);` with your Session code in place of `XXXXXXXX`. This gives that one session 30 minutes.
+   4. **Reload the admin page.** Use the 30 minutes to fix the function or its secrets (Supabase → **Edge Functions**) or to add a new passkey on **Security**, then press **Sign out**.
 
 **Lost both devices?**
 1. On the sign-in screen choose **Use a recovery code**, type one of your 10 codes and press **Use this code**. Each code works once, and the session it opens lasts 30 minutes. The site then asks you to **add a new passkey now** (open **Security**), and you can **Make new codes** there.
