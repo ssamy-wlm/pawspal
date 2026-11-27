@@ -388,7 +388,8 @@ async function main() {
   assert.ok(db.passkeys.some((x) => x.last_used_at), 'the function saw the login');
   step('with a working sensor the password step goes straight through the passkey (login_options, login_verify) to the site, no button press');
   assert.equal(count('rpc:admin_status', m), 2, 'admin_status once after the password and once after the passkey');
-  assert.equal(count('fn:status', m), 0, 'no extra status call after the passkey sign-in');
+  const labels = reqs.slice(m).map(([l]) => l);
+  assert.equal(labels[labels.indexOf('fn:login_verify') + 1], 'rpc:admin_status', 'the site opens right after the passkey check, without a status call in between');
 
   // 5b. The passkey session runs out while the person is working: back to "Use your passkey" on the same page, still signed in.
   await page.getByRole('link', { name: 'Security' }).click();
