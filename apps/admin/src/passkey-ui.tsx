@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useAuth } from './auth';
 import { setStepUpPrompter } from './passkey-api';
 import { describeError, DEFAULT_PASSKEY_NAME, sessionCodeFromToken, recoveryCodesText, validateCode, validatePasskeyName } from './passkey-rules';
+import { SESSION_RAN_OUT } from './session-watch';
 import { supabase } from './supabase';
 import { Btn, C, Card, Err, Field, inputStyle, Muted } from './ui';
 import tokens from './tokens.json';
@@ -36,7 +37,7 @@ function SessionCode() {
 
 /** Shown after a sign-in with email and password when the account already has a passkey. */
 export function PasskeyScreen() {
-  const { signInWithPasskey, signInWithRecoveryCode, signOut, claimAutoPasskey } = useAuth();
+  const { state, signInWithPasskey, signInWithRecoveryCode, signOut, claimAutoPasskey } = useAuth();
   const a = useAction();
   // Right after the password step the prompt starts by itself, once per sign-in: the guard lives in the auth provider, so
   // a second effect run, a re-render or coming back from the recovery or setup code never starts it again, and a closed or
@@ -52,7 +53,7 @@ export function PasskeyScreen() {
   return (
     <Card>
       <h2 style={{ margin: 0, fontSize: tokens.font.size.title, color: C.text }}>Use your passkey</h2>
-      <p style={p}>Confirm it is you with Face ID, your fingerprint, Windows Hello or your device PIN.</p>
+      <p style={p}>{state.kind === 'passkey' && state.ranOut ? SESSION_RAN_OUT : 'Confirm it is you with Face ID, your fingerprint, Windows Hello or your device PIN.'}</p>
       <Btn big full kind="accent" disabled={a.busy} onClick={() => a.run(signInWithPasskey)}>{a.busy && !recovery ? 'Waiting for your passkey' : 'Use your passkey'}</Btn>
       {recovery ? (
         <form onSubmit={(e) => { e.preventDefault(); const bad = validateCode(code, 'recovery'); if (bad) { a.setError(bad); return; } a.run(() => signInWithRecoveryCode(code)); }} style={col}>

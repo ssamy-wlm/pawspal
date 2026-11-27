@@ -56,10 +56,7 @@ function SignIn({ notice }: { notice?: string }) {
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <Field label="Email"><input ref={emailRef} style={inputStyle} type="email" name="email" autoComplete="username" inputMode="email" autoCapitalize="none" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
         {remembered ? (
-          <button type="button" onClick={() => { forgetEmail(); setRemembered(''); setEmail(''); setPassword(''); emailRef.current?.focus(); }}
-            style={{ alignSelf: 'flex-start', minHeight: 44, padding: '0 4px', background: 'none', border: 0, color: C.navy, textDecoration: 'underline', fontSize: tokens.font.size.small, fontFamily: 'inherit', cursor: 'pointer' }}>
-            Not you? Use another email
-          </button>
+          <div><Btn kind="secondary" onClick={() => { forgetEmail(); setRemembered(''); setEmail(''); setPassword(''); emailRef.current?.focus(); }}>Not you? Use another email</Btn></div>
         ) : null}
         <Field label="Password"><input ref={passwordRef} style={inputStyle} type="password" name="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
         <Turnstile onToken={setToken} resetKey={attempt} />

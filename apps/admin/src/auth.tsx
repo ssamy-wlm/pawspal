@@ -3,6 +3,7 @@ import React from 'react';
 import { createPasskey, endPasskeySession, getStatus, loginWithPasskey, makeRecoveryCodes, recoveryLogin } from './passkey-api';
 import { CHECK_FAILED, cleanCode, cleanName, createOncePerSignIn, describeAutoError, describeError, gateFor, signOutEverywhere, type PasskeyStatus } from './passkey-rules';
 import { IDLE_LIMIT_MS, isIdle } from './rules';
+import { afterRecheck, createGate, onNotAllowed, RECHECK_MIN_GAP_MS, RECHECK_MS } from './session-watch';
 import { configured, supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
 
@@ -10,7 +11,7 @@ export type AuthState =
   | { kind: 'loading' }
   | { kind: 'not_configured' }
   | { kind: 'signed_out'; notice?: string }
-  | { kind: 'passkey' }
+  | { kind: 'passkey'; ranOut?: boolean }
   | { kind: 'setup' }
   | { kind: 'codes'; codes: string[]; email: string }
   | { kind: 'denied' }
@@ -85,8 +86,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => data.subscription.unsubscribe();
   }, [resolve]);
 
-  // Sign out after 30 minutes without a click or key press.
+  // Sign out after 6 hours without a click or key press.
   const ready = state.kind === 'ready';
+
+  // While signed in and verified, ask admin_status again every 5 minutes and when a request was refused. If the passkey
+  // session ran out (it lasts 8 hours at most), show the passkey screen. The person stays signed in and on the same page.
+  React.useEffect(() => {
+    if (!ready) return;
+    const gate = createGate(RECHECK_MIN_GAP_MS);
+    const recheck = () => gate(async () => {
+      const r = await supabase().rpc('admin_status').then((x) => x, () => null);
+      if (!r || r.error) return;                                    // a failed check changes nothing
+      const next = afterRecheck(r.data);
+      if (next === 'passkey') { auto.current.claim(); setState({ kind: 'passkey', ranOut: true }); }      // no surprise prompt in the middle of work
+      else if (next === 'setup') setState({ kind: 'setup' });
+      else if (next === 'sign_out') await endSession().catch(() => {});
+    }).catch(() => {});
+    const timer = window.setInterval(() => { recheck(); }, RECHECK_MS);
+    onNotAllowed(() => { recheck(); });
+    return () => { window.clearInterval(timer); onNotAllowed(null); };
+  }, [ready]);
+
   React.useEffect(() => {
     if (!ready) return;
     let last = Date.now();

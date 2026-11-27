@@ -36,6 +36,7 @@ test('only a suspension carries a length, and an approval sends no rule', () => 
 });
 
 test('idle sign-out and ids', () => {
+  assert.equal(IDLE_LIMIT_MS, 6 * 60 * 60 * 1000);
   assert.equal(isIdle(0, IDLE_LIMIT_MS - 1), false);
   assert.equal(isIdle(0, IDLE_LIMIT_MS), true);
   assert.equal(looksLikeId('6f1c2a40-1111-4222-8333-444455556666'), true);

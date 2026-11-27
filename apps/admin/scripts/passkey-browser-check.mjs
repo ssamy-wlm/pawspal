@@ -4,7 +4,11 @@
 // It starts a tiny stand-in for Supabase (sign-in, admin_status and the admin-passkey function, checked with the real
 // @simplewebauthn/server), builds the admin site against it into .next-passkey-check, serves it, and drives Chromium with a
 // virtual authenticator through: setup code -> passkey -> recovery codes -> Security page -> sign out -> sign in with the
-// passkey -> sign in with a recovery code. It also checks that no content-policy error appears.
+// passkey -> sign in with a recovery code. It also checks that no content-policy error appears, and the faster sign-in:
+// the email is remembered on this device (second visit), the passkey prompt starts by itself after the password step (a
+// cancelled one falls back to the button without looping, and the recovery-code and setup-code paths do not start it), and
+// an expired passkey session (the stub can expire it) brings back "Use your passkey" on the same page without signing out.
+// MEASURE=1 only counts the network round trips of the sign-in (with an 80 ms stand-in delay) and stops.
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
@@ -22,6 +26,8 @@ const SUPABASE = `http://localhost:${STUB}`;
 const RP_ID = 'localhost';
 const EMAIL = 'admin@example.test';
 const SETUP_CODE = 'SETUP-TEST-1234';
+const MEASURE = process.env.MEASURE === '1';
+const DELAY = MEASURE ? 80 : 0;
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 
 // ---------------------------------------------------------------- the stand-in for Supabase
@@ -31,6 +37,7 @@ const freshCodes = () => { db.codes = Array.from({ length: 10 }, () => randomByt
 const sessionId = () => db.sessionId;
 const token = () => `${b64u({ alg: 'HS256', typ: 'JWT' })}.${b64u({ sub: db.userId, session_id: sessionId(), role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 })}.stub`;
 
+const reqs = [];      // what the browser asked the stand-in, in order: [label, time]
 const fresh = () => db.freshUntil > Date.now();
 
 async function fn(body) {
@@ -113,7 +120,11 @@ const stub = createServer(async (req, res) => {
   let raw = ''; for await (const c of req) raw += c;
   const url = new URL(req.url, SUPABASE);
   const send = (code, json) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(json)); };
+  const label = url.pathname.startsWith('/functions/v1/') ? `fn:${JSON.parse(raw || '{}').action}` : url.pathname.replace('/rest/v1/rpc/', 'rpc:').replace('/auth/v1/', 'auth:');
+  reqs.push([label, Date.now()]);
+  if (DELAY) await new Promise((r) => setTimeout(r, DELAY));
   try {
+    if (url.pathname.startsWith('/rest/v1/') && url.pathname !== '/rest/v1/rpc/admin_status' && !db.verified && db.passkeys.length) return send(403, { code: '42501', message: 'permission denied' });   // the passkey session ran out
     if (url.pathname === '/auth/v1/token') {
       db.verified = false; db.via = null;                                  // every password sign-in is a new session
       db.sessionId = `${randomBytes(4).toString('hex')}-0000-4000-8000-000000000000`;
@@ -172,6 +183,7 @@ async function main() {
   page.on('console', (m) => { if (/Content Security Policy|Refused to/i.test(m.text())) problems.push(m.text()); });
   page.on('pageerror', (e) => problems.push(String(e)));
 
+  if (!MEASURE) await page.clock.install();       // timers run normally; the check can jump 5 minutes ahead later
   const cdp = await context.newCDPSession(page);
   await cdp.send('WebAuthn.enable');
   let { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
@@ -179,12 +191,24 @@ async function main() {
   });
   const heading = (name) => page.getByRole('heading', { name });
   const button = (name) => page.getByRole('button', { name, exact: true });
-  const signIn = async () => { await page.getByLabel('Email').fill(EMAIL); await page.getByLabel('Password').fill('a-long-test-password'); await button('Sign in').click(); };
+  const signIn = async () => { if (!(await page.getByLabel('Email').inputValue())) await page.getByLabel('Email').fill(EMAIL); await page.getByLabel('Password').fill('a-long-test-password'); await button('Sign in').click(); };
+  const count = (label, from = 0) => reqs.slice(from).filter(([l]) => l === label).length;
+  const AUTO_HINT = 'Press "Use your passkey" when you are ready.';
+  const verifiedTouch = (v) => cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // 1. password, then the setup screen
   await page.goto(ORIGIN);
-  await signIn();
+  assert.equal(await page.getByLabel('Email').inputValue(), '', 'first visit: no email remembered');
+  const emailInput = page.getByLabel('Email'), passwordInput = page.getByLabel('Password');
+  if (!MEASURE) assert.deepEqual(await emailInput.evaluate((e) => [e.type, e.name, e.autocomplete, e.inputMode, !!e.closest('form')]), ['email', 'email', 'username', 'email', true]);
+  if (!MEASURE) assert.deepEqual(await passwordInput.evaluate((e) => [e.type, e.name, e.autocomplete, !!e.closest('form')]), ['password', 'password', 'current-password', true]);
+  step('the email and password fields carry the password-manager attributes inside one form');
+  await emailInput.fill(EMAIL); await passwordInput.fill('a-long-test-password'); await passwordInput.press('Enter');
+  step('Enter in the password field submits the form');
   await heading('Set up your passkey').waitFor();
+  assert.equal(count('fn:login_options'), 0, 'the setup screen never starts a prompt by itself');
+  step('the setup screen does not start a passkey prompt by itself');
   await page.getByText(`Session code: ${db.sessionId.slice(0, 8).toUpperCase()}`).waitFor();
   step('the setup screen shows "Session code" matching the session id in the token');
   step('sign in with the password leads to "Set up your passkey" (admin_status = needs_setup)');
@@ -212,6 +236,27 @@ async function main() {
   await button('Continue').click();
   await heading('Overview').waitFor();
   step('after the checkbox, Continue opens the site (admin_status = admin)');
+  if (MEASURE) {
+    // Round trips of the sign-in path with an 80 ms stand-in delay: password step, passkey step, and a reload of an open site.
+    await button('Sign out').click(); await heading('Admin').waitFor();
+    const lines = []; const report = (name, from, t0) => lines.push(`${name}: ${reqs.length - from} requests, ${Date.now() - t0} ms  [${reqs.slice(from).map(([l]) => l).join(', ')}]`);
+    let from = reqs.length, t0 = Date.now();
+    await signIn();
+    const first = await Promise.race([heading('Use your passkey').waitFor().then(() => 'screen'), page.getByRole('navigation', { name: 'Main' }).waitFor().then(() => 'site')]);
+    if (first === 'screen') {
+      report('password -> passkey screen', from, t0); from = reqs.length; t0 = Date.now();
+      await button('Use your passkey').click();
+      await page.getByRole('navigation', { name: 'Main' }).waitFor();
+      report('button press -> site', from, t0);
+    } else report('password -> site (passkey started by itself)', from, t0);
+    await wait(300);
+    from = reqs.length; t0 = Date.now();
+    await page.reload(); await page.getByRole('navigation', { name: 'Main' }).waitFor();
+    report('reload of the open site -> site', from, t0);
+    console.log('MEASURED\n' + lines.join('\n'));
+    await browser.close();
+    return;
+  }
 
   // 4. the Security page
   await page.getByRole('link', { name: 'Security' }).click();
@@ -264,16 +309,44 @@ async function main() {
   await page.getByText('You have 10 recovery codes left.').waitFor();
   step('"Make new codes" asks first, shows 10 new codes, and the old ones are replaced');
 
-  // 5. sign out, sign in with the passkey (and a refused prompt first)
+  // 5. sign out, then the email is already there on the second visit
   await button('Sign out').click();
   await heading('Admin').waitFor();
   assert.equal(db.verified, false, 'sign_out reached the function');
   step('Sign out ends the passkey session on the function and returns to the sign-in');
+  assert.equal(await page.getByLabel('Email').inputValue(), EMAIL);
+  assert.equal(await page.evaluate(() => localStorage.getItem('pawspal-admin.email')), EMAIL);
+  const stored = await page.evaluate(() => Object.entries(localStorage).filter(([k]) => k.startsWith('pawspal-admin')));
+  assert.deepEqual(stored, [['pawspal-admin.email', EMAIL]], 'only the address is kept by this site');
+  assert.ok(!(await page.evaluate(() => JSON.stringify(localStorage))).includes('a-long-test-password'), 'the password is never stored');
+  assert.equal(await page.getByLabel('Password').evaluate((e) => e === document.activeElement), true, 'the cursor is in the password field');
+  step('second visit: the email is prefilled (only the address is stored, never the password) and the cursor is on the password');
+
+  // The prompt starts by itself, but here the touch is refused, so it falls back to the button.
+  await verifiedTouch(false);
+  let m = reqs.length;
   await signIn();
   await heading('Use your passkey').waitFor();
   await page.getByText(`Session code: ${db.sessionId.slice(0, 8).toUpperCase()}`).waitFor();
-  step('the passkey screen shows "Session code" too');
-  step('sign in with the password leads to "Use your passkey" (admin_status = needs_passkey)');
+  step('sign in with the password leads to "Use your passkey" (admin_status = needs_passkey) and shows "Session code"');
+  await page.getByRole('alert').filter({ hasText: AUTO_HINT }).waitFor();
+  assert.equal(count('fn:login_options', m), 1, 'the prompt started by itself, once');
+  assert.equal(count('fn:login_verify', m), 0);
+  assert.ok(await button('Use your passkey').isEnabled(), 'the button is the fallback');
+  assert.equal(await page.getByRole('alert').filter({ hasText: 'went wrong' }).count(), 0);
+  await wait(1500);
+  assert.equal(count('fn:login_options', m), 1, 'a cancelled automatic prompt is not repeated (no loop)');
+  step('the passkey prompt starts by itself after the password step; a cancelled one gives a calm hint, the button stays, and it does not loop');
+
+  // Coming back from the setup-code view does not start it again.
+  await button('I have a setup code').click();
+  await heading('Set up your passkey').waitFor();
+  await button('Back').click();
+  await heading('Use your passkey').waitFor();
+  await wait(500);
+  assert.equal(count('fn:login_options', m), 1, 'back from the setup code does not start the prompt');
+  step('coming back from "I have a setup code" does not start the prompt again');
+
   // A second device with a setup code, from the passkey screen ("I have a setup code").
   await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
   ({ authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } }));
@@ -290,28 +363,75 @@ async function main() {
   assert.equal(db.passkeys.length, 2);
   step('"I have a setup code" on the passkey screen adds a second passkey on an account that already has one');
   await button('Sign out').click();
+  await verifiedTouch(false);
   await signIn();
   await heading('Use your passkey').waitFor();
-  await cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: false });
+  await page.getByRole('alert').filter({ hasText: AUTO_HINT }).waitFor();
+  step('a refused prompt (virtual authenticator says no) leaves the button, with the calm hint');
+  await verifiedTouch(true);
   await button('Use your passkey').click();
-  await page.getByRole('alert').filter({ hasText: 'passkey prompt was closed' }).waitFor();
-  step('a refused or cancelled prompt gives a calm message and unlocks the button again');
-  await cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: true });
-  await button('Use your passkey').click();
-  await page.getByRole('navigation', { name: 'Main' }).waitFor();       // the site opens on the page the person was on (Security)
+  await page.getByRole('navigation', { name: 'Main' }).waitFor();       // the site opens on the page the person was on
   assert.equal(db.verified, true);
-  assert.ok(db.passkeys.some((x) => x.last_used_at), 'the function saw the login');
-  step('the passkey login (login_options, startAuthentication, login_verify) opens the site');
+  step('pressing the button still works: login_options, startAuthentication, login_verify open the site');
 
-  // 6. a recovery code, then the banner
+  // The happy path: the person only touches the sensor.
   await button('Sign out').click();
   await heading('Admin').waitFor();
+  m = reqs.length;
+  await signIn();
+  await page.getByRole('navigation', { name: 'Main' }).waitFor();
+  assert.equal(count('fn:login_options', m), 1);
+  assert.equal(count('fn:login_verify', m), 1);
+  assert.ok(db.passkeys.some((x) => x.last_used_at), 'the function saw the login');
+  step('with a working sensor the password step goes straight through the passkey (login_options, login_verify) to the site, no button press');
+  assert.equal(count('rpc:admin_status', m), 2, 'admin_status once after the password and once after the passkey');
+  assert.equal(count('fn:status', m), 0, 'no extra status call after the passkey sign-in');
+
+  // 5b. The passkey session runs out while the person is working: back to "Use your passkey" on the same page, still signed in.
+  await page.getByRole('link', { name: 'Security' }).click();
+  await heading('Security').waitFor();
+  db.verified = false;                                            // the stand-in lets the 8 hours run out
+  m = reqs.length;
+  await page.getByRole('link', { name: 'Overview' }).click();      // this page's requests are refused
+  await heading('Use your passkey').waitFor();
+  await page.getByText('Your passkey check ran out. Touch your passkey to carry on where you were.').waitFor();
+  assert.equal(count('auth:logout', m), 0, 'the person was not signed out');
+  assert.equal(await page.evaluate(() => location.pathname), '/', 'the address is the page the person was on');
+  await wait(800);
+  assert.equal(count('fn:login_options', m), 0, 'no prompt starts by itself in the middle of work');
+  assert.equal(await page.getByText(/permission denied|42501|JWT|Error/).count(), 0, 'no raw error');
+  await button('Use your passkey').click();
+  await heading('Overview').waitFor();
+  assert.equal(await page.evaluate(() => location.pathname), '/');
+  step('a refused request after the passkey session ran out shows "Use your passkey" on the same page without signing out; the touch brings the page back');
+  // The same when nothing was clicked: the 5 minute re-check finds it.
+  m = reqs.length;
+  db.verified = false;
+  await page.clock.fastForward('05:05');
+  await heading('Use your passkey').waitFor();
+  assert.ok(count('rpc:admin_status', m) >= 1, 'the timer asked admin_status');
+  assert.equal(count('auth:logout', m), 0);
+  assert.equal(count('fn:login_options', m), 0);
+  await button('Use your passkey').click();
+  await heading('Overview').waitFor();
+  step('the 5 minute re-check finds an expired passkey session by itself and shows "Use your passkey" (no sign-out, no automatic prompt)');
+
+  // 6. a recovery code, then the banner (the automatic prompt is refused so the recovery path can be reached)
+  await button('Sign out').click();
+  await heading('Admin').waitFor();
+  await verifiedTouch(false);
+  m = reqs.length;
   await signIn();
   await heading('Use your passkey').waitFor();
+  await page.getByRole('alert').filter({ hasText: AUTO_HINT }).waitFor();
   await button('Use a recovery code').click();
+  await verifiedTouch(true);                                       // even with a working sensor, the recovery path never starts a prompt
   await page.getByLabel('Recovery code').fill('not-a-real-code');
   await button('Use this code').click();
   await page.getByRole('alert').filter({ hasText: 'That did not work' }).waitFor();
+  await wait(500);
+  assert.equal(count('fn:login_options', m), 1, 'the recovery-code path does not start the passkey prompt');
+  step('the recovery-code path does not start the passkey prompt');
   await page.getByLabel('Recovery code').fill(` ${newCodes[0].slice(0, 5)} ${newCodes[0].slice(5)} `);
   assert.equal(await page.getByLabel('Recovery code').inputValue().then((v) => v.replace(/\s/g, '')), newCodes[0]);
   await button('Use this code').click();
@@ -324,6 +444,18 @@ async function main() {
   assert.equal(db.codes.length, 9, 'the code was used up');
   step('the Security page carries the same notice, and the used code is gone (9 left)');
 
+  // "Not you? Use another email" forgets the address.
+  await button('Sign out').click();
+  await heading('Admin').waitFor();
+  assert.equal(await page.getByLabel('Email').inputValue(), EMAIL);
+  await button('Not you? Use another email').click();
+  assert.equal(await page.getByLabel('Email').inputValue(), '');
+  assert.equal(await page.evaluate(() => localStorage.getItem('pawspal-admin.email')), null);
+  await page.reload();
+  await heading('Admin').waitFor();
+  assert.equal(await page.getByLabel('Email').inputValue(), '');
+  step('"Not you? Use another email" clears the field and forgets the address, also after a reload');
+
   // 7. passkeys do not need extra permissions in the policy
   assert.deepEqual(problems, [], 'no content-policy or script errors');
   step('no content-policy or script errors in the browser console');
@@ -332,6 +464,6 @@ async function main() {
 }
 
 main().then(
-  () => { stop(); console.log(`\nPasskey browser check passed (${steps.length} steps).`); process.exit(0); },
+  () => { stop(); console.log(MEASURE ? '\nMeasured.' : `\nPasskey browser check passed (${steps.length} steps).`); process.exit(0); },
   async (e) => { console.error('\nPasskey browser check FAILED:', e); console.error('The page showed:', await lastPage?.locator('body').innerText().catch(() => '(nothing)')); stop(); process.exit(1); },
 );

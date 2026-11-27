@@ -12,7 +12,7 @@ function must<T>(r: { data: T | null; error: { message: string } | null }): T {
 /** The database's refusal as a sentence for the page. */
 export const refusal = (e: unknown) => {
   const m = e instanceof Error ? e.message : '';
-  if (/admins only/.test(m) || looksNotAllowed(null, m)) reportNotAllowed();      // the page re-checks the passkey session at once
+  if (looksNotAllowed(null, m)) reportNotAllowed();      // the page re-checks the passkey session at once
   return /account deleted/.test(m) ? 'This account was closed by the person. Nothing can be done for it.'
     : /not allowed for this status/.test(m) ? 'This action does not fit the account status.'
     : /cannot act on an admin/.test(m) ? 'Admins cannot be acted on here.'

@@ -199,5 +199,5 @@ test('the prompt starts by itself only on the passkey screen, through the once-p
   assert.match(auth, /claimAutoPasskey: \(\) => auto\.current\.claim\(\)/);
   // the timeouts are untouched
   const rules = readFileSync(new URL('./rules.ts', import.meta.url), 'utf8');
-  assert.match(rules, /IDLE_LIMIT_MS\s*=\s*30 \* 60/);
+  assert.match(rules, /IDLE_LIMIT_MS\s*=\s*6 \* 60 \* 60 \* 1000/);
 });

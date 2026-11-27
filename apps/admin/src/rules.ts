@@ -67,7 +67,7 @@ export const REPORT_REASONS: Record<string, string> = {
 };
 
 /** Sign out after this long without a click or key press. */
-export const IDLE_LIMIT_MS = 30 * 60 * 1000;
+export const IDLE_LIMIT_MS = 6 * 60 * 60 * 1000;
 export const isIdle = (lastActive: number, now: number, limit = IDLE_LIMIT_MS) => now - lastActive >= limit;
 
 export const looksLikeId = (q: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q.trim());
