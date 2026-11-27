@@ -36,7 +36,7 @@ export function reminderEmail(row: Pick<DueRow, 'first_name' | 'locale' | 'paid_
     const fee = amount === null ? '' : ` قيمة التجديد ${amount} جنيه.`;
     return {
       subject: 'عضويتك في PawsPal تتجدد قريبا',
-      text: `${name ? `مرحبا ${name}،` : 'مرحبا،'}\n\nعضويتك في PawsPal تتجدد في ${date}.${fee}\n\nافتح التطبيق، ثم العضوية، وادفع عبر إنستاباي أو التحويل البنكي، ثم ارفع رقم المرجع.\n\nفريق PawsPal`,
+      text: `${name ? `مرحبا ${name}،` : 'مرحبا،'}\n\nعضويتك في PawsPal تتجدد في ${date}.${fee}\n\nافتح التطبيق، ثم العضوية، وادفع عبر إنستاباي أو فودافون كاش، ثم ارفع رقم المرجع.\n\nفريق PawsPal`,
     };
   }
   const fee = amount === null ? '' : ` The renewal is ${amount} EGP.`;

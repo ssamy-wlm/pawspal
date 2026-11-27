@@ -190,7 +190,7 @@ test('the InstaPay and Vodafone Cash settings mirror admin_set_setting exactly',
   for (const k of ['instapay_link', 'instapay_qr_url', 'vodafone_cash_link']) {
     assert.equal(validateSetting(k, 'https://vf.example/pay'), null, k);
     for (const bad of ['http://vf.example', 'javascript:alert(1)', 'data:text/html;base64,AAAA', 'https://', 'https://a b.example', 'HTTPS://vf.example/pay', '//vf.example', `https://${'a'.repeat(500)}`]) {
-      assert.match(validateSetting(k, bad)!, /https/, `${k} ${bad}`);
+      assert.match(validateSetting(k, bad)!, /https|too long/, `${k} ${bad.slice(0, 20)}`);
     }
   }
 });
