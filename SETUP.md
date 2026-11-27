@@ -254,6 +254,27 @@ If a secret ever leaks: rotate it straight away in the provider's dashboard, the
 
 The map uses free **OpenStreetMap** tiles by default, with the required credit "© OpenStreetMap contributors" shown on the map. OpenStreetMap's public servers are meant for **light use only**, so before many people use the app switch to a provider with a free plan, for example **MapTiler** (100,000 tile views a month free): sign up at maptiler.com, create a key, and set `EXPO_PUBLIC_MAP_TILE_URL` to the raster tile address they give you (it contains your key) and `EXPO_PUBLIC_MAP_ATTRIBUTION` to the credit text they require. These are public app settings (`apps/mobile/.env.local`, and the EAS environment variables for builds). Restrict the key to your app in the provider's dashboard.
 
+## E13. Account deletion, data download, notifications and crash reports (phase 9)
+
+People can now delete their account and download their data from **Settings > Privacy**. Deleted accounts are closed at once and wiped for good by a nightly job. Notifications and crash reports stay off until you turn them on.
+
+**Nightly clean-up of deleted accounts (do this once, or deleted accounts are never wiped):**
+1. Supabase > **Edge Functions > Secrets > Add new secret**: name `PURGE_SECRET`, value a long random password (24 characters or more). Save.
+2. Supabase > **Integrations > Cron > Create job**: name `purge-accounts`, schedule `30 3 * * *` (3:30 every night), type **Supabase Edge Function**, function `purge-accounts`, method `POST`, and add the header `x-purge-secret` with the same value as `PURGE_SECRET`. Save.
+
+**Two numbers the lawyer must confirm before launch.** The admin site > **Settings > Notifications and data** shows **days before a deleted account is wiped** (starts at 30) and **months a conversation or booking is kept** (starts at 24). They match the placeholders in the privacy policy. The 24-month number is permanent: older messages and bookings really are deleted every night. Check both with your lawyer, then save them there.
+
+**Notifications (phone app only):**
+1. Supabase > **Edge Functions > Secrets**: add `NOTIFICATIONS_SECRET` (24 characters or more).
+2. Supabase > **Integrations > Cron > Create job**: name `send-notifications`, schedule `* * * * *` (every minute), function `send-notifications`, method `POST`, header `x-notifications-secret` with the same value.
+3. Notifications need a real phone build, not Expo Go. In the project folder run `eas init` once (Claude Code can do this with you) so the app gets its Expo project id, then make a store or test build.
+4. When the build is installed and tested, admin site > **Settings > Notifications and data** > switch **Push notifications** on. Until you do, nothing is sent. Messages are always generic ("You have a new message"), with no names or message text.
+
+**Crash reports (optional):**
+1. Create a free account at sentry.io and a project for **React Native**. Copy its **DSN** (a web address that starts with https://).
+2. In Expo (expo.dev) > your project > **Environment variables**, add `EXPO_PUBLIC_SENTRY_DSN` with the DSN. Then add a **secret** `SENTRY_AUTH_TOKEN` (Sentry > Settings > Auth Tokens). The auth token is never put in the app or in GitHub.
+3. Crash reports contain no names, emails, locations or message text, and are off in the web app. Make a new store build to start them.
+
 ## G. Before launch
 
 Work through `docs/security.md` (checklist), `docs/legal/README.md` (lawyer questions) and phase 9 of `docs/build-plan.md`.
