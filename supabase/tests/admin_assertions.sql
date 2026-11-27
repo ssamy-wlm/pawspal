@@ -90,10 +90,17 @@ select pg_temp.check(exists (select 1 from public.profiles where id = 'a8a8a8a8-
 select private.invite_admin('mixed@example.com');
 select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at, created_at) values (gen_random_uuid(), 'Mixed@Example.COM', now(), now())$$) = 'accepted', 'an invited email in other case was refused');
 select pg_temp.check(private.grant_admin('mixed@example.com') = 'granted', 'the invited account in other case could not become an admin');
--- an unconfirmed sign-up cannot use (or squat) an invite
-select private.invite_admin('squat@example.com');
-select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, created_at) values (gen_random_uuid(), 'squat@example.com', now())$$) = 'sign-up not allowed [E2]', 'an unconfirmed address used an invite');
-select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at, created_at) values (gen_random_uuid(), 'squat@example.com', now(), now())$$) = 'accepted', 'the real owner of the address could not use the invite after a refused try');
+-- the dashboard saves an auto-confirmed user as unconfirmed first: allowed within an hour of the invite, never makes an admin by itself
+select private.invite_admin('dash@example.com');
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, created_at) values ('a8a8a8a8-0000-0000-0000-0000000000d1', 'dash@example.com', now())$$) = 'accepted', 'the dashboard add-user form (unconfirmed at first) was refused');
+select pg_temp.check(private.grant_admin('dash@example.com') = 'not_confirmed', 'an unconfirmed dashboard account became an admin');
+update auth.users set email_confirmed_at = now() where id = 'a8a8a8a8-0000-0000-0000-0000000000d1';
+select pg_temp.check(private.grant_admin('dash@example.com') = 'granted', 'the dashboard account could not be made an admin after confirming');
+-- an old invite cannot be used by an unconfirmed account (limits squatting through the public sign-up)
+select private.invite_admin('old-invite@example.com');
+update private.admin_invites set created_at = now() - interval '2 hours' where email = 'old-invite@example.com';
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, created_at) values (gen_random_uuid(), 'old-invite@example.com', now())$$) = 'sign-up not allowed [E2]', 'an unconfirmed account used an old invite');
+select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at, created_at) values (gen_random_uuid(), 'old-invite@example.com', now(), now())$$) = 'accepted', 'a confirmed account could not use an old invite');
 select pg_temp.check(pg_temp.refusal_of($$insert into auth.users (id, email, email_confirmed_at, created_at) values (gen_random_uuid(), 'mixed2@example.com', now(), now())$$) = 'sign-up not allowed [E2]', 'an invite for one address let another address in');
 select private.revoke_admin('mixed@example.com');
 select pg_temp.check(not exists (select 1 from public.admins a join auth.users u on u.id = a.user_id where u.email ilike 'mixed@example.com'), 'revoking left an admin row');
