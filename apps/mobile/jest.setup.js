@@ -61,7 +61,7 @@ jest.mock('react-native-webview', () => {
 
 // Push notifications and crash reporting: the real modules are native. Tests that need behaviour override these.
 jest.mock('expo-notifications', () => ({
-  AndroidImportance: { DEFAULT: 3 },
+  AndroidImportance: { DEFAULT: 5 },
   getPermissionsAsync: jest.fn(async () => ({ granted: false, canAskAgain: true })),
   requestPermissionsAsync: jest.fn(async () => ({ granted: true })),
   getExpoPushTokenAsync: jest.fn(async () => ({ data: 'ExponentPushToken[abc123]' })),

@@ -22,6 +22,10 @@ returns jsonb language sql stable security definer set search_path = public as $
                     where key not in ('push_enabled', 'deletion_grace_days', 'shared_history_months')), '{}'::jsonb) end
 $$;
 
+drop policy "signed-in people read the settings" on public.app_settings;
+create policy "signed-in people read the payment settings" on public.app_settings for select to authenticated
+  using (key not in ('push_enabled', 'deletion_grace_days', 'shared_history_months'));
+
 create or replace function public.admin_set_setting(p_key text, p_value text)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_value text := btrim(coalesce(p_value, '')); v_old text;

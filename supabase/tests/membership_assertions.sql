@@ -196,7 +196,7 @@ select pg_temp.fails_adm($$select public.admin_set_setting('nope', 'x')$$, 'unkn
 select pg_temp.fails_adm($$select public.admin_set_setting('Registration_fee_egp', '80')$$, 'key in the wrong case');
 select pg_temp.fails_adm($$select public.admin_set_setting('registration_fee_egp ', '80')$$, 'key with a trailing space');
 select pg_temp.fails_adm($$select public.admin_set_setting(null, '80')$$, 'null key');
-select pg_temp.check((select count(*) = 11 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp') and (select value = '' from public.app_settings where key = 'instapay_link'), 'a refused setting change changed the settings');
+select pg_temp.check((select count(*) = 14 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp') and (select value = '' from public.app_settings where key = 'instapay_link'), 'a refused setting change changed the settings');
 select pg_temp.check(not exists (select 1 from public.audit_log where action = 'setting_changed' and admin_id = pg_temp.u(5)), 'refused setting changes were audited');
 -- accepted ones
 select pg_temp.adm($$select public.admin_set_setting('registration_fee_egp', ' 80 ')$$);
@@ -215,7 +215,7 @@ select pg_temp.adm($$select public.admin_set_setting('reminder_days', '14')$$);
 select pg_temp.adm($$select public.admin_set_setting('reminder_days', '7')$$);
 select pg_temp.adm($$select public.admin_set_setting('renewal_fee_egp', '100000')$$);
 select pg_temp.adm($$select public.admin_set_setting('renewal_fee_egp', '25')$$);
-select pg_temp.check((select count(*) = 11 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp')
+select pg_temp.check((select count(*) = 14 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp')
                  and (select value = '25' from public.app_settings where key = 'renewal_fee_egp') and (select value = '6' from public.app_settings where key = 'membership_months')
                  and (select value = '7' from public.app_settings where key = 'reminder_days'), 'settings were not restored to the defaults');
 select pg_temp.check((select count(*) = 12 from public.audit_log where action = 'setting_changed' and admin_id = pg_temp.u(5)), 'every accepted setting change should be audited exactly once (got ' || (select count(*) from public.audit_log where action = 'setting_changed' and admin_id = pg_temp.u(5)) || ')');
@@ -650,7 +650,7 @@ select pg_temp.check((select count(*) = 0 from pg_proc p where p.pronamespace = 
                    and (p.proconfig is null or not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'))), 'a security definer function has no fixed search_path');
 
 -- put the shared settings back as every other file expects them
-select pg_temp.check((select count(*) = 11 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp') and (select value = '25' from public.app_settings where key = 'renewal_fee_egp'), 'the settings are not back to the defaults');
+select pg_temp.check((select count(*) = 14 from public.app_settings) and (select value = '75' from public.app_settings where key = 'registration_fee_egp') and (select value = '25' from public.app_settings where key = 'renewal_fee_egp'), 'the settings are not back to the defaults');
 
 \echo '--- M2b a valid https link is accepted (kept last: it fails today, see the report on migration 0013)'
 select pg_temp.adm($$select public.admin_set_setting('instapay_link', 'https://ipn.eg/S/pawspal')$$);

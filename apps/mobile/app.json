@@ -61,6 +61,12 @@
           "backgroundColor": "#1F2D3D"
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "default"
+        }
+      ],
       "expo-sharing",
       "@sentry/react-native"
     ],

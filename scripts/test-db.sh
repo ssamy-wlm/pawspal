@@ -20,4 +20,6 @@ psql -q -v ON_ERROR_STOP=1 -d "$DB" -f supabase/tests/membership_assertions.sql
 psql -q -v ON_ERROR_STOP=1 -d "$DB" -f supabase/tests/safety_assertions.sql
 psql -q -v ON_ERROR_STOP=1 -d "$DB" -f supabase/tests/admin_assertions.sql
 psql -q -v ON_ERROR_STOP=1 -d "$DB" -f supabase/tests/passkey_assertions.sql
+psql -q -v ON_ERROR_STOP=1 -d "$DB" -f supabase/tests/push_assertions.sql
+psql -q -v ON_ERROR_STOP=1 -d "$DB" -f supabase/tests/deletion_assertions.sql
 python3 scripts/check-legal-versions.py "psql -d $DB"

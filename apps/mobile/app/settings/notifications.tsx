@@ -35,9 +35,8 @@ export default function NotificationSettings() {
   const [busy, setBusy] = React.useState(false);
 
   const load = React.useCallback(() => {
-    setLoadFailed(false);
     notificationsOn().then(setOn).catch(() => {});
-    loadPrefs().then(setPrefs, () => setLoadFailed(true));
+    loadPrefs().then((p) => { setLoadFailed(false); setPrefs(p); }, () => setLoadFailed(true));
   }, []);
   React.useEffect(() => { if (available && signedIn) load(); }, [available, signedIn, load]);
 

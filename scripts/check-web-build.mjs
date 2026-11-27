@@ -45,7 +45,15 @@ function secretsIn() {
 }
 const secrets = secretsIn();
 
+// Crash reporting (Sentry) is phone-only for now: monitoring.web.ts does nothing, so the page's content policy deliberately has NO
+// Sentry address. Do not widen connect-src blindly. Once the DSN exists, its host is the part after "@" (for example
+// o123.ingest.de.sentry.io): add exactly that host as "https://<host>" to connect-src in apps/mobile/vercel.json AND to the allowed list in the
+// "policy: talks only to itself and Supabase" check below, and only then enable Sentry in monitoring.web.ts.
+// The motion showcase is a development screen (src/dev/Showcase.tsx): its marker must never be in a production export.
+const showcaseInDist = textFiles.filter((f) => /pawspal-dev-showcase-screen/.test(read(f))).map((f) => f.replace(dist, 'dist'));
+
 const checks = [
+  ['the development showcase screen is not in the production export', showcaseInDist.length === 0],
   ['index.html loads the app from this site only', /<script src="\/_expo\/static\/js\/web\/[^"]+" defer><\/script>/.test(html) && !/<script(?![^>]*\ssrc=)/i.test(html) && !/<script[^>]*src="https?:/i.test(html)],
   ['no inline scripts or event handlers in index.html', !/<script(?![^>]*\ssrc=)/i.test(html) && !/\son[a-z]+\s*=\s*["']/i.test(html)],
   ['zoom is not locked', !/user-scalable\s*=\s*(no|0)|maximum-scale/i.test(html)],

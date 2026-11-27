@@ -30,6 +30,7 @@ async function registerToken(ask: boolean): Promise<EnableResult> {
   try {
     if (!(await ensurePermission(ask))) return 'denied';
     if (Platform.OS === 'android') {
+      // eslint-disable-next-line import/namespace -- the enum is re-exported with `export *`, which the rule cannot follow
       await Notifications.setNotificationChannelAsync(CHANNEL, { name: 'PawsPal', importance: Notifications.AndroidImportance.DEFAULT, sound: null });
     }
     const projectId = (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ?? Constants.easConfig?.projectId;
