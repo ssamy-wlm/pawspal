@@ -155,7 +155,35 @@ Until you own a domain, sign-up, confirmation and password-reset emails go out t
 3. Supabase > **Authentication > Rate Limits**: keep emails per hour at `30` or lower. Gmail sends about 500 emails a day in total, so this is only for a small start.
 4. Test: **Authentication > Users** > the admin row > **Send password recovery**. It should arrive in the inbox from **PawsPal**. Do not click the link.
 5. If the log says `535 Username and Password not accepted`, the username and the app password belong to different Google accounts. Make the app password again in the account whose address you typed as the username.
-6. The 7-day membership reminder emails need Resend (E5), so they do not go out yet. People still see the membership banner in the app.
+6. **Membership reminder emails (7 days before a membership ends) through Gmail.** These come from the `membership-reminders` function, which has its own settings. Do these one at a time:
+   1. In the Google account **pawspal.app@gmail.com**, open https://myaccount.google.com/apppasswords and create a **second** app password named `PawsPal reminders`. Keep the 16 letters open. Do not reuse the one from step 2.
+   2. Supabase > **Edge Functions** > **Secrets** > **Add new secret**: name `EMAIL_PROVIDER`, value `smtp`. Save.
+   3. Add secret `SMTP_USER`, value `pawspal.app@gmail.com`. Save.
+   4. Add secret `SMTP_PASSWORD`, value the 16 letters of `PawsPal reminders`, no spaces. Save.
+   5. Add secret `EMAIL_FROM`, value `PawsPal <pawspal.app@gmail.com>`. Save. (The address must be exactly the same as `SMTP_USER`.)
+   6. Add secret `REMINDER_SECRET`, value a long random text of at least 24 characters (a password generator is fine). Keep a copy for the next step.
+   7. Supabase > **Integrations** > **Cron** (turn it on if it asks) > **Create job**: name `membership-reminders`, schedule `53 7 * * *` (every day at 07:53 UTC), type **Supabase Edge Function**, function `membership-reminders`, method `POST`, add the header `x-reminder-secret` with the same value as `REMINDER_SECRET`. Save.
+   8. Test. Create a test account in the app (a second email you own) and let it be approved, so it has a membership. Supabase > **SQL Editor** > **New query**. First look at the current values and write them down:
+      ```sql
+      select m.user_id, m.paid_until, m.reminded_for
+      from public.memberships m join auth.users u on u.id = m.user_id
+      where u.email = 'TEST-EMAIL-HERE';
+      ```
+      Then set the test account to end in 3 days (replace `TEST-EMAIL-HERE` with the test account's email) and click **Run**:
+      ```sql
+      update public.memberships
+      set paid_until = (now() at time zone 'Africa/Cairo')::date + 3, reminded_for = null
+      where user_id = (select id from auth.users where email = 'TEST-EMAIL-HERE');
+      ```
+   9. Supabase > **Integrations** > **Cron** > the job `membership-reminders` > **Run now**. The test email should arrive within a minute from **PawsPal**. If it does not, look in **Edge Functions** > `membership-reminders` > **Logs**: `503` means a secret is missing or wrong (check the five names and that `EMAIL_FROM` equals `SMTP_USER`); `{"sent":0,"failed":1}` means Gmail refused it (make the app password again, step 1).
+   10. **Put it back afterwards.** Run this with the two values you wrote down in step 8 (use `null` if `reminded_for` was empty):
+      ```sql
+      update public.memberships
+      set paid_until = 'OLD-PAID-UNTIL', reminded_for = OLD-REMINDED-FOR-or-null
+      where user_id = (select id from auth.users where email = 'TEST-EMAIL-HERE');
+      ```
+      (For example `paid_until = '2027-05-20', reminded_for = null`; a date in `reminded_for` needs quotes too.) Or simply delete the test account in the app.
+   11. Gmail sends about 500 emails a day in total, sign-up emails included, and only port 465 works. The Arabic and English reminder text is a **draft**: read both versions in the test email and tell me what to change before real members get it. When you buy a domain, switch `EMAIL_PROVIDER` back to `resend` (E5).
 7. On the sign-up "Check your email" screen people see "Didn't get it? Check your spam folder." and a **Resend email** button (once a minute). Ask early testers to mark the first email **Not spam**, which helps Gmail trust the sender.
 
 ## E6. Photo clean-up (every night)

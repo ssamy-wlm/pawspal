@@ -5,5 +5,5 @@
     "verbatimModuleSyntax": true, "types": ["node"], "typeRoots": ["../../apps/mobile/node_modules/@types"]
   },
   "include": ["_shared/**/*.ts"],
-  "exclude": ["_shared/deno.ts"]
+  "exclude": ["_shared/deno.ts", "_shared/email/smtp-deno.ts"]
 }
