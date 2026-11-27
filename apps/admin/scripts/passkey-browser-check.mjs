@@ -242,13 +242,16 @@ async function main() {
     const lines = []; const report = (name, from, t0) => lines.push(`${name}: ${reqs.length - from} requests, ${Date.now() - t0} ms  [${reqs.slice(from).map(([l]) => l).join(', ')}]`);
     let from = reqs.length, t0 = Date.now();
     await signIn();
-    const first = await Promise.race([heading('Use your passkey').waitFor().then(() => 'screen'), page.getByRole('navigation', { name: 'Main' }).waitFor().then(() => 'site')]);
-    if (first === 'screen') {
-      report('password -> passkey screen', from, t0); from = reqs.length; t0 = Date.now();
+    await Promise.race([heading('Use your passkey').waitFor(), page.getByRole('navigation', { name: 'Main' }).waitFor()]);
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    const byItself = await nav.waitFor({ timeout: 2500 }).then(() => true, () => false);       // does the prompt start by itself?
+    if (byItself) report('password -> site (the passkey prompt starts by itself)', from, t0);
+    else {
+      report('password -> passkey screen (waited 2.5 s, nothing started)', from, t0); from = reqs.length; t0 = Date.now();
       await button('Use your passkey').click();
-      await page.getByRole('navigation', { name: 'Main' }).waitFor();
+      await nav.waitFor();
       report('button press -> site', from, t0);
-    } else report('password -> site (passkey started by itself)', from, t0);
+    }
     await wait(300);
     from = reqs.length; t0 = Date.now();
     await page.reload(); await page.getByRole('navigation', { name: 'Main' }).waitFor();
