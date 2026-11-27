@@ -176,7 +176,9 @@ The Expo app also builds for the browser (`npm run build:web` in `apps/mobile`, 
 - **Install prompt:** Chrome/Edge/Android use `beforeinstallprompt`; iPhone/iPad show three steps. Hidden when installed; dismissal is remembered on the device.
 - Vibration does nothing on the web. Nothing new is collected, so the privacy policy is unchanged (section 8).
 
-## 10c. Admin sign-in: password then passkey (migration 0014)
+## 10c. Admin sign-in: password then passkey (migrations 0014 and 0015)
+
+**Migrations.** `0014_admin_passkeys.sql` is on main and is never edited; the second review (per-session lock-outs, `is_admin()` without an exception block, `list_admin_sessions` and the session-code version of `open_admin_session`, retention) is `0015_admin_passkeys_review2.sql`.
 
 **Why our own.** Supabase's built-in passkey sign-in is experimental, and registering a passkey there needs only a normal session: a stolen password could enrol a rogue passkey, and the database could not tell which credential made a session. So the passkey is implemented here with WebAuthn (`@simplewebauthn/server`, exact version `14.1.0`, imported as `npm:@simplewebauthn/server@14.1.0` in `supabase/functions/admin-passkey/index.ts` and pinned in `supabase/functions/package.json`; a test fails if the two differ). The authenticator-app (TOTP, `aal2`) step is gone; the settings in `supabase/config.toml` are left as they were but nothing relies on them.
 
