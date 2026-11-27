@@ -17,7 +17,7 @@ const PATTERNS: RegExp[] = [
 ];
 
 /** Keys whose value is dropped whatever it holds. */
-const SECRET_KEY = /pass(word)?|token|secret|authorization|cookie|email|phone|otp|code|body|message|text|note|address|lat|lng|lon|location|id_?number|iban|account|apikey|api_key/i;
+const SECRET_KEY = /pass(word)?|token|secret|authorization|cookie|email|phone|otp|code|body|message|text|note|address|lat|lng|lon|location|id_?number|iban|account|apikey|api_key|details|hint|detail/i;
 
 /** A string with emails, tokens, ids, phone numbers, coordinates and long opaque strings replaced. */
 export function scrubString(value: string): string {
@@ -41,8 +41,22 @@ export function scrubValue(value: unknown, depth = 0): unknown {
 
 interface EventLike {
   user?: unknown; request?: unknown; breadcrumbs?: unknown; server_name?: unknown; message?: unknown; logentry?: unknown;
-  exception?: { values?: { value?: unknown; type?: unknown; stacktrace?: unknown }[] };
+  exception?: { values?: { value?: unknown; type?: unknown; stacktrace?: unknown; mechanism?: unknown }[] };
+  transaction?: unknown; threads?: unknown; fingerprint?: unknown; dist?: unknown;
   tags?: unknown; extra?: unknown; contexts?: unknown;
+}
+
+/** Errors that come from our API, Supabase or Postgres can carry free text (names, bios, "Failing row contains (...)"). */
+const API_ERROR_TYPE = /^(ApiError|PostgrestError|AuthApiError|AuthError|AuthRetryableFetchError|AuthUnknownError|AuthSessionMissingError|AuthWeakPasswordError|StorageError|StorageApiError|StorageUnknownError|Functions\w*Error|DatabaseError)$|postgres|supabase/i;
+const API_ERROR_TEXT = /Failing row contains|violates .*constraint|duplicate key value|invalid input syntax|PostgrestError|null value in column/i;
+/** A bare error code such as "wrong_password" or "23505" is safe to keep. */
+const BARE_CODE = /^[A-Za-z0-9_.-]{1,40}$/;
+
+/** For API, Supabase and Postgres errors only the class and a bare code are kept; any message text is dropped. */
+export function scrubExceptionText(type: unknown, value: string): string {
+  const fromApi = (typeof type === 'string' && API_ERROR_TYPE.test(type)) || API_ERROR_TEXT.test(value);
+  if (!fromApi) return scrubString(value);
+  return BARE_CODE.test(value.trim()) ? scrubString(value.trim()) : MARK;
 }
 
 /**
@@ -52,10 +66,14 @@ interface EventLike {
 export function scrubEvent<T extends EventLike>(event: T): T {
   const e = { ...event } as EventLike;
   delete e.user; delete e.request; delete e.breadcrumbs; delete e.server_name;
+  if (typeof e.transaction === 'string') e.transaction = scrubString(e.transaction);   // route names can hold ids
+  if (e.threads) e.threads = scrubValue(e.threads);
+  if (Array.isArray(e.fingerprint)) e.fingerprint = e.fingerprint.map((f) => (typeof f === 'string' ? scrubString(f) : f));
+  if (typeof e.dist === 'string') e.dist = scrubString(e.dist);
   if (typeof e.message === 'string') e.message = scrubString(e.message);
   if (e.logentry) e.logentry = scrubValue(e.logentry);
   if (e.exception?.values) {
-    e.exception = { ...e.exception, values: e.exception.values.map((v) => ({ ...v, ...(typeof v.value === 'string' ? { value: scrubString(v.value) } : {}) })) };
+    e.exception = { ...e.exception, values: e.exception.values.map((v) => ({ ...v, ...(typeof v.value === 'string' ? { value: scrubExceptionText(v.type, v.value) } : {}), ...(v.mechanism ? { mechanism: scrubValue(v.mechanism) } : {}) })) };
   }
   if (e.tags) e.tags = scrubValue(e.tags);
   if (e.extra) e.extra = scrubValue(e.extra);

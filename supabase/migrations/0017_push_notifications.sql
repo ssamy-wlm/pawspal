@@ -23,8 +23,9 @@ returns jsonb language sql stable security definer set search_path = public as $
 $$;
 
 drop policy "signed-in people read the settings" on public.app_settings;
+-- (an admin session that passed the passkey step can read the phase 9 settings too, so the admin site can show them)
 create policy "signed-in people read the payment settings" on public.app_settings for select to authenticated
-  using (key not in ('push_enabled', 'deletion_grace_days', 'shared_history_months'));
+  using (key not in ('push_enabled', 'deletion_grace_days', 'shared_history_months') or public.is_admin());
 
 create or replace function public.admin_set_setting(p_key text, p_value text)
 returns void language plpgsql security definer set search_path = public as $$

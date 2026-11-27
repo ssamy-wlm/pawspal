@@ -131,9 +131,9 @@ export interface ExportedData {
   files: { kind: string; name: string; url: string }[];
 }
 
-/** Everything the server holds about me, with links to my photos (good for 1 hour). The server allows 3 a day. */
-export async function exportMyData(): Promise<ExportedData> {
-  return call<ExportedData>('export-my-data', {}, await accessToken());
+/** Everything the server holds about me, with links to my photos (good for 1 hour). Needs my password; the server allows 3 a day. */
+export async function exportMyData(password: string): Promise<ExportedData> {
+  return call<ExportedData>('export-my-data', { password }, await accessToken());
 }
 
 /** Closes my account at once; the data is deleted after a waiting period. The server checks the password and any active booking. */

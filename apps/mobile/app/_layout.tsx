@@ -46,6 +46,7 @@ function Nav() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: tr('settings.title') }} />
         <Stack.Screen name="settings/notifications" options={{ title: tr('notif.title') }} />
+        <Stack.Screen name="settings/download-data" options={{ title: tr('privacy.download') }} />
         <Stack.Screen name="settings/delete-account" options={{ title: tr('delete.title') }} />
         <Stack.Screen name="goodbye" options={{ headerShown: false }} />
         <Stack.Screen name="profile/edit" options={{ title: tr('edit.title') }} />

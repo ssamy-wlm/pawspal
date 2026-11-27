@@ -556,7 +556,6 @@
   "privacy.downloadNote": "A file with everything we hold about you, including links to your photos. The photo links stop working after 1 hour.",
   "privacy.downloading": "Preparing your data",
   "privacy.downloaded": "Your data is ready.",
-  "privacy.exportLimit": "You can download your data 3 times a day. Try again tomorrow.",
   "privacy.shareUnavailable": "This phone cannot share files right now.",
   "err.notAllowed": "That is not allowed for this account.",
   "privacy.delete": "Delete my account",
@@ -592,5 +591,7 @@
   "notif.web": "Notifications are available in the phone app.",
   "notif.loadFailed": "We could not load your choices. Try again.",
   "notif.saveFailed": "We could not save that. Try again.",
-  "notif.retry": "Try again"
+  "notif.retry": "Try again",
+  "privacy.downloadIntro": "Enter your password to download your data.",
+  "delete.err.open_case": "You have an open report, appeal or dispute. We need to finish it before your account can be deleted."
 }

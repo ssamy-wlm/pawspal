@@ -20,12 +20,15 @@ alter table public.profiles add column purge_after timestamptz;       -- the fin
 alter table public.profiles add column purged_at   timestamptz;       -- the sign-in account and the personal data are gone
 create index on public.profiles (purge_after) where deleted_at is not null and purged_at is null;
 
--- A closed account can never be reinstated, approved or suspended by anyone (not by an admin tool either).
+-- A closed account is final. Nobody can change its status, deleted_at or purge_after (not an admin tool either), and a signed-in
+-- session (an old access token of the closed person) cannot change ANY column of the stub: only the service role and the definer
+-- functions of this migration can.
 create or replace function public.guard_deleted_profile()
 returns trigger language plpgsql set search_path = public as $$
 begin
   if old.deleted_at is not null and (new.status is distinct from old.status or new.deleted_at is distinct from old.deleted_at
-                                     or new.purge_after is distinct from old.purge_after) then
+                                     or new.purge_after is distinct from old.purge_after
+                                     or current_user in ('authenticated', 'anon')) then
     raise exception 'account deleted';
   end if;
   return new;
@@ -33,6 +36,57 @@ end $$;
 revoke execute on function public.guard_deleted_profile() from public, anon, authenticated;
 create trigger guard_deleted_profile_before_update before update on public.profiles
   for each row execute function public.guard_deleted_profile();
+
+-- The person cannot edit their own stub through the API either (row level security says no rows, the trigger above says error).
+drop policy "update own profile" on public.profiles;
+create policy "update own profile" on public.profiles
+  for update to authenticated using (id = auth.uid() and deleted_at is null) with check (id = auth.uid() and deleted_at is null);
+
+-- Writes that go through definer functions or policies without an "is active" rule must not work for a closed account either
+-- (an access token stays valid for up to an hour after the account was closed). One trigger function, applied to each table.
+create or replace function public.is_closed_account(p_user uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = p_user and deleted_at is not null)
+$$;
+revoke execute on function public.is_closed_account(uuid) from public, anon;
+grant execute on function public.is_closed_account(uuid) to authenticated;
+
+-- tg_argv[0] = the column that holds the owner. INSERT is always refused for a closed owner; UPDATE only when a signed-in
+-- role does it (the closing and the purge run as the definer and may update their own rows).
+create or replace function public.refuse_closed_account_write()
+returns trigger language plpgsql set search_path = public as $$       -- not a definer function: current_user must be the caller
+declare v_owner uuid := nullif(to_jsonb(new) ->> tg_argv[0], '')::uuid;
+begin
+  if v_owner is not null and public.is_closed_account(v_owner) and (tg_op = 'INSERT' or current_user in ('authenticated', 'anon')) then
+    raise exception 'account deleted';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.refuse_closed_account_write() from public, anon, authenticated;
+create trigger refuse_closed_before_write before insert or update on private.locations for each row execute function public.refuse_closed_account_write('user_id');
+create trigger refuse_closed_before_write before insert or update on public.pets for each row execute function public.refuse_closed_account_write('owner_id');
+create trigger refuse_closed_before_write before insert or update on public.legal_acceptances for each row execute function public.refuse_closed_account_write('user_id');
+create trigger refuse_closed_before_write before insert or update on public.appeals for each row execute function public.refuse_closed_account_write('user_id');
+create trigger refuse_closed_before_write before insert or update on public.blocks for each row execute function public.refuse_closed_account_write('blocker_id');
+create trigger refuse_closed_before_write before insert or update on public.conversation_reads for each row execute function public.refuse_closed_account_write('user_id');
+
+create or replace function public.refuse_closed_pet_care()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if exists (select 1 from public.pets p join public.profiles o on o.id = p.owner_id where p.id = new.pet_id and o.deleted_at is not null) then
+    raise exception 'account deleted';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.refuse_closed_pet_care() from public, anon, authenticated;
+create trigger refuse_closed_before_write before insert or update on private.pet_care for each row execute function public.refuse_closed_pet_care();
+
+-- A closed account cannot upload raw photos either.
+drop policy "upload raw photo to own incoming folder" on storage.objects;
+create policy "upload raw photo to own incoming folder" on storage.objects
+  for insert to authenticated with check (
+    bucket_id = 'incoming' and (storage.foldername(name))[1] = auth.uid()::text and not public.is_closed_account(auth.uid())
+  );
 
 -- The profile row no longer depends on the auth row (the stub outlives its sign-in account). Deleting an auth user still removes
 -- the profile of an ordinary account, as before (and still fails while the person has bookings, as before). A closed account's
@@ -119,14 +173,25 @@ revoke execute on function public.my_conversations() from public, anon;
 grant execute on function public.my_conversations() to authenticated;
 
 -- ---------------------------------------------------------------- rate limits (service role: the edge functions)
--- 5 wrong passwords an hour per person while deleting an account. Only a count of events, never the password.
-create or replace function public.deletion_attempts_blocked(p_user uuid)
-returns boolean language sql stable security definer set search_path = public as $$
-  select (select count(*) from public.security_events where user_id = p_user and kind = 'delete_password_failed' and created_at > now() - interval '1 hour') >= 5
-$$;
-create or replace function public.note_deletion_failure(p_user uuid)
+-- 5 password tries an hour per person and kind ('delete_attempt', 'export_attempt'). ATOMIC: under a lock per person and kind it counts
+-- and RECORDS the try before the password is looked at, so a burst of parallel requests cannot beat the limit. A right password
+-- gives its try back (release_password_attempt); a wrong one keeps it. Only counts, never the password.
+create or replace function public.reserve_password_attempt(p_user uuid, p_kind text)
+returns boolean language plpgsql security definer set search_path = public as $$
+begin
+  if p_kind not in ('delete_attempt', 'export_attempt') or not exists (select 1 from public.profiles where id = p_user) then return false; end if;
+  perform pg_advisory_xact_lock(hashtext(p_kind || ':' || p_user::text));
+  if (select count(*) from public.security_events where user_id = p_user and kind = p_kind and created_at > now() - interval '1 hour') >= 5 then
+    return false;
+  end if;
+  insert into public.security_events (user_id, kind) values (p_user, p_kind);
+  return true;
+end $$;
+create or replace function public.release_password_attempt(p_user uuid, p_kind text)
 returns void language sql security definer set search_path = public as $$
-  insert into public.security_events (user_id, kind) select p_user, 'delete_password_failed' where exists (select 1 from public.profiles where id = p_user)
+  delete from public.security_events where id = (
+    select id from public.security_events where user_id = p_user and kind = p_kind and p_kind in ('delete_attempt', 'export_attempt')
+       and created_at > now() - interval '1 hour' order by id desc limit 1)
 $$;
 -- 3 exports a day per person. Counts and records in one step, so two requests at once cannot both pass.
 create or replace function public.note_data_export(p_user uuid)
@@ -152,7 +217,7 @@ language sql stable security definer set search_path = public, storage as $$
 $$;
 
 -- Step one of deleting an account, called by delete-account AFTER the password was checked. Returns
--- {status: 'closed' | 'already_closed' | 'admin' | 'active_booking' | 'not_found', purge_after}. 'admin' and 'active_booking' change nothing.
+-- {status: 'closed' | 'already_closed' | 'admin' | 'active_booking' | 'open_case' | 'not_found', purge_after}. 'admin', 'active_booking' and 'open_case' change nothing.
 create or replace function public.close_account(p_user uuid)
 returns jsonb language plpgsql security definer set search_path = public, private as $$
 declare p public.profiles; v_days integer := private.setting_int('deletion_grace_days', 30);
@@ -164,12 +229,22 @@ begin
   if p.deleted_at is not null then
     return jsonb_build_object('status', 'already_closed', 'purge_after', p.purge_after);
   end if;
-  if exists (select 1 from public.bookings b where p_user in (b.owner_id, b.sitter_id) and b.status in ('requested', 'confirmed', 'in_progress')) then
+  -- An open or disputed booking: cancel or resolve it first.
+  if exists (select 1 from public.bookings b where p_user in (b.owner_id, b.sitter_id) and b.status in ('requested', 'confirmed', 'in_progress', 'disputed')) then
     return jsonb_build_object('status', 'active_booking');
   end if;
+  -- Evidence must not be wiped by deleting: an unresolved report against the person, or an unresolved appeal by them, blocks it
+  -- until the founder has resolved the case.
+  if exists (select 1 from public.reports r where r.reported_id = p_user and r.status in ('new', 'in_review'))
+     or exists (select 1 from public.appeals a where a.user_id = p_user and a.status in ('new', 'in_review')) then
+    return jsonb_build_object('status', 'open_case');
+  end if;
 
-  -- A person who was removed by a moderator stays banned: their hashes go into the ban list again (idempotent).
-  if p.status = 'removed' then
+  -- Anyone who was sanctioned (removed, suspended now, any warning or action, an open report) stays banned: the email and device
+  -- hashes go into the ban list (idempotent). Others keep nothing.
+  if p.status in ('removed', 'suspended')
+     or exists (select 1 from public.enforcement_actions e where e.user_id = p_user)
+     or exists (select 1 from public.reports r where r.reported_id = p_user and r.status in ('new', 'in_review')) then
     insert into public.banned_identifiers (kind, hash) select kind, hash from private.identity_hashes(p_user) on conflict do nothing;
   end if;
 
@@ -212,6 +287,16 @@ begin
   return jsonb_build_object('status', 'closed', 'purge_after', (select purge_after from public.profiles where id = p_user));
 end $$;
 
+-- Is this conversation or booking (or the pair of people) part of a case that is not resolved yet?
+create or replace function private.case_protected(p_conversation uuid, p_booking uuid, p_a uuid, p_b uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.reports r where r.status in ('new', 'in_review')
+                   and (r.conversation_id = p_conversation or r.booking_id = p_booking
+                        or (r.reporter_id in (p_a, p_b) and r.reported_id in (p_a, p_b))))
+      or exists (select 1 from public.appeals ap where ap.status in ('new', 'in_review') and ap.user_id in (p_a, p_b))
+$$;
+revoke execute on function private.case_protected(uuid, uuid, uuid, uuid) from public, anon, authenticated;
+
 -- ---------------------------------------------------------------- the nightly purge
 -- Service role. Returns counts and the leftover photo files of the purged people (the function deletes them through the Storage
 -- API). Safe to run twice. At most 50 accounts per run.
@@ -221,13 +306,14 @@ declare
   r record;
   v_months integer := private.setting_int('shared_history_months', 24);
   v_cutoff timestamptz := now() - make_interval(months => v_months);
-  v_files jsonb := '[]'::jsonb; v_purged integer := 0; v_msgs integer; v_convs integer; v_bookings integer; v_stubs integer;
+  v_files jsonb := '[]'::jsonb; v_old_bookings uuid[]; v_purged integer := 0; v_msgs integer; v_convs integer; v_bookings integer; v_stubs integer;
 begin
   for r in select id from public.profiles
             where deleted_at is not null and purged_at is null and purge_after <= now()
             order by purge_after limit 50 for update skip locked
   loop
     v_files := v_files || coalesce((select jsonb_agg(jsonb_build_object('bucket', f.bucket_id, 'name', f.name)) from public.list_user_files(r.id) f), '[]'::jsonb);
+    delete from private.locations where user_id = r.id;                              -- (again: nothing can re-create it, but be sure)
     delete from public.legal_acceptances where user_id = r.id;
     delete from public.memberships where user_id = r.id;
     delete from public.security_events where user_id = r.id;
@@ -244,12 +330,21 @@ begin
     v_purged := v_purged + 1;
   end loop;
 
-  -- Shared history older than shared_history_months, for everyone.
-  delete from public.messages where created_at < v_cutoff;
+  -- Shared history older than shared_history_months, for everyone, EXCEPT what an unresolved report, an unresolved appeal or a disputed
+  -- booking still needs as evidence: a conversation or booking named by an open report, or between the two people of an open
+  -- report, or of a person with an open appeal, is kept until the case is resolved.
+  delete from public.messages m where m.created_at < v_cutoff and not exists (
+    select 1 from public.conversations c where c.id = m.conversation_id and private.case_protected(c.id, null, c.user_a, c.user_b));
   get diagnostics v_msgs = row_count;
-  delete from public.conversations c where c.created_at < v_cutoff and not exists (select 1 from public.messages m where m.conversation_id = c.id);
+  delete from public.conversations c where c.created_at < v_cutoff and not exists (select 1 from public.messages m where m.conversation_id = c.id)
+    and not private.case_protected(c.id, null, c.user_a, c.user_b);
   get diagnostics v_convs = row_count;
-  delete from public.bookings where ends_on < (private.today() - make_interval(months => v_months)) and status <> 'disputed';
+  select coalesce(array_agg(b.id), '{}') into v_old_bookings from public.bookings b
+   where b.ends_on < (private.today() - make_interval(months => v_months)) and b.status <> 'disputed'
+     and not private.case_protected(null, b.id, b.owner_id, b.sitter_id);
+  v_files := v_files || coalesce((select jsonb_agg(jsonb_build_object('bucket', 'handovers', 'name', h.photo_path))
+                                    from public.handover_photos h where h.booking_id = any (v_old_bookings)), '[]'::jsonb);
+  delete from public.bookings where id = any (v_old_bookings);
   get diagnostics v_bookings = row_count;
   update public.pets p set locked = false
    where p.locked and not exists (select 1 from public.bookings x where x.pet_id = p.id and x.status in ('confirmed', 'in_progress'));
@@ -272,9 +367,9 @@ begin
                             'bookings_deleted', v_bookings, 'stubs_deleted', v_stubs);
 end $$;
 
-revoke execute on function public.deletion_attempts_blocked(uuid), public.note_deletion_failure(uuid), public.note_data_export(uuid),
+revoke execute on function public.reserve_password_attempt(uuid, text), public.release_password_attempt(uuid, text), public.note_data_export(uuid),
   public.list_user_files(uuid), public.close_account(uuid), public.purge_deleted_accounts() from public, anon, authenticated;
-grant execute on function public.deletion_attempts_blocked(uuid), public.note_deletion_failure(uuid), public.note_data_export(uuid),
+grant execute on function public.reserve_password_attempt(uuid, text), public.release_password_attempt(uuid, text), public.note_data_export(uuid),
   public.list_user_files(uuid), public.close_account(uuid), public.purge_deleted_accounts() to service_role;
 
 -- ---------------------------------------------------------------- the data export

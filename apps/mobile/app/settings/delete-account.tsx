@@ -11,7 +11,7 @@ import { isRTL, Key, t as tr } from '../../src/i18n';
 
 const DELETE_ERRORS: Record<string, Key> = {
   wrong_password: 'delete.err.wrong_password', active_booking: 'delete.err.active_booking',
-  too_many_attempts: 'delete.err.too_many_attempts', admin_account: 'delete.err.admin_account', not_allowed: 'err.notAllowed',
+  too_many_attempts: 'delete.err.too_many_attempts', open_case: 'delete.err.open_case', admin_account: 'delete.err.admin_account', not_allowed: 'err.notAllowed',
 };
 
 /** The word to type, compared without case or stray spaces (and in the language the screen is in). */

@@ -11,6 +11,7 @@ import * as api from '../src/lib/api';
 import * as priv from '../src/lib/privacy';
 import { ToastProvider } from '../src/components/Toast';
 import Settings from '../app/settings';
+import DownloadData from '../app/settings/download-data';
 import DeleteAccount, { sameWord } from '../app/settings/delete-account';
 import Goodbye from '../app/goodbye';
 import NotificationSettings from '../app/settings/notifications';
@@ -65,24 +66,40 @@ describe.each(COMBOS)('privacy in $mode / $locale', ({ mode, locale }) => {
 
 describe('download my data', () => {
   const result = { ok: true as const, exported_at: '2026-11-27T10:00:00Z', data: { profile: { first_name: 'Mona' } }, files: [{ kind: 'pet', name: 'p.jpg', url: 'https://x.supabase.co/signed/p.jpg' }] };
+  const fill = async () => {
+    await renderIn(wrap(<DownloadData />));
+    await fireEvent.changeText(screen.getByLabelText(en['delete.password']), 'pw');
+    await fireEvent.press(screen.getByRole('button', { name: en['privacy.download'] }));
+  };
 
-  it('exports the data and the photo links as one JSON file and opens the share sheet', async () => {
-    a.exportMyData.mockResolvedValue(result);
+  it('Settings opens the password screen instead of downloading at once', async () => {
     await renderIn(wrap(<Settings />));
     await fireEvent.press(screen.getByText(en['privacy.download']));
-    await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalled());
-    expect(await screen.findByText(en['privacy.downloaded'])).toBeTruthy();
+    expect(router.push).toHaveBeenCalledWith('/settings/download-data');
+    expect(a.exportMyData).not.toHaveBeenCalled();
   });
 
-  it('shows the 3-a-day limit calmly, and other errors in plain words', async () => {
-    a.exportMyData.mockRejectedValueOnce(new ApiError('too_many_attempts', 429));
-    await renderIn(wrap(<Settings />));
-    await fireEvent.press(screen.getByText(en['privacy.download']));
-    expect(await screen.findByText(en['privacy.exportLimit'])).toBeTruthy();
+  it('keeps the button off until the password is filled', async () => {
+    await renderIn(wrap(<DownloadData />));
+    expect(screen.getByRole('button', { name: en['privacy.download'] }).props.accessibilityState.disabled).toBe(true);
+    await fireEvent.changeText(screen.getByLabelText(en['delete.password']), 'pw');
+    expect(screen.getByRole('button', { name: en['privacy.download'] }).props.accessibilityState.disabled).toBe(false);
+  });
+
+  it('sends the password, exports the data and photo links as one JSON file, opens the share sheet', async () => {
+    a.exportMyData.mockResolvedValue(result);
+    await fill();
+    await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalled());
+    expect(a.exportMyData).toHaveBeenCalledWith('pw');
+    expect(screen.getByLabelText(en['delete.password']).props.value).toBe('');   // the password is cleared
+  });
+
+  it.each([['wrong_password', 'delete.err.wrong_password'], ['too_many_attempts', 'delete.err.too_many_attempts'], ['network', 'err.network'], ['try_again_later', 'err.try_again_later']] as const)('shows %s calmly and clears the password', async (code, key) => {
+    a.exportMyData.mockRejectedValueOnce(new ApiError(code, 400));
+    await fill();
+    expect(await screen.findByText(en[key])).toBeTruthy();
     expect(Sharing.shareAsync).not.toHaveBeenCalled();
-    a.exportMyData.mockRejectedValueOnce(new ApiError('network', 0));
-    await fireEvent.press(screen.getByText(en['privacy.download']));
-    expect(await screen.findByText(en['err.network'])).toBeTruthy();
+    expect(screen.getByLabelText(en['delete.password']).props.value).toBe('');
   });
 });
 
@@ -133,7 +150,7 @@ describe('delete my account', () => {
     expect(router.push).toHaveBeenCalledWith('/(tabs)/calendar');
   });
 
-  it.each([['too_many_attempts', 'delete.err.too_many_attempts'], ['admin_account', 'delete.err.admin_account'], ['not_allowed', 'err.notAllowed'], ['try_again_later', 'err.try_again_later'], ['network', 'err.network']] as const)('maps %s', async (code, key) => {
+  it.each([['too_many_attempts', 'delete.err.too_many_attempts'], ['open_case', 'delete.err.open_case'], ['admin_account', 'delete.err.admin_account'], ['not_allowed', 'err.notAllowed'], ['try_again_later', 'err.try_again_later'], ['network', 'err.network']] as const)('maps %s', async (code, key) => {
     a.deleteAccount.mockRejectedValue(new ApiError(code, 400));
     await fill();
     expect(await screen.findByText(en[key])).toBeTruthy();

@@ -67,3 +67,40 @@ describe('scrubBreadcrumb', () => {
     expect(scrubBreadcrumb({ category: 'app.lifecycle', message: 'for a@b.co', data: { token: 't' } })).toEqual({ category: 'app.lifecycle', message: 'for [removed]', data: { token: '[removed]' } });
   });
 });
+
+describe('scrubEvent: the other fields', () => {
+  it('cleans the transaction, threads, fingerprint and dist, and the exception mechanism', () => {
+    const out = scrubEvent({
+      transaction: '/chat/3f2b8c1e-9a4d-4e0b-8c3f-1a2b3c4d5e6f',
+      threads: { values: [{ name: 'sara@example.com', stacktrace: { frames: [] } }] },
+      fingerprint: ['{{ default }}', 'user a@b.co'],
+      dist: 'build-for-a@b.co',
+      exception: { values: [{ type: 'Error', value: 'x', mechanism: { type: 'generic', data: { message: 'hello Sara', url: 'https://x.co/?e=a@b.co' } } }] },
+    });
+    const text = JSON.stringify(out);
+    for (const secret of ['3f2b8c1e', 'sara@example.com', 'a@b.co', 'hello Sara']) expect(text).not.toContain(secret);
+    expect(out.fingerprint?.[0]).toBe('{{ default }}');
+  });
+});
+
+describe('scrubEvent: errors from our API, Supabase and Postgres', () => {
+  const one = (type: string, value: string) => scrubEvent({ exception: { values: [{ type, value }] } }).exception?.values?.[0];
+  it('keeps the class and a bare code, drops any message text', () => {
+    expect(one('ApiError', 'wrong_password')).toEqual({ type: 'ApiError', value: 'wrong_password' });
+    expect(one('PostgrestError', '23505')).toEqual({ type: 'PostgrestError', value: '23505' });
+    expect(one('AuthApiError', 'Invalid login credentials for Sara Ahmed')?.value).toBe('[removed]');
+    expect(one('PostgrestError', 'duplicate key value violates unique constraint')?.value).toBe('[removed]');
+  });
+  it('drops "Failing row contains" text whatever the class is called', () => {
+    const v = one('Error', 'new row violates row-level security. Failing row contains (1, Sara Ahmed, I love dogs, 28.5)');
+    expect(JSON.stringify(v)).not.toMatch(/Sara|dogs|Failing/);
+    expect(v?.value).toBe('[removed]');
+  });
+  it('still cleans ordinary errors normally', () => {
+    expect(one('TypeError', 'undefined is not a function')?.value).toBe('undefined is not a function');
+  });
+  it('removes details, hint, message and code from serialised error objects in extra (the code is kept in the exception itself)', () => {
+    const out = scrubEvent({ extra: { error: { code: '23505', details: 'Key (email)=(a@b.co) exists', hint: 'x', message: 'bio text' } } });
+    expect(out.extra).toEqual({ error: { code: '[removed]', details: '[removed]', hint: '[removed]', message: '[removed]' } });
+  });
+});
