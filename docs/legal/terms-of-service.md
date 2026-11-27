@@ -43,7 +43,7 @@ You see these words again when you create your account, and you must accept them
 ## 5. Membership
 
 - To use PawsPal you pay a **registration fee** when you join and a **renewal fee** every six months. At the time of writing these are **75 EGP** and **25 EGP**. The amounts shown in the app when you pay are the amounts that apply, and we may change them for future payments with notice in the app. [FOUNDER AND LAWYER TO CONFIRM.]
-- You pay **outside the app** (for example by InstaPay or bank transfer) to the details shown in the app, then send us your payment reference or a screenshot. A person at PawsPal confirms the payment by hand. The screenshot is deleted as soon as we have decided.
+- You pay **outside the app** (for example by InstaPay or Vodafone Cash) to the details shown in the app, then send us your payment reference or a screenshot. A person at PawsPal confirms the payment by hand. The screenshot is deleted as soon as we have decided.
 - Your membership runs for six months from the date we confirm your payment (a renewal paid early adds six months to your current end date). We remind you in the app and by email 7 days before it ends.
 - If a renewal is not paid, your account is **paused**: you cannot search, message or book, and your profile is hidden, until we confirm your payment. Your data is not deleted because of a pause.
 - Membership fees pay for review, safety and support. [REFUND POLICY FOR MEMBERSHIP FEES: FOUNDER AND LAWYER TO DECIDE.]
