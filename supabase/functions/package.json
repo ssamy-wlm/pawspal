@@ -1,0 +1,8 @@
+{
+  "name": "pawspal-edge-functions-tests",
+  "private": true,
+  "description": "Test-only dependencies for the edge functions. The functions themselves run on Deno and import npm packages by exact version (see _shared/deno.ts).",
+  "devDependencies": {
+    "@simplewebauthn/server": "14.1.0"
+  }
+}

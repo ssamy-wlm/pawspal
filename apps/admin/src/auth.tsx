@@ -1,21 +1,32 @@
 'use client';
 import React from 'react';
-import { cleanCode, gateFor, IDLE_LIMIT_MS, isIdle } from './rules';
+import { createPasskey, endPasskeySession, getStatus, loginWithPasskey, makeRecoveryCodes, recoveryLogin } from './passkey-api';
+import { CHECK_FAILED, cleanCode, cleanName, describeError, gateFor, signOutEverywhere, type PasskeyStatus } from './passkey-rules';
+import { IDLE_LIMIT_MS, isIdle } from './rules';
 import { configured, supabase } from './supabase';
 
 export type AuthState =
   | { kind: 'loading' }
   | { kind: 'not_configured' }
-  | { kind: 'signed_out' }
-  | { kind: 'enroll'; factorId: string; qr: string; secret: string }
-  | { kind: 'ask_code'; factorId: string }
+  | { kind: 'signed_out'; notice?: string }
+  | { kind: 'passkey' }
+  | { kind: 'setup' }
+  | { kind: 'codes'; codes: string[]; email: string }
   | { kind: 'denied' }
-  | { kind: 'ready'; email: string };
+  | { kind: 'ready'; email: string; via: PasskeyStatus['via']; added: boolean };
 
+/** Every method answers null when it worked, or the one calm sentence to show. */
 interface Ctx {
   state: AuthState;
   signIn(email: string, password: string, captchaToken?: string | null): Promise<string | null>;
-  submitCode(code: string): Promise<string | null>;
+  signInWithPasskey(): Promise<string | null>;
+  signInWithRecoveryCode(code: string): Promise<string | null>;
+  /** First passkey: needs the one-time setup code. On success the new recovery codes are shown. */
+  setUpPasskey(name: string, setupCode: string): Promise<string | null>;
+  /** The recovery codes were saved: go on to the site. */
+  finishCodes(): Promise<void>;
+  /** A passkey was added from the Security page: the recovery banner can go. */
+  passkeyAdded(): void;
   signOut(): Promise<void>;
 }
 const AuthContext = React.createContext<Ctx | null>(null);
@@ -25,14 +36,17 @@ export const useAuth = () => {
   return c;
 };
 
+/** Ends the passkey session on the server, then the Supabase Auth session. Used by the button and by the idle timer. */
+export const endSession = () => signOutEverywhere(endPasskeySession, () => supabase().auth.signOut());
+
 /**
- * Signing in takes three things: the email and password (Supabase Auth), the six digit code from an authenticator app, and
- * a place in the admins list. The last two are checked by the database on every request, not only here: without the code
- * a session cannot read or change anything, even if someone edited this page.
+ * Signing in takes three things: the email and password (Supabase Auth), a passkey (or a recovery code), and a place in
+ * the admins list. The last two are checked by the database on every request, not only here: without the passkey step a
+ * session cannot read or change anything, even if someone edited this page.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<AuthState>({ kind: 'loading' });
-  const factor = React.useRef<string | null>(null);
+  const added = React.useRef(false);
 
   const resolve = React.useCallback(async () => {
     const sb = supabase();
@@ -40,23 +54,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const session = data.session;
     if (!session) { setState({ kind: 'signed_out' }); return; }
     const status = await sb.rpc('admin_status');
-    const gate = gateFor(status.error ? null : (status.data as string));
-    if (gate === 'show') { setState({ kind: 'ready', email: session.user.email ?? '' }); return; }
-    if (gate === 'deny') { await sb.auth.signOut(); setState({ kind: 'denied' }); return; }
-    const factors = await sb.auth.mfa.listFactors();
-    const verified = factors.data?.totp?.[0];                                   // verified authenticator-app factors only
-    if (verified) { factor.current = verified.id; setState({ kind: 'ask_code', factorId: verified.id }); return; }
-    for (const f of factors.data?.all ?? []) if (f.status === 'unverified') await sb.auth.mfa.unenroll({ factorId: f.id });
-    const enrolled = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'PawsPal admin' });
-    if (enrolled.error || !enrolled.data) { setState({ kind: 'signed_out' }); return; }
-    factor.current = enrolled.data.id;
-    setState({ kind: 'enroll', factorId: enrolled.data.id, qr: enrolled.data.totp.qr_code, secret: enrolled.data.totp.secret });
+    const gate = gateFor(status.error ? null : status.data);
+    if (gate === 'show') {
+      const via = await getStatus().then((s) => s.via, () => null);      // only for the recovery banner; the site works without it
+      setState({ kind: 'ready', email: session.user.email ?? '', via, added: added.current });
+      return;
+    }
+    if (gate === 'passkey') { setState({ kind: 'passkey' }); return; }
+    if (gate === 'setup') { setState({ kind: 'setup' }); return; }
+    await sb.auth.signOut();
+    setState(gate === 'deny' ? { kind: 'denied' } : { kind: 'signed_out', notice: CHECK_FAILED });
   }, []);
 
   React.useEffect(() => {
     if (!configured()) { setState({ kind: 'not_configured' }); return; }
     resolve().catch(() => setState({ kind: 'signed_out' }));
-    const { data } = supabase().auth.onAuthStateChange((event) => { if (event === 'SIGNED_OUT') setState((s) => (s.kind === 'denied' ? s : { kind: 'signed_out' })); });
+    const { data } = supabase().auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') { added.current = false; setState((s) => (s.kind === 'denied' || (s.kind === 'signed_out' && s.notice) ? s : { kind: 'signed_out' })); }
+    });
     return () => data.subscription.unsubscribe();
   }, [resolve]);
 
@@ -68,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const touch = () => { last = Date.now(); };
     const events = ['click', 'keydown', 'pointerdown'] as const;
     events.forEach((e) => window.addEventListener(e, touch));
-    const timer = window.setInterval(() => { if (isIdle(last, Date.now(), IDLE_LIMIT_MS)) { supabase().auth.signOut().catch(() => {}); } }, 30_000);
+    const timer = window.setInterval(() => { if (isIdle(last, Date.now(), IDLE_LIMIT_MS)) { endSession().catch(() => {}); } }, 30_000);
     return () => { events.forEach((e) => window.removeEventListener(e, touch)); window.clearInterval(timer); };
   }, [ready]);
 
@@ -77,20 +92,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async signIn(email, password, captchaToken) {
       const { error } = await supabase().auth.signInWithPassword({ email: email.trim(), password, options: captchaToken ? { captchaToken } : undefined });
       if (error) return 'The email or password is not right.';      // one answer for every failure, so it says nothing about who exists
+      added.current = false;
       await resolve();
       return null;
     },
-    async submitCode(raw) {
-      const code = cleanCode(raw);
-      if (!code) return 'Enter the six digit code.';
-      const id = factor.current;
-      if (!id) return 'Start again.';
-      const { error } = await supabase().auth.mfa.challengeAndVerify({ factorId: id, code });
-      if (error) return 'That code is not right. Wait for the next one and try again.';
-      await resolve();
-      return null;
+    async signInWithPasskey() {
+      try { await loginWithPasskey(); await resolve(); return null; } catch (e) { return describeError(e); }
     },
-    async signOut() { await supabase().auth.signOut(); setState({ kind: 'signed_out' }); },
+    async signInWithRecoveryCode(code) {
+      try { await recoveryLogin(cleanCode(code)); await resolve(); return null; } catch (e) { return describeError(e); }
+    },
+    async setUpPasskey(name, setupCode) {
+      try {
+        await createPasskey(cleanName(name), cleanCode(setupCode));
+        added.current = true;
+        let codes: string[];
+        try { codes = await makeRecoveryCodes(); } catch { await resolve(); return null; }      // the passkey exists: go on, and make codes on the Security page
+        const { data } = await supabase().auth.getSession();
+        setState({ kind: 'codes', codes, email: data.session?.user.email ?? '' });
+        return null;
+      } catch (e) { return describeError(e); }
+    },
+    async finishCodes() { await resolve(); },
+    passkeyAdded() { added.current = true; setState((s) => (s.kind === 'ready' ? { ...s, added: true } : s)); },
+    async signOut() { await endSession(); setState({ kind: 'signed_out' }); },
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

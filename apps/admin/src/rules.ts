@@ -64,19 +64,9 @@ export const REPORT_REASONS: Record<string, string> = {
   pet_mismatch: 'Pet not as described', duplicate_account: 'Fake or duplicate account', safety: 'Felt unsafe', other: 'Something else',
 };
 
-/** What the dashboard shows after sign-in, from the database's answer. */
-export type Gate = 'show' | 'ask_code' | 'deny';
-export const gateFor = (status: string | null): Gate => (status === 'admin' ? 'show' : status === 'needs_mfa' ? 'ask_code' : 'deny');
-
 /** Sign out after this long without a click or key press. */
 export const IDLE_LIMIT_MS = 30 * 60 * 1000;
 export const isIdle = (lastActive: number, now: number, limit = IDLE_LIMIT_MS) => now - lastActive >= limit;
-
-/** A six digit authenticator code, spaces allowed. Null when it is not one. */
-export function cleanCode(input: string): string | null {
-  const d = input.replace(/\s+/g, '');
-  return /^\d{6}$/.test(d) ? d : null;
-}
 
 export const looksLikeId = (q: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q.trim());
 

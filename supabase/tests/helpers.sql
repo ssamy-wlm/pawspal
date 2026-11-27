@@ -77,22 +77,32 @@ begin
   raise exception 'ASSERT FAILED (should have been refused): %', p_msg;
 end $$;
 
--- Make a person an admin (they must exist as a user first). Admin rights only apply to a session with aal2 (see as_aal).
+-- Make a person an admin (they must exist as a user first). Admin rights only apply to a session that passed a passkey (see as_aal).
 create or replace function pg_temp.make_admin(p_id uuid) returns void language plpgsql as $$
 begin insert into public.admins (user_id) values (p_id) on conflict do nothing; end $$;
 
--- Run a statement as a signed-in person whose session has the given authenticator level ('aal1', 'aal2' or null = none).
+-- Run a statement as a signed-in person whose Supabase session is in the given state. Since migration 0014 the admin gate is
+-- the passkey, not the authenticator code, but the old names stay so every admin test keeps its meaning:
+--   'aal2' = a verified passkey session: the claim session_id is set AND a live row exists in private.admin_passkey_sessions
+--            (the row is removed again afterwards);
+--   'aal1' = a signed-in session (session_id claim) that never passed a passkey: no row;
+--   null   = no claims at all.
 create or replace function pg_temp.as_aal(p_aal text, p_uid uuid, p_sql text) returns text language plpgsql as $$
-declare r text;
+declare r text; v_sid uuid := gen_random_uuid();
 begin
-  perform set_config('request.jwt.claims', case when p_aal is null then '' else json_build_object('aal', p_aal)::text end, true);
+  if p_aal = 'aal2' then
+    insert into private.admin_passkey_sessions (session_id, user_id, via, expires_at) values (v_sid, p_uid, 'passkey', now() + interval '8 hours');
+  end if;
+  perform set_config('request.jwt.claims', case when p_aal is null then '' else json_build_object('aal', p_aal, 'session_id', v_sid)::text end, true);
   begin
     r := pg_temp.as_role('authenticated', p_uid, p_sql);
   exception when others then
     perform set_config('request.jwt.claims', '', true);
+    delete from private.admin_passkey_sessions where session_id = v_sid;
     raise;
   end;
   perform set_config('request.jwt.claims', '', true);
+  delete from private.admin_passkey_sessions where session_id = v_sid;
   return r;
 end $$;
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { confirmLabel, nice, actionArgs, actionsFor, cleanCode, gateFor, IDLE_LIMIT_MS, isIdle, looksLikeId, validateAction, type ActionForm } from './rules.ts';
+import { confirmLabel, nice, actionArgs, actionsFor, IDLE_LIMIT_MS, isIdle, looksLikeId, validateAction, type ActionForm } from './rules.ts';
 
 const form = (over: Partial<ActionForm> = {}): ActionForm => ({ action: 'warning', rule: 'Real photos only', message: 'Please use real photos', length: '3', checklist: '', ...over });
 
@@ -35,21 +35,9 @@ test('only a suspension carries a length, and an approval sends no rule', () => 
   assert.equal(ap.p_rule, null); assert.equal(ap.p_message, null);
 });
 
-test('sign-in decisions follow the database answer', () => {
-  assert.equal(gateFor('admin'), 'show');
-  assert.equal(gateFor('needs_mfa'), 'ask_code');
-  assert.equal(gateFor('not_admin'), 'deny');
-  assert.equal(gateFor(null), 'deny');
-  assert.equal(gateFor('anything else'), 'deny');
-});
-
-test('idle sign-out and code cleaning', () => {
+test('idle sign-out and ids', () => {
   assert.equal(isIdle(0, IDLE_LIMIT_MS - 1), false);
   assert.equal(isIdle(0, IDLE_LIMIT_MS), true);
-  assert.equal(cleanCode('123 456'), '123456');
-  assert.equal(cleanCode('12345'), null);
-  assert.equal(cleanCode('12345a'), null);
-  assert.equal(cleanCode('1234567'), null);
   assert.equal(looksLikeId('6f1c2a40-1111-4222-8333-444455556666'), true);
   assert.equal(looksLikeId('Mona'), false);
 });

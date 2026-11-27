@@ -1,4 +1,4 @@
--- Phase 8 assertions (admin sign-in rule, adding admins, actions, reports, appeals, photos, audit log, suspension lifting).
+-- Phase 8 assertions (admin sign-in rule: password then passkey, see passkey_assertions.sql for the passkey machinery; adding admins, actions, reports, appeals, photos, audit log, suspension lifting).
 -- Run AFTER the other assertion files on the same database, with ON_ERROR_STOP=1.
 \set ON_ERROR_STOP 1
 \i supabase/tests/helpers.sql
@@ -14,25 +14,12 @@ select pg_temp.activate('aaaaaaa1-0000-0000-0000-000000000003', 'Vik');
 update public.profiles set first_name = 'Wes', status = 'pending_review' where id = 'aaaaaaa2-0000-0000-0000-000000000004';
 insert into public.verification_requests (user_id, face_path, id_path) values ('aaaaaaa2-0000-0000-0000-000000000004', 'aaaaaaa2-0000-0000-0000-000000000004/face.jpg', 'aaaaaaa2-0000-0000-0000-000000000004/id.jpg');
 create temp table t_ids (k text primary key, v text);
--- Run a statement as a signed-in person, with or without the authenticator code (aal2).
-create or replace function pg_temp.as_admin(p_aal text, p_sql text) returns text language plpgsql as $$
-declare r text;
-begin
-  perform set_config('request.jwt.claims', case when p_aal is null then '' else json_build_object('aal', p_aal)::text end, true);
-  r := pg_temp.as_role('authenticated', 'a8a8a8a8-0000-0000-0000-000000000001', p_sql);
-  perform set_config('request.jwt.claims', '', true);
-  return r;
-end $$;
-create or replace function pg_temp.fails_admin(p_aal text, p_sql text, p_msg text) returns void language plpgsql as $$
-begin
-  begin
-    perform pg_temp.as_admin(p_aal, p_sql);
-  exception when others then
-    perform set_config('request.jwt.claims', '', true);
-    return;
-  end;
-  raise exception 'ASSERT FAILED (should have been refused): %', p_msg;
-end $$;
+-- Run a statement as the admin Boss: 'aal2' = a verified passkey session, 'aal1' = signed in but no passkey, null = no claims
+-- (see as_aal in helpers.sql).
+create or replace function pg_temp.as_admin(p_aal text, p_sql text) returns text language sql as $$
+  select pg_temp.as_aal(p_aal, 'a8a8a8a8-0000-0000-0000-000000000001', p_sql) $$;
+create or replace function pg_temp.fails_admin(p_aal text, p_sql text, p_msg text) returns void language sql as $$
+  select pg_temp.fails_aal(p_aal, 'a8a8a8a8-0000-0000-0000-000000000001', p_sql, p_msg) $$;
 
 \echo '--- D1 adding the first admin'
 delete from private.admin_invites;
@@ -113,9 +100,9 @@ select pg_temp.check(not exists (select 1 from public.admins a join auth.users u
 select pg_temp.check(not exists (select 1 from private.admin_invites where email = 'mixed@example.com'), 'revoking left the invite');
 
 \echo '--- D3 admin rights need the authenticator code'
-select pg_temp.check(pg_temp.as_admin(null, 'select public.admin_status()') = 'needs_mfa', 'an admin without the code was not told to use it');
-select pg_temp.check(pg_temp.as_admin('aal1', 'select public.admin_status()') = 'needs_mfa', 'aal1 counted as admin');
-select pg_temp.check(pg_temp.as_admin('aal2', 'select public.admin_status()') = 'admin', 'aal2 did not count as admin');
+select pg_temp.check(pg_temp.as_admin(null, 'select public.admin_status()') = 'needs_setup', 'an admin with no passkey was not told to set one up');
+select pg_temp.check(pg_temp.as_admin('aal1', 'select public.admin_status()') = 'needs_setup', 'a session with no passkey counted as admin');
+select pg_temp.check(pg_temp.as_admin('aal2', 'select public.admin_status()') = 'admin', 'a verified passkey session did not count as admin');
 select pg_temp.check(pg_temp.as_role('authenticated', 'a9a9a9a9-0000-0000-0000-000000000002', 'select public.admin_status()') = 'not_admin', 'a normal user was told they are an admin');
 select pg_temp.fails_as('anon', null, 'select public.admin_status()', 'anon called admin_status');
 select pg_temp.fails_admin(null, 'select public.admin_overview()', 'the overview worked without the code');

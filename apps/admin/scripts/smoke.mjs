@@ -17,6 +17,11 @@ const checks = [
   ['logo file shipped', existsSync('public/pawspal-logo.svg')],
   ['frames refused', config.includes("frame-ancestors 'none'") && config.includes('X-Frame-Options')],
   ['scripts only from this site', config.includes("script-src 'self'") && !/script-src[^`"]*https?:\/\/(?!challenges\.cloudflare\.com)/.test(config)],
+  // Passkeys need no extra permission: WebAuthn is allowed on the page itself, and the function sits on the Supabase origin.
+  ['passkeys not blocked', !/publickey-credentials/i.test(config)],
+  ['the function origin is allowed to be called', /connect-src 'self' \$\{supabase\}/.test(config)],
+  ['the passkey function is called on the Supabase origin', readFileSync('src/passkey-api.ts', 'utf8').includes('/functions/v1/admin-passkey')],
+  ['no code screen left', !/authenticator|totp|\bmfa\b/i.test(readFileSync('src/shell.tsx', 'utf8') + readFileSync('src/auth.tsx', 'utf8'))],
   ['no service key in the site', !/service_role|SERVICE_ROLE/i.test(readFileSync('src/supabase.ts', 'utf8') + readFileSync('src/data.ts', 'utf8'))],
 ];
 const failed = checks.filter(([, ok]) => !ok).map(([name]) => name);
