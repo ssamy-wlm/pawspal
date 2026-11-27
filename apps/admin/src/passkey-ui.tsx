@@ -36,8 +36,15 @@ function SessionCode() {
 
 /** Shown after a sign-in with email and password when the account already has a passkey. */
 export function PasskeyScreen() {
-  const { signInWithPasskey, signInWithRecoveryCode, signOut } = useAuth();
+  const { signInWithPasskey, signInWithRecoveryCode, signOut, claimAutoPasskey } = useAuth();
   const a = useAction();
+  // Right after the password step the prompt starts by itself, once per sign-in: the guard lives in the auth provider, so
+  // a second effect run, a re-render or coming back from the recovery or setup code never starts it again, and a closed or
+  // failed prompt is not repeated. The button below is always there; it is the only way to try again.
+  React.useEffect(() => {
+    if (claimAutoPasskey()) a.run(() => signInWithPasskey(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [recovery, setRecovery] = React.useState(false);
   const [setup, setSetup] = React.useState(false);
   const [code, setCode] = React.useState('');

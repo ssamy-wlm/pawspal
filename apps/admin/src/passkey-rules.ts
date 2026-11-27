@@ -61,6 +61,31 @@ export function describeError(e: unknown): string {
   return ERROR_TEXT[browserErrorKind(e)];
 }
 
+/**
+ * The answer to an automatic passkey prompt (one the person did not press a button for). A closed or refused prompt is not
+ * an error there: Safari and some other browsers only start the prompt after a tap, and a person may simply have waved it
+ * away. Either way the button below stays, so the hint is one calm line. Real failures keep their own sentence.
+ */
+export const AUTO_PASSKEY_HINT = 'Press "Use your passkey" when you are ready.';
+export function describeAutoError(e: unknown): string {
+  const text = describeError(e);
+  return text === ERROR_TEXT.cancelled ? AUTO_PASSKEY_HINT : text;
+}
+
+/**
+ * Lets the automatic passkey prompt start once per sign-in. `claim()` is true the first time only, so a second effect run
+ * (React development double effects), a re-render, a remount or coming back from "Use a recovery code" or "I have a setup
+ * code" never starts it again, and neither does a cancelled or failed try. `reset()` is called at a new password sign-in
+ * and at sign-out.
+ */
+export function createOncePerSignIn() {
+  let used = false;
+  return {
+    claim(): boolean { if (used) return false; used = true; return true; },
+    reset(): void { used = false; },
+  };
+}
+
 // ---- Codes and names ----
 
 /** A recovery or setup code as typed: spaces and line breaks (also from pasting) are dropped, nothing else is changed. */

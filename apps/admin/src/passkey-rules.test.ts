@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
-  browserErrorKind, canRemovePasskey, cleanCode, cleanName, codesLeftText, describeError, ERROR_TEXT, functionErrorKind, gateFor, needsNewPasskey,
+  AUTO_PASSKEY_HINT, browserErrorKind, canRemovePasskey, createOncePerSignIn, describeAutoError, cleanCode, cleanName, codesLeftText, describeError, ERROR_TEXT, functionErrorKind, gateFor, needsNewPasskey,
   passkeyHint, PASSKEY_NAME_MAX, recoveryCodesText, sessionCodeFromToken, signOutEverywhere, validateCode, validatePasskeyName, withStepUp,
 } from './passkey-rules.ts';
 
@@ -164,4 +164,40 @@ test('the session code is the first 8 characters of the session id, upper case, 
   assert.equal(sessionCodeFromToken(token({ sub: 'x' })), null);
   assert.equal(sessionCodeFromToken(token(null)), null);
   for (const bad of ['garbage', '', 'a.b.c', 'a.!!!.c', 'a..c', null, undefined, 7, {}, 'a.' + 'A'.repeat(5) + '.c']) assert.equal(sessionCodeFromToken(bad), null, String(bad));
+});
+
+test('the automatic passkey prompt starts once per sign-in, and again only after a new sign-in', () => {
+  const g = createOncePerSignIn();
+  assert.equal(g.claim(), true);
+  for (let i = 0; i < 5; i++) assert.equal(g.claim(), false, 'a re-render, a double effect or a remount does not start it again');
+  g.reset();                                  // a new password sign-in, or sign-out
+  assert.equal(g.claim(), true);
+  assert.equal(g.claim(), false);
+});
+
+test('a closed or refused automatic prompt is a calm hint, a real failure keeps its sentence', () => {
+  assert.equal(describeAutoError({ kind: 'cancelled' }), AUTO_PASSKEY_HINT);
+  assert.equal(describeAutoError({ name: 'NotAllowedError' }), AUTO_PASSKEY_HINT);      // Safari without a tap, or a closed prompt
+  assert.equal(describeAutoError({ name: 'AbortError' }), AUTO_PASSKEY_HINT);
+  assert.equal(describeAutoError({ kind: 'not_allowed' }), ERROR_TEXT.not_allowed);
+  assert.equal(describeAutoError({ kind: 'too_many_attempts' }), ERROR_TEXT.too_many_attempts);
+  assert.equal(describeAutoError({ kind: 'unsupported' }), ERROR_TEXT.unsupported);
+  assert.equal(describeAutoError(new Error('boom')), ERROR_TEXT.try_again_later);
+  assert.ok(!AUTO_PASSKEY_HINT.includes('!') && AUTO_PASSKEY_HINT.includes('Use your passkey'));
+});
+
+test('the prompt starts by itself only on the passkey screen, through the once-per-sign-in guard, and the button stays', () => {
+  const ui = readFileSync(new URL('./passkey-ui.tsx', import.meta.url), 'utf8');
+  const screen = ui.slice(ui.indexOf('export function PasskeyScreen'), ui.indexOf('export function SetupScreen'));
+  assert.match(screen, /if \(claimAutoPasskey\(\)\) a\.run\(\(\) => signInWithPasskey\(true\)\)/);
+  assert.match(screen, /\}, \[\]\);/, 'the effect runs on mount only, so returning from the recovery or setup views never re-runs it');
+  assert.match(screen, />\{a\.busy && !recovery \? 'Waiting for your passkey' : 'Use your passkey'\}</, 'the visible button is the fallback');
+  assert.equal((ui.match(/claimAutoPasskey/g) ?? []).length, 2, 'only the passkey screen asks (not the setup screen or the step-up dialog)');
+  assert.doesNotMatch(ui.slice(ui.indexOf('export function StepUpHost')), /signInWithPasskey|claimAutoPasskey/);
+  const auth = readFileSync(new URL('./auth.tsx', import.meta.url), 'utf8');
+  assert.match(auth, /auto\.current\.reset\(\);      \/\/ a new sign-in/);
+  assert.match(auth, /claimAutoPasskey: \(\) => auto\.current\.claim\(\)/);
+  // the timeouts are untouched
+  const rules = readFileSync(new URL('./rules.ts', import.meta.url), 'utf8');
+  assert.match(rules, /IDLE_LIMIT_MS\s*=\s*30 \* 60/);
 });

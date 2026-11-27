@@ -7,6 +7,7 @@ import { Turnstile, turnstileSiteKey } from './turnstile';
 import { CodesScreen, PasskeyScreen, RecoveryBanner, SetupScreen, StepUpHost } from './passkey-ui';
 import { Btn, C, Card, Err, Field, inputStyle } from './ui';
 import { needsNewPasskey } from './passkey-rules';
+import { forgetEmail, readRememberedEmail, rememberEmail } from './remember-email';
 import tokens from './tokens.json';
 
 const NAV: [string, string][] = [
@@ -29,18 +30,38 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 function SignIn({ notice }: { notice?: string }) {
   const { signIn } = useAuth();
-  const [email, setEmail] = React.useState('');
+  const [remembered, setRemembered] = React.useState(() => readRememberedEmail());      // only the address, kept on this device
+  const [email, setEmail] = React.useState(remembered);
   const [password, setPassword] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(notice ?? null);
   const [token, setToken] = React.useState<string | null>(null);
   const [attempt, setAttempt] = React.useState(0);
   const needsToken = turnstileSiteKey() !== '';
+  const emailRef = React.useRef<HTMLInputElement>(null);
+  const passwordRef = React.useRef<HTMLInputElement>(null);
+  // With the address filled in, the cursor goes to the password.
+  React.useEffect(() => { if (remembered) passwordRef.current?.focus(); }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true); setError(null);
+    signIn(email, password, token).then((m) => {
+      if (m === null) rememberEmail(email); else setAttempt((n) => n + 1);
+      setError(m); setBusy(false);
+    }, () => { setError('Could not sign in. Try again.'); setBusy(false); setAttempt((n) => n + 1); });
+  };
   return (
     <Card>
-      <form onSubmit={(e) => { e.preventDefault(); setBusy(true); setError(null); signIn(email, password, token).then((m) => { setError(m); setBusy(false); if (m) setAttempt((n) => n + 1); }, () => { setError('Could not sign in. Try again.'); setBusy(false); setAttempt((n) => n + 1); }); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <Field label="Email"><input style={inputStyle} type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
-        <Field label="Password"><input style={inputStyle} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Field label="Email"><input ref={emailRef} style={inputStyle} type="email" name="email" autoComplete="username" inputMode="email" autoCapitalize="none" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
+        {remembered ? (
+          <button type="button" onClick={() => { forgetEmail(); setRemembered(''); setEmail(''); setPassword(''); emailRef.current?.focus(); }}
+            style={{ alignSelf: 'flex-start', minHeight: 44, padding: '0 4px', background: 'none', border: 0, color: C.navy, textDecoration: 'underline', fontSize: tokens.font.size.small, fontFamily: 'inherit', cursor: 'pointer' }}>
+            Not you? Use another email
+          </button>
+        ) : null}
+        <Field label="Password"><input ref={passwordRef} style={inputStyle} type="password" name="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
         <Turnstile onToken={setToken} resetKey={attempt} />
         <Err>{error}</Err>
         <Btn kind="accent" type="submit" disabled={busy || !email || !password || (needsToken && !token)}>Sign in</Btn>
