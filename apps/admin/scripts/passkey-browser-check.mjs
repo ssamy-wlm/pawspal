@@ -38,7 +38,7 @@ async function fn(body) {
     return ok({ passkeys: db.passkeys.map((p) => ({ id: p.id, name: p.name, created_at: p.created_at, last_used_at: p.last_used_at, device_type: p.deviceType, backed_up: p.backedUp })), verified: db.verified, via: db.verified ? db.via : null, recovery_codes_left: db.codes.length });
   }
   if (action === 'register_options') {
-    if (!db.verified && body.setup_code !== SETUP_CODE) return fail('not_allowed');
+    if (!db.verified && body.setup_code !== SETUP_CODE) return fail('not_allowed');   // a valid setup code also works when passkeys exist
     const options = await generateRegistrationOptions({
       rpName: 'PawsPal Admin', rpID: RP_ID, userName: EMAIL, userID: new TextEncoder().encode(db.userId),
       excludeCredentials: db.passkeys.map((p) => ({ id: p.credential.id, transports: p.credential.transports })),
@@ -135,6 +135,7 @@ async function startSite() {
 
 // ---------------------------------------------------------------- the browser
 const steps = [];
+let lastPage = null;
 const step = (name) => { steps.push(name); console.log(`ok  ${name}`); };
 
 async function main() {
@@ -143,13 +144,14 @@ async function main() {
   const browser = await chromium.launch();
   const context = await browser.newContext();
   const page = await context.newPage();
+  lastPage = page;
   const problems = [];
   page.on('console', (m) => { if (/Content Security Policy|Refused to/i.test(m.text())) problems.push(m.text()); });
   page.on('pageerror', (e) => problems.push(String(e)));
 
   const cdp = await context.newCDPSession(page);
   await cdp.send('WebAuthn.enable');
-  const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+  let { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
     options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
   });
   const heading = (name) => page.getByRole('heading', { name });
@@ -207,7 +209,7 @@ async function main() {
   await page.getByText('The old codes stop working at once.').waitFor();
   await button('Yes, make new codes').click();
   await heading('Save your recovery codes').waitFor();
-  const newCodes = await page.getByRole('list', { name: 'Recovery codes' }).getByRole('listitem').allTextContents();
+  let newCodes = await page.getByRole('list', { name: 'Recovery codes' }).getByRole('listitem').allTextContents();
   assert.equal(newCodes.length, 10);
   assert.equal(newCodes.filter((c) => codes.includes(c)).length, 0, 'the new codes are all new');
   assert.ok(await button('Done').isDisabled());
@@ -224,6 +226,24 @@ async function main() {
   await signIn();
   await heading('Use your passkey').waitFor();
   step('sign in with the password leads to "Use your passkey" (admin_status = needs_passkey)');
+  // A second device with a setup code, from the passkey screen ("I have a setup code").
+  await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
+  ({ authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } }));
+  await button('I have a setup code').click();
+  await heading('Set up your passkey').waitFor();
+  await page.getByLabel('Setup code').fill(SETUP_CODE);
+  await page.getByLabel('Name of this device').fill('Second device');
+  await button('Create passkey').click();
+  await heading('Save your recovery codes').waitFor();
+  newCodes = await page.getByRole('list', { name: 'Recovery codes' }).getByRole('listitem').allTextContents();
+  await page.getByLabel('I saved these codes somewhere safe').check();
+  await button('Continue').click();
+  await page.getByRole('navigation', { name: 'Main' }).waitFor();
+  assert.equal(db.passkeys.length, 2);
+  step('"I have a setup code" on the passkey screen adds a second passkey on an account that already has one');
+  await button('Sign out').click();
+  await signIn();
+  await heading('Use your passkey').waitFor();
   await cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: false });
   await button('Use your passkey').click();
   await page.getByRole('alert').filter({ hasText: 'passkey prompt was closed' }).waitFor();
@@ -232,7 +252,7 @@ async function main() {
   await button('Use your passkey').click();
   await page.getByRole('navigation', { name: 'Main' }).waitFor();       // the site opens on the page the person was on (Security)
   assert.equal(db.verified, true);
-  assert.ok(db.passkeys[0].last_used_at, 'the function saw the login');
+  assert.ok(db.passkeys.some((x) => x.last_used_at), 'the function saw the login');
   step('the passkey login (login_options, startAuthentication, login_verify) opens the site');
 
   // 6. a recovery code, then the banner
@@ -265,5 +285,5 @@ async function main() {
 
 main().then(
   () => { stop(); console.log(`\nPasskey browser check passed (${steps.length} steps).`); process.exit(0); },
-  (e) => { console.error('\nPasskey browser check FAILED:', e); stop(); process.exit(1); },
+  async (e) => { console.error('\nPasskey browser check FAILED:', e); console.error('The page showed:', await lastPage?.locator('body').innerText().catch(() => '(nothing)')); stop(); process.exit(1); },
 );

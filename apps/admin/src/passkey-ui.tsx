@@ -26,7 +26,9 @@ export function PasskeyScreen() {
   const { signInWithPasskey, signInWithRecoveryCode, signOut } = useAuth();
   const a = useAction();
   const [recovery, setRecovery] = React.useState(false);
+  const [setup, setSetup] = React.useState(false);
   const [code, setCode] = React.useState('');
+  if (setup) return <SetupScreen onBack={() => setSetup(false)} />;
   return (
     <Card>
       <h2 style={{ margin: 0, fontSize: tokens.font.size.title, color: C.text }}>Use your passkey</h2>
@@ -42,6 +44,7 @@ export function PasskeyScreen() {
       <Err>{a.error}</Err>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {recovery ? null : <Btn kind="secondary" disabled={a.busy} onClick={() => { setRecovery(true); a.setError(null); }}>Use a recovery code</Btn>}
+        <Btn kind="secondary" disabled={a.busy} onClick={() => { setSetup(true); a.setError(null); }}>I have a setup code</Btn>
         <Btn kind="secondary" disabled={a.busy} onClick={() => { signOut().catch(() => {}); }}>Sign out</Btn>
       </div>
     </Card>
@@ -49,7 +52,7 @@ export function PasskeyScreen() {
 }
 
 /** The first passkey: the one-time setup code from the SQL Editor, then the device prompt. */
-export function SetupScreen() {
+export function SetupScreen({ onBack }: { onBack?: () => void } = {}) {
   const { setUpPasskey, signOut } = useAuth();
   const a = useAction();
   const [setupCode, setSetupCode] = React.useState('');
@@ -70,7 +73,10 @@ export function SetupScreen() {
         <Err>{a.error}</Err>
         <Btn big full kind="accent" type="submit" disabled={a.busy || setupCode.trim() === ''}>{a.busy ? 'Waiting for your device' : 'Create passkey'}</Btn>
       </form>
-      <Btn kind="secondary" disabled={a.busy} onClick={() => { signOut().catch(() => {}); }}>Sign out</Btn>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {onBack ? <Btn kind="secondary" disabled={a.busy} onClick={onBack}>Back</Btn> : null}
+        <Btn kind="secondary" disabled={a.busy} onClick={() => { signOut().catch(() => {}); }}>Sign out</Btn>
+      </div>
     </Card>
   );
 }

@@ -4,6 +4,7 @@ import type { Env } from './config.ts';
 import type { Rpc } from './http.ts';
 import type { StorageOps } from './handlers/process-upload.ts';
 import type { SignedUrlOps } from './handlers/handover-photo-url.ts';
+import { sessionIdFromJwt } from './handlers/admin-passkey.ts';
 
 declare const Deno: { env: { get(name: string): string | undefined } };
 
@@ -28,6 +29,17 @@ export function authUserOf(client: ReturnType<typeof adminClient>) {
   return async (token: string) => {
     const { data, error } = await client.auth.getUser(token);
     return error || !data.user ? null : { id: data.user.id };
+  };
+}
+
+/** Like authUserOf, plus the Supabase session id (JWT claim session_id). The auth server has already accepted the token, so
+ *  reading the claim from its payload is safe. A token without a session id is refused. */
+export function adminAuthUserOf(client: ReturnType<typeof adminClient>) {
+  return async (token: string) => {
+    const { data, error } = await client.auth.getUser(token);
+    if (error || !data.user) return null;
+    const sessionId = sessionIdFromJwt(token);
+    return sessionId ? { id: data.user.id, sessionId } : null;
   };
 }
 

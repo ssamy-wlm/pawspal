@@ -277,7 +277,8 @@ max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
 [auth.mfa.totp]
-# Admins sign in with an authenticator-app code (the dashboard and is_admin() both require it).
+# No longer required for admins: since migration 0014 the admin second step is a passkey checked by the edge function
+# `admin-passkey` and enforced by public.is_admin() (see docs/ARCHITECTURE.md). The settings are left as they were.
 enroll_enabled = true
 verify_enabled = true
 
@@ -398,3 +399,6 @@ verify_jwt = true
 
 [functions.emergency]
 verify_jwt = true
+
+[functions.admin-passkey]
+verify_jwt = true       # the admin site calls it with the person's own access token (needs ADMIN_RP_ID, ADMIN_ORIGIN, ADMIN_RP_NAME)

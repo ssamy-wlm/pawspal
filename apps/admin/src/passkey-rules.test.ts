@@ -112,3 +112,10 @@ test('no authenticator-app, totp or mfa wording is left in the site code', () =>
   assert.ok(files.length > 10);
   for (const f of files) assert.doesNotMatch(readFileSync(f, 'utf8'), /totp|mfa|authenticator|aal2|aal1/i, f);
 });
+
+test('the passkey screen offers the recovery code and the setup code ways in', () => {
+  const ui = readFileSync(new URL('./passkey-ui.tsx', import.meta.url), 'utf8');
+  assert.match(ui, /Use a recovery code/);
+  assert.match(ui, /I have a setup code/);
+  assert.match(ui, /if \(setup\) return <SetupScreen onBack=/);
+});
