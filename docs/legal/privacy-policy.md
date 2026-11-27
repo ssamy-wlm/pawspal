@@ -28,7 +28,7 @@ Everyone who uses the PawsPal app or website. You must be **18 or older** to use
 | Availability, terms and prices | Listings and the map of availability | You |
 | Messages | In-app chat between users | You |
 | Bookings and the terms you agreed | Running bookings | You |
-| Membership payments: **payment reference and screenshot** | A person at PawsPal confirms your registration or renewal payment. **The screenshot is deleted as soon as we have decided.** We keep the amount, the date and the reference. Payments themselves happen outside the app, through InstaPay or your bank, which we do not control | You |
+| Membership payments: **payment reference and screenshot** | A person at PawsPal confirms your registration or renewal payment. **The screenshot is deleted as soon as we have decided.** We keep the amount, the date and the reference. Payments themselves happen outside the app, through InstaPay or Vodafone Cash, which we do not control | You |
 | Payments between users | **We do not see or store them.** Owners and hosts pay each other directly | |
 | Reviews, reports and moderation records | Trust and safety | You, other users and our moderators |
 | Handover photos | Proof of the pet's condition at drop-off and pick-up | You and the other party |
