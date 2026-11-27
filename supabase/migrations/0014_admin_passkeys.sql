@@ -9,9 +9,8 @@
 --     private.admin_passkey_sessions; public.is_admin() is true only for such a session, so the database enforces it;
 --   * nothing in schema private is reachable from the app; the helpers the edge function needs are service-role only;
 --   * break-glass for the founder (SQL editor only): private.new_admin_setup_code, private.reset_admin_passkeys, private.list_admins.
--- Lock-outs: 5 failures per hour for one Supabase session (passkey proofs, wrong recovery codes, wrong setup codes); wrong recovery
--- and setup codes also count per user (100 an hour), passkey failures never do (so a password holder cannot lock out other
--- sessions by spamming login). A session that is already verified is only held back by its own failures. The founder's break-glass functions clear a lock-out.
+-- Lock-outs: 5 failures per hour for one Supabase session, 20 for one user; a session that is already verified is only held back by
+-- its own failures. The founder's break-glass functions clear a lock-out.
 -- Nothing here stores a code, a challenge or credential data in a log. Codes are kept only as sha256 hashes.
 
 -- ---------------------------------------------------------------- tables (all in private: RLS on, no policies, no grants)
@@ -97,22 +96,22 @@ create index if not exists security_events_user_kind_idx on public.security_even
 -- ---------------------------------------------------------------- the rule the whole admin site rests on
 -- Admin = a row in admins AND the current Supabase session (claim session_id) is a session that still exists (auth.sessions, so
 -- signing out or revoking it ends admin rights at once) AND has a live passkey-session row for the same user.
--- A missing or malformed claim (also a garbage sub, a scalar or an array) is simply "not admin"; this function never raises.
--- (pg_input_is_valid needs PostgreSQL 16 or newer; the project runs 17, see supabase/config.toml.)
+-- A missing or malformed claim (also a garbage sub) is simply "not admin"; this function never raises.
 create or replace function public.is_admin()
 returns boolean language plpgsql stable security definer set search_path = public as $$
-declare v_claims text := nullif(current_setting('request.jwt.claims', true), ''); v_c jsonb; v_sub text; v_sid text;
+declare v_sid uuid; v_uid uuid;
 begin
-  -- No exception block (no subtransaction): every value is validated first, so garbage is simply "not admin".
-  if v_claims is null or not pg_input_is_valid(v_claims, 'jsonb') then return false; end if;
-  v_c := v_claims::jsonb;
-  v_sub := coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''), v_c ->> 'sub');
-  v_sid := v_c ->> 'session_id';
-  if v_sub is null or v_sid is null or not pg_input_is_valid(v_sub, 'uuid') or not pg_input_is_valid(v_sid, 'uuid') then return false; end if;
-  return exists (select 1 from public.admins a where a.user_id = v_sub::uuid)
+  begin
+    v_uid := auth.uid();
+    v_sid := (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'session_id')::uuid;
+  exception when others then
+    return false;
+  end;
+  if v_uid is null or v_sid is null then return false; end if;
+  return exists (select 1 from public.admins a where a.user_id = v_uid)
      and exists (select 1 from private.admin_passkey_sessions s
-                  where s.session_id = v_sid::uuid and s.user_id = v_sub::uuid and s.expires_at > now())
-     and exists (select 1 from auth.sessions x where x.id = v_sid::uuid and x.user_id = v_sub::uuid);
+                  where s.session_id = v_sid and s.user_id = v_uid and s.expires_at > now())
+     and exists (select 1 from auth.sessions x where x.id = v_sid and x.user_id = v_uid);
 end $$;
 
 -- What the dashboard needs after the password step: 'not_admin', 'needs_setup' (an admin with no passkey yet: needs a setup
@@ -166,9 +165,8 @@ begin
   perform private.pk_sec(p_user, 'admin_' || p_kind);
 end $$;
 
--- Locked out? One session: 5 failures of any kind in an hour. One user (all sessions): 100 wrong recovery or setup codes. Passkey
--- failures ('login_failed') never count per user, so someone with only the password cannot lock out the other sessions by spamming
--- login. A session that is already verified is held back only by its own failures.
+-- Locked out? One session: 5 failures in an hour. One user (all sessions): 20. A session that is already verified is held
+-- back only by its own failures, so somebody else's wrong guesses cannot lock a signed-in admin out of their own session.
 create or replace function private.pk_locked(p_user uuid, p_session uuid)
 returns boolean language plpgsql stable security definer set search_path = public as $$
 declare v_verified boolean := false;
@@ -179,8 +177,7 @@ begin
     v_verified := exists (select 1 from private.admin_passkey_sessions where session_id = p_session and user_id = p_user and expires_at > now());
   end if;
   if v_verified then return false; end if;
-  return (select count(*) from private.admin_passkey_events
-           where user_id = p_user and kind in ('recovery_failed', 'setup_code_failed') and created_at > now() - interval '1 hour') >= 100;
+  return (select count(*) from private.admin_passkey_events where user_id = p_user and created_at > now() - interval '1 hour') >= 20;
 end $$;
 
 -- Security event + audit row. The details are filtered to a few harmless keys, so no code or credential can end up here.
@@ -228,8 +225,6 @@ begin
   delete from private.admin_passkey_sessions where expires_at < now();
   delete from private.admin_setup_codes where expires_at < now() - interval '1 day' or used_at < now() - interval '1 day';
   delete from private.admin_passkey_events where created_at < now() - interval '1 day';
-  delete from public.security_events where kind = 'admin_login_failed' and created_at < now() - interval '30 days';
-  delete from public.audit_log where action = 'admin_login_failed' and created_at < now() - interval '30 days';
 end $$;
 
 revoke execute on function private.random_code(integer), private.code_hash(text), private.pk_lock(uuid), private.pk_sec(uuid, text, jsonb),
@@ -461,7 +456,6 @@ begin
   end if;
   if p_kind = 'login_failed' then
     perform private.pk_lock(p_user);
-    if private.pk_locked(p_user, p_session) then return; end if;     -- already locked: no more rows for an attacker to pile up
     insert into private.admin_passkey_events (user_id, session_id, kind) values (p_user, p_session, 'login_failed');
   end if;
   perform private.pk_event(p_user, 'admin_' || p_kind, p_details);
@@ -524,43 +518,21 @@ begin
   return 'reset: ' || v_n || ' passkey(s) removed; now run select private.new_admin_setup_code(''' || lower(btrim(p_email)) || ''')';
 end $$;
 
--- The sessions of an admin in the last 24 hours, to pick the right one for open_admin_session. short_id is the first 8 characters
--- of the id: the admin site shows it on the "Use your passkey" screen, so the founder can match it. Read-only.
-create or replace function private.list_admin_sessions(p_email text)
-returns table (id uuid, short_id text, created_at timestamptz, ip text, user_agent text)
-language sql stable security definer set search_path = public, private, auth as $$
-  select s.id, left(s.id::text, 8), s.created_at, host(s.ip), s.user_agent
-    from auth.sessions s
-    join auth.users u on u.id = s.user_id
-    join public.admins a on a.user_id = u.id
-   where lower(u.email) = lower(btrim(p_email)) and s.created_at > now() - interval '24 hours'
-   order by s.created_at desc
-$$;
-
--- The admin edge function is down, not deployed or missing its secrets. Procedure: sign in on the admin site with email and
--- password (that makes a Supabase session and the site shows its 8-character code), run list_admin_sessions(email) to see that
--- code with its IP address and browser, then open_admin_session(email, code). The session with that code becomes a verified
--- recovery session for 1 to 30 minutes (the usual recovery banner); then reload the site. It refuses when the code matches no
--- session or more than one, so an attacker's newer session cannot be picked by mistake. IP address and browser are written to
--- the audit log and returned. Audited.
-create or replace function private.open_admin_session(p_email text, p_short_id text, p_minutes integer default 30)
+-- The admin edge function is down, not deployed or missing its secrets: the founder signs in on the admin site with email and
+-- password FIRST (that makes a Supabase session), then runs this, then reloads the page. The newest session of that admin is
+-- marked verified through a recovery session (1 to 30 minutes), which shows the usual recovery banner. Audited.
+create or replace function private.open_admin_session(p_email text, p_minutes integer default 30)
 returns text language plpgsql security definer set search_path = public, private, auth as $$
-declare v_id uuid; v_short text := lower(btrim(coalesce(p_short_id, ''))); v_sids uuid[]; v_ip text; v_ua text;
-        v_mins integer := least(greatest(coalesce(p_minutes, 30), 1), 30);
+declare v_id uuid; v_sid uuid; v_mins integer := least(greatest(coalesce(p_minutes, 30), 1), 30);
 begin
   select u.id into v_id from auth.users u join public.admins a on a.user_id = u.id where lower(u.email) = lower(btrim(p_email));
   if v_id is null then raise exception 'that email is not an admin'; end if;
-  if v_short !~ '^[0-9a-f]{8}$' then raise exception 'give the first 8 characters of the session id (private.list_admin_sessions)'; end if;
-  select array_agg(s.id) into v_sids from auth.sessions s
-   where s.user_id = v_id and s.created_at > now() - interval '24 hours' and left(s.id::text, 8) = v_short;
-  if coalesce(array_length(v_sids, 1), 0) = 0 then raise exception 'no session of that admin matches %: sign in on the admin site first', v_short; end if;
-  if array_length(v_sids, 1) > 1 then raise exception 'more than one session matches %: refusing', v_short; end if;
-  select host(s.ip), s.user_agent into v_ip, v_ua from auth.sessions s where s.id = v_sids[1];
-  perform private.pk_open_session(v_id, v_sids[1], null, 'recovery', v_mins);
+  select s.id into v_sid from auth.sessions s where s.user_id = v_id order by s.created_at desc limit 1;
+  if v_sid is null then raise exception 'no signed-in session: sign in on the admin site with email and password first, then run this again'; end if;
+  perform private.pk_open_session(v_id, v_sid, null, 'recovery', v_mins);
   insert into public.audit_log (admin_id, action, target_user, details)
-  values ('00000000-0000-0000-0000-000000000000', 'admin_session_opened', v_id,
-          jsonb_build_object('minutes', v_mins, 'short_id', v_short, 'ip', v_ip, 'user_agent', left(v_ua, 200)));
-  return 'session ' || v_short || ' opened for ' || v_mins || ' minute(s) (ip ' || coalesce(v_ip, '?') || ', browser ' || coalesce(left(v_ua, 120), '?') || '): reload the admin site';
+  values ('00000000-0000-0000-0000-000000000000', 'admin_session_opened', v_id, jsonb_build_object('minutes', v_mins));
+  return 'session opened for ' || v_mins || ' minute(s): reload the admin site';
 end $$;
 
 -- Who is an admin, and how many passkeys each has. Read-only.
@@ -594,8 +566,8 @@ begin
   end if;
   return 'revoked';
 end $$;
-revoke execute on function private.new_admin_setup_code(text), private.reset_admin_passkeys(text), private.open_admin_session(text, text, integer),
-  private.list_admin_sessions(text), private.list_admins(), private.revoke_admin(text) from public, anon, authenticated, service_role;
+revoke execute on function private.new_admin_setup_code(text), private.reset_admin_passkeys(text), private.open_admin_session(text, integer),
+  private.list_admins(), private.revoke_admin(text) from public, anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------- nightly tidy-up, where pg_cron exists
 do $$

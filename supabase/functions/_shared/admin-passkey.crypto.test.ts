@@ -354,3 +354,16 @@ test('step-up with a real passkey: sensitive actions need a fresh assertion (rea
   db.sessions.get(SESSION_A)!.stepUp = false;
   assert.equal((await call(SESSION_A, { action: 'rename', id, name: 'x' })).body.error, 'step_up_required');
 });
+
+test('an attacker with the password spamming login_verify from four sessions does not block a fresh session', async () => {
+  const { call, enrol, challengeFor } = harness();
+  const auth = new SoftAuthenticator();
+  assert.equal((await enrol(auth, SESSION_A)).status, 200);
+  for (let i = 0; i < 4; i++) {
+    const session = `ffffffff-ffff-4fff-8fff-00000000000${i}`;
+    for (let j = 0; j < 8; j++) await call(session, { action: 'login_verify', response: auth.get('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', { counter: j + 1 }) });
+    assert.equal((await call(session, { action: 'login_options' })).status, 429, 'the spamming session itself is locked');
+  }
+  const fresh = await challengeFor(SESSION_B);
+  assert.equal((await call(SESSION_B, { action: 'login_verify', response: auth.get(fresh.challenge, { counter: 1 }) })).status, 200);
+});
