@@ -95,7 +95,8 @@ test('settings are checked before they are sent', () => {
   assert.equal(validateSetting('instapay_link', 'https://ipn.eg/S/pawspal'), null);
   assert.match(validateSetting('instapay_link', 'javascript:alert(1)')!, /https/);
   assert.match(validateSetting('payment_note', 'x'.repeat(501))!, /too long/);
-  assert.equal(validateSetting('bank_iban', 'EG00 0000'), null);
+  assert.equal(validateSetting('bank_iban', 'EG00 0000'), 'Unknown setting.');
+  assert.equal(validateSetting('bank_name', 'x'), 'Unknown setting.');
   assert.equal(validateSetting('something_else', '1'), 'Unknown setting.');
 });
 
@@ -165,4 +166,31 @@ test('the users filter for closed accounts', () => {
   assert.equal(matchesAccount('closed', open), false);
   assert.equal(matchesAccount('open', closed), false);
   assert.equal(matchesAccount('open', open), true);
+});
+
+test('the InstaPay and Vodafone Cash settings mirror admin_set_setting exactly', () => {
+  for (const k of ['instapay_address', 'vodafone_cash_number', 'vodafone_cash_name', 'vodafone_cash_link']) assert.equal(validateSetting(k, ''), null, k);
+  assert.equal(validateSetting('instapay_address', '  your.name-1_x@instapay '), null);
+  assert.equal(validateSetting('instapay_address', 'ab@cd'), null);
+  assert.equal(validateSetting('instapay_address', `${'a'.repeat(40)}@${'b'.repeat(30)}`), null);
+  for (const bad of ['noatsign', 'a@instapay', 'name@i', 'na me@instapay', 'name@insta pay', 'name@@instapay', 'na+me@instapay', 'name@insta_pay', '<b>x</b>@instapay', `${'a'.repeat(41)}@instapay`, `name@${'a'.repeat(31)}`, 'name@instapay\nx']) {
+    assert.match(validateSetting('instapay_address', bad)!, /yourname@instapay/, bad);
+  }
+  for (const good of ['01012345678', '+201012345678', '01512345678']) assert.equal(validateSetting('vodafone_cash_number', good), null, good);
+  for (const bad of ['1012345678', '0101234567', '010123456789', '02012345678', '+2001012345678', '+20101234567', '0101 234 5678', '010-1234-5678', '0101234567a', '+1 01012345678', '0020101234567']) {
+    assert.match(validateSetting('vodafone_cash_number', bad)!, /01012345678/, bad);
+  }
+  assert.equal(validateSetting('vodafone_cash_name', 'Sara Ali'), null);
+  assert.equal(validateSetting('vodafone_cash_name', 'سارة علي'), null);
+  assert.equal(validateSetting('vodafone_cash_name', 'x'.repeat(60)), null);
+  assert.match(validateSetting('vodafone_cash_name', 'x'.repeat(61))!, /60 characters/);
+  assert.match(validateSetting('vodafone_cash_name', 'Sara\nAli')!, /one line/);
+  assert.match(validateSetting('vodafone_cash_name', 'Sara\tAli')!, /one line/);
+  assert.match(validateSetting('vodafone_cash_name', 'Sara\u0001Ali')!, /one line/);
+  for (const k of ['instapay_link', 'instapay_qr_url', 'vodafone_cash_link']) {
+    assert.equal(validateSetting(k, 'https://vf.example/pay'), null, k);
+    for (const bad of ['http://vf.example', 'javascript:alert(1)', 'data:text/html;base64,AAAA', 'https://', 'https://a b.example', 'HTTPS://vf.example/pay', '//vf.example', `https://${'a'.repeat(500)}`]) {
+      assert.match(validateSetting(k, bad)!, /https/, `${k} ${bad}`);
+    }
+  }
 });

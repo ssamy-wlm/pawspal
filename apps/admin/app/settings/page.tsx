@@ -13,15 +13,17 @@ const GROUPS: { title: string; items: Def[] }[] = [
     { key: 'reminder_days', label: 'Reminder days', help: 'How many days before the end people get a renewal reminder, from 1 to 60.' },
   ] },
   { title: 'InstaPay', items: [
-    { key: 'instapay_link', label: 'InstaPay link', help: 'Shown to people when they pay. A full link that starts with https://' },
-    { key: 'instapay_qr_url', label: 'InstaPay QR image link', help: 'Shown to people as a code to scan. A full link that starts with https://' },
+    { key: 'instapay_address', label: 'InstaPay address', help: 'Shown to people when they pay with InstaPay. For example yourname@instapay' },
+    { key: 'instapay_link', label: 'InstaPay link (optional)', help: 'Adds an "Open InstaPay" button. A full link that starts with https://, for example https://ipn.eg/S/yourname' },
+    { key: 'instapay_qr_url', label: 'InstaPay QR image address (optional)', help: 'Not used for now. If you fill it in, people see the code to scan. A full link that starts with https://' },
   ] },
-  { title: 'Bank transfer', items: [
-    { key: 'bank_name', label: 'Bank name', help: 'Shown to people when they pay by bank transfer.' },
-    { key: 'bank_account_name', label: 'Account holder name', help: 'Shown to people when they pay by bank transfer.' },
-    { key: 'bank_account_number', label: 'Account number', help: 'Shown to people when they pay by bank transfer.' },
-    { key: 'bank_iban', label: 'IBAN', help: 'Shown to people when they pay by bank transfer.' },
-    { key: 'payment_note', label: 'Note for people paying', help: 'A short line shown under the payment details, for example what to write as the reference.', long: true },
+  { title: 'Vodafone Cash', items: [
+    { key: 'vodafone_cash_number', label: 'Vodafone Cash number', help: 'Shown to people when they pay with Vodafone Cash. For example 01012345678 (or +201012345678).' },
+    { key: 'vodafone_cash_name', label: 'Account holder name', help: 'The name on the Vodafone Cash wallet, so people can check they are paying the right person. For example Sara Ali' },
+    { key: 'vodafone_cash_link', label: 'Vodafone Cash link (optional)', help: 'Adds an "Open Vodafone Cash" button. A full link that starts with https://' },
+  ] },
+  { title: 'Note for people paying', items: [
+    { key: 'payment_note', label: 'Payment note', help: 'A short line shown under the payment details, for example "Write your email in the payment note".', long: true },
   ] },
   { title: 'Notifications and data', items: [
     { key: 'push_enabled', label: 'Push notifications', help: 'Nothing is sent to anyone\'s phone until this is on. Push also needs the notification cron job set up first (see SETUP).' },

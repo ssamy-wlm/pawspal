@@ -42,7 +42,7 @@ export function reminderEmail(row: Pick<DueRow, 'first_name' | 'locale' | 'paid_
   const fee = amount === null ? '' : ` The renewal is ${amount} EGP.`;
   return {
     subject: 'Your PawsPal membership renews soon',
-    text: `${name ? `Hi ${name},` : 'Hi,'}\n\nYour PawsPal membership renews on ${date}.${fee}\n\nOpen the app, go to Membership, and pay by InstaPay or bank transfer. Then upload the reference.\n\nThe PawsPal team`,
+    text: `${name ? `Hi ${name},` : 'Hi,'}\n\nYour PawsPal membership renews on ${date}.${fee}\n\nOpen the app, go to Membership, and pay by InstaPay or Vodafone Cash. Then upload the reference.\n\nThe PawsPal team`,
   };
 }
 

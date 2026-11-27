@@ -7,7 +7,7 @@ import { ErrorText } from '../src/components/StepScreen';
 import { TextField } from '../src/components/TextField';
 import { useAuth } from '../src/lib/auth';
 import { errorKey } from '../src/lib/api';
-import { fetchPaymentSettings, formatDate, hasPaymentDetails, isHttps, PaymentSettings, submitPaymentClaim } from '../src/lib/membership';
+import { fetchPaymentSettings, formatDate, hasInstapay, hasPaymentDetails, hasVodafoneCash, isHttps, PaymentSettings, submitPaymentClaim } from '../src/lib/membership';
 import { fontFamily, useTheme } from '../src/theme';
 import { isRTL, Key, t as tr } from '../src/i18n';
 
@@ -71,6 +71,7 @@ export default function Membership() {
   };
 
   const section = (text: string) => <Text accessibilityRole="header" style={{ color: c.text, fontSize: 19, fontFamily: fontFamily('bold', rtl) }}>{text}</Text>;
+  const optionBox = { gap: 8, padding: 16, borderRadius: 20, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border } as const;
   const note = (text: string) => <Text style={{ color: c.textMuted, fontSize: 15, lineHeight: 22, fontFamily: fontFamily('regular', rtl) }}>{text}</Text>;
 
   return (
@@ -89,18 +90,24 @@ export default function Membership() {
             {settings && !hasPaymentDetails(settings) ? note(tr('membership.soon')) : null}
             {settings && hasPaymentDetails(settings) ? (
               <>
-                {isHttps(settings.instapay_link) ? <Button title={tr('membership.instapay')} onPress={() => { Linking.openURL(settings.instapay_link).catch(() => {}); }} /> : null}
-                {isHttps(settings.instapay_qr_url) ? (
-                  <Image source={{ uri: settings.instapay_qr_url }} accessible accessibilityRole="image" accessibilityLabel={tr('membership.qr')}
-                    style={{ width: 220, height: 220, alignSelf: 'center', borderRadius: 16, backgroundColor: c.surface }} resizeMode="contain" />
+                {note(tr('membership.amount', { amount }))}
+                {hasInstapay(settings) ? (
+                  <View style={optionBox}>
+                    <Text accessibilityRole="header" style={{ color: c.text, fontSize: 17, fontFamily: fontFamily('bold', rtl) }}>{tr('membership.instapay')}</Text>
+                    {settings.instapay_address ? <Row label={tr('membership.instapayAddress')} value={settings.instapay_address} /> : null}
+                    {isHttps(settings.instapay_link) ? <Button title={tr('membership.instapayOpen')} onPress={() => { Linking.openURL(settings.instapay_link).catch(() => {}); }} /> : null}
+                    {isHttps(settings.instapay_qr_url) ? (
+                      <Image source={{ uri: settings.instapay_qr_url }} accessible accessibilityRole="image" accessibilityLabel={tr('membership.qr')}
+                        style={{ width: 220, height: 220, alignSelf: 'center', borderRadius: 16, backgroundColor: c.surface }} resizeMode="contain" />
+                    ) : null}
+                  </View>
                 ) : null}
-                {settings.bank_name || settings.bank_account_name || settings.bank_account_number || settings.bank_iban ? (
-                  <View style={{ gap: 4, padding: 16, borderRadius: 20, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }}>
-                    <Text accessibilityRole="header" style={{ color: c.text, fontSize: 16, fontFamily: fontFamily('bold', rtl) }}>{tr('membership.bank')}</Text>
-                    {settings.bank_name ? <Row label={tr('membership.bankName')} value={settings.bank_name} /> : null}
-                    {settings.bank_account_name ? <Row label={tr('membership.accountName')} value={settings.bank_account_name} /> : null}
-                    {settings.bank_account_number ? <Row label={tr('membership.accountNumber')} value={settings.bank_account_number} /> : null}
-                    {settings.bank_iban ? <Row label={tr('membership.iban')} value={settings.bank_iban} /> : null}
+                {hasVodafoneCash(settings) ? (
+                  <View style={optionBox}>
+                    <Text accessibilityRole="header" style={{ color: c.text, fontSize: 17, fontFamily: fontFamily('bold', rtl) }}>{tr('membership.vodafone')}</Text>
+                    {settings.vodafone_cash_number ? <Row label={tr('membership.vodafoneNumber')} value={settings.vodafone_cash_number} /> : null}
+                    {settings.vodafone_cash_name ? <Row label={tr('membership.accountName')} value={settings.vodafone_cash_name} /> : null}
+                    {isHttps(settings.vodafone_cash_link) ? <Button title={tr('membership.vodafoneOpen')} onPress={() => { Linking.openURL(settings.vodafone_cash_link).catch(() => {}); }} /> : null}
                   </View>
                 ) : null}
                 {settings.payment_note ? note(settings.payment_note) : null}

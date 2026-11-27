@@ -46,7 +46,7 @@ function Claim({ c, onDone }: { c: PaymentClaim; onDone: () => void }) {
         </div>
       </div>
       {gone ? <Muted>This person deleted their account, so there is no membership to start. You can only reject this payment.</Muted>
-        : <Muted>Check the payment arrived in your InstaPay or bank account, then confirm. The screenshot is deleted as soon as you decide.</Muted>}
+        : <Muted>Check the payment arrived in your InstaPay or Vodafone Cash account, then confirm. The screenshot is deleted as soon as you decide.</Muted>}
       <Field label="Note (needed to reject, the person will read it)">
         <textarea style={{ ...inputStyle, minHeight: 70 }} maxLength={1000} value={note} onChange={(e) => { setNote(e.target.value); setSure(null); setError(null); }} />
       </Field>

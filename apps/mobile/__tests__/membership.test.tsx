@@ -26,8 +26,8 @@ const show = async (ui: React.ReactElement, opts: Parameters<typeof renderIn>[1]
 };
 const m = api as jest.Mocked<typeof api>;
 const membership = (o: Record<string, unknown> = {}) => ({ state: 'unpaid', kind: 'registration', paid_until: null, days_left: null, amount_egp: 75, claim_status: 'none', claim_note: null, ...o });
-const EMPTY = { instapay_link: '', instapay_qr_url: '', bank_name: '', bank_account_name: '', bank_account_number: '', bank_iban: '', payment_note: '' };
-const FILLED = { instapay_link: 'https://ipn.eg/S/pawspal', instapay_qr_url: 'https://example.com/qr.png', bank_name: 'Test Bank', bank_account_name: 'PawsPal Dahab', bank_account_number: '1234567890', bank_iban: 'EG000000', payment_note: 'Write your email in the note.' };
+const EMPTY = { instapay_link: '', instapay_qr_url: '', instapay_address: '', vodafone_cash_number: '', vodafone_cash_name: '', vodafone_cash_link: '', payment_note: '' };
+const FILLED = { instapay_link: 'https://ipn.eg/S/pawspal', instapay_qr_url: 'https://example.com/qr.png', instapay_address: 'pawspal@instapay', vodafone_cash_number: '01012345678', vodafone_cash_name: 'PawsPal Dahab', vodafone_cash_link: 'https://vf.example/pay/pawspal', payment_note: 'Write your email in the note.' };
 let settings: Record<string, unknown> = EMPTY;
 
 beforeEach(() => {
@@ -73,23 +73,57 @@ describe('membership screen', () => {
     expect(screen.getByText('PawsPal confirms your payment by hand.')).toBeTruthy();
   });
 
-  it('shows InstaPay, the QR image, the bank details and the note', async () => {
+  it('shows two separate options: InstaPay and Vodafone Cash, with the note and the amount', async () => {
     settings = FILLED;
     jest.spyOn(Linking, 'openURL').mockImplementation(async () => {});
     await show(<Membership />);
     await waitFor(() => screen.getByText('Pay with InstaPay'));
-    await fireEvent.press(screen.getByText('Pay with InstaPay'));
+    expect(screen.getByText('Pay with Vodafone Cash')).toBeTruthy();
+    expect(screen.getByText('Amount to pay: 75 EGP')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Open InstaPay'));
     expect(Linking.openURL).toHaveBeenCalledWith('https://ipn.eg/S/pawspal');
+    await fireEvent.press(screen.getByText('Open Vodafone Cash'));
+    expect(Linking.openURL).toHaveBeenCalledWith('https://vf.example/pay/pawspal');
     expect(screen.getByLabelText('InstaPay QR code')).toBeTruthy();
-    for (const v of ['Test Bank', 'PawsPal Dahab', '1234567890', 'EG000000', 'Write your email in the note.']) expect(screen.getByText(v)).toBeTruthy();
-    expect(screen.getByText('1234567890').props.selectable).toBe(true);
+    for (const v of ['pawspal@instapay', '01012345678', 'PawsPal Dahab', 'Write your email in the note.']) expect(screen.getByText(v)).toBeTruthy();
+    expect(screen.getByText('01012345678').props.selectable).toBe(true);
+    expect(screen.getByText('pawspal@instapay').props.selectable).toBe(true);
+    expect(screen.queryByText('Bank transfer')).toBeNull();
+  });
+
+  it('shows only the option that is filled in', async () => {
+    settings = { ...EMPTY, instapay_address: 'pawspal@instapay' };
+    await show(<Membership />);
+    await waitFor(() => screen.getByText('Pay with InstaPay'));
+    expect(screen.queryByText('Pay with Vodafone Cash')).toBeNull();
+    expect(screen.queryByText('Open InstaPay')).toBeNull();
+    expect(screen.queryByText('Payment details are coming soon. Please check back shortly.')).toBeNull();
+  });
+
+  it('shows Vodafone Cash alone, without a link button when no link is set', async () => {
+    settings = { ...EMPTY, vodafone_cash_number: '+201012345678', vodafone_cash_name: 'Sara Ali' };
+    await show(<Membership />);
+    await waitFor(() => screen.getByText('Pay with Vodafone Cash'));
+    expect(screen.getByText('+201012345678')).toBeTruthy();
+    expect(screen.getByText('Sara Ali')).toBeTruthy();
+    expect(screen.queryByText('Pay with InstaPay')).toBeNull();
+    expect(screen.queryByText('Open Vodafone Cash')).toBeNull();
+  });
+
+  it('copes with settings that are missing a key', async () => {
+    settings = { registration_fee_egp: 75, instapay_address: 'pawspal@instapay' };
+    await show(<Membership />);
+    await waitFor(() => screen.getByText('Pay with InstaPay'));
+    expect(screen.queryByText('Pay with Vodafone Cash')).toBeNull();
   });
 
   it('never opens or shows an address that is not https', async () => {
-    settings = { ...FILLED, instapay_link: 'http://ipn.eg/x', instapay_qr_url: 'javascript:alert(1)' };
+    settings = { ...FILLED, instapay_link: 'http://ipn.eg/x', instapay_qr_url: 'javascript:alert(1)', vodafone_cash_link: 'javascript:alert(1)' };
+    jest.spyOn(Linking, 'openURL').mockImplementation(async () => {});
     await show(<Membership />);
-    await waitFor(() => screen.getByText('Test Bank'));
-    expect(screen.queryByText('Pay with InstaPay')).toBeNull();
+    await waitFor(() => screen.getByText('pawspal@instapay'));
+    expect(screen.queryByText('Open InstaPay')).toBeNull();
+    expect(screen.queryByText('Open Vodafone Cash')).toBeNull();
     expect(screen.queryByLabelText('InstaPay QR code')).toBeNull();
   });
 
@@ -158,9 +192,10 @@ describe('membership screen', () => {
 
 describe('membership library', () => {
   it('reads the settings and trims them', async () => {
-    settings = { ...FILLED, bank_name: '  Test Bank ', registration_fee_egp: 75 };
+    settings = { ...FILLED, instapay_address: '  pawspal@instapay ', registration_fee_egp: 75 };
     const s = await fetchPaymentSettings();
-    expect(s.bank_name).toBe('Test Bank');
+    expect(s.instapay_address).toBe('pawspal@instapay');
+    expect((s as unknown as Record<string, unknown>).bank_name).toBeUndefined();
     expect(s.registration_fee_egp).toBe('75');
     expect(hasPaymentDetails(s)).toBe(true);
     expect(hasPaymentDetails({ ...s, ...EMPTY })).toBe(false);
