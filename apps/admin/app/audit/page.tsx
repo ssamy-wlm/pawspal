@@ -28,7 +28,7 @@ export default function Audit() {
             {rows.map((r) => (
               <tr key={r.id}>
                 <Td>{when(r.created_at)}</Td><Td>{r.admin_email ?? <Badge>system</Badge>}</Td><Td><Badge>{r.action.replace(/_/g, ' ')}</Badge></Td>
-                <Td>{r.target_user ? <PersonLink id={r.target_user} name={r.target_name} /> : ''}</Td><Td wide>{brief(r.details)}</Td>
+                <Td>{r.target_user ? <PersonLink id={r.target_user} name={r.target_name ?? 'Deleted user'} /> : ''}</Td><Td wide>{brief(r.details)}</Td>
               </tr>
             ))}
           </Table>

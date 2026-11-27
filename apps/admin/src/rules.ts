@@ -24,14 +24,16 @@ const ALLOWED: Record<AccountStatus, ActionKind[]> = {
   suspended: ['reminder', 'warning', 'reinstatement', 'removal'],
   removed: ['reinstatement'],
 };
-export const actionsFor = (status: AccountStatus): ActionKind[] => ALLOWED[status] ?? [];
+/** A closed account (the person deleted it) can never be suspended, lifted, approved or reinstated: the database refuses all of it. */
+export const actionsFor = (status: AccountStatus, closed = false): ActionKind[] => (closed ? [] : ALLOWED[status] ?? []);
 
 export const needsReason = (a: ActionKind) => a === 'reminder' || a === 'warning' || a === 'suspension' || a === 'removal';
 
 export interface ActionForm { action: ActionKind; rule: string; message: string; length: SuspensionLength | ''; checklist: string }
 
 /** Null when the form is fine, otherwise the sentence to show. Mirrors admin_take_action. */
-export function validateAction(status: AccountStatus, f: ActionForm): string | null {
+export function validateAction(status: AccountStatus, f: ActionForm, closed = false): string | null {
+  if (closed) return 'This account was closed by the person. Nothing can be done for it.';
   if (!actionsFor(status).includes(f.action)) return 'This action does not fit the account status.';
   if (needsReason(f.action)) {
     if (f.rule.trim() === '') return 'Choose the rule that was broken.';
@@ -112,9 +114,19 @@ export function waitingText(hours: number): string {
 }
 export const OVERDUE_HOURS = 24;
 
-export const NUMBER_SETTINGS = { registration_fee_egp: [1, 100000], renewal_fee_egp: [1, 100000], membership_months: [1, 60], reminder_days: [1, 60] } as const;
+export const NUMBER_SETTINGS = {
+  registration_fee_egp: [1, 100000], renewal_fee_egp: [1, 100000], membership_months: [1, 60], reminder_days: [1, 60],
+  deletion_grace_days: [1, 365], shared_history_months: [1, 120],
+} as const;
+/** The most digits the database accepts per number setting (admin_set_setting uses ^[0-9]{1,n}$), so "0030" is refused here too. */
+export const NUMBER_DIGITS: Record<keyof typeof NUMBER_SETTINGS, number> = {
+  registration_fee_egp: 6, renewal_fee_egp: 6, membership_months: 2, reminder_days: 2, deletion_grace_days: 3, shared_history_months: 3,
+};
+/** On/off settings: the value is the word 'true' or 'false'. */
+export const SWITCH_SETTINGS = ['push_enabled'] as const;
+export const isSwitchSetting = (key: string): key is (typeof SWITCH_SETTINGS)[number] => (SWITCH_SETTINGS as readonly string[]).includes(key);
 export const TEXT_SETTINGS = ['instapay_link', 'instapay_qr_url', 'bank_name', 'bank_account_name', 'bank_account_number', 'bank_iban', 'payment_note'] as const;
-export type SettingKey = keyof typeof NUMBER_SETTINGS | (typeof TEXT_SETTINGS)[number];
+export type SettingKey = keyof typeof NUMBER_SETTINGS | (typeof TEXT_SETTINGS)[number] | (typeof SWITCH_SETTINGS)[number];
 export const isNumberSetting = (key: string): key is keyof typeof NUMBER_SETTINGS => key in NUMBER_SETTINGS;
 
 /** Null when the value is fine, otherwise the sentence to show. Numbers are positive whole numbers within range. */
@@ -122,11 +134,12 @@ export function validateSetting(key: string, raw: string): string | null {
   const v = raw.trim();
   if (isNumberSetting(key)) {
     const [min, max] = NUMBER_SETTINGS[key];
-    if (!/^\d+$/.test(v)) return 'Enter a whole number.';
+    if (!new RegExp(`^[0-9]{1,${NUMBER_DIGITS[key]}}$`).test(v)) return 'Enter a whole number.';
     const n = Number(v);
     if (n < min || n > max) return `Enter a number from ${min} to ${max}.`;
     return null;
   }
+  if (isSwitchSetting(key)) return v === 'true' || v === 'false' ? null : 'Choose on or off.';
   if ((TEXT_SETTINGS as readonly string[]).includes(key)) {
     if (v.length > 500) return 'This is too long (500 characters at most).';
     if ((key === 'instapay_link' || key === 'instapay_qr_url') && v !== '' && !/^https:\/\/\S+$/i.test(v)) return 'Use a full link that starts with https://';
@@ -141,3 +154,24 @@ export function matchesMembership(filter: string, paidUntil: string | null | und
   const s = membershipState(paidUntil, today, reminderDays);
   return filter === 'expiring' ? s === 'due_soon' : filter === 'paused' ? s === 'paused' : filter === 'unpaid' ? s === 'unpaid' : true;
 }
+
+// ---- Closed accounts (architecture v3, section 11.2) ----
+// A person who deletes their account becomes a stub: the same id, first_name 'Deleted user', status 'removed', deleted_at and
+// purge_after set. After the purge payment_claims.user_id is null and the sign-in account is gone.
+export const DELETED_NAME = 'Deleted user';
+export interface ClosedInfo { status?: string | null; first_name?: string | null; deleted_at?: string | null }
+export const isClosedAccount = (p: ClosedInfo | null | undefined): boolean => !!p && (!!p.deleted_at || (p.status === 'removed' && p.first_name === DELETED_NAME));
+/** The name to show: "Deleted user" for a closed account or a person who is gone, otherwise the first name. */
+export const personName = (p: ClosedInfo | null | undefined, fallback = 'No name'): string => (!p ? DELETED_NAME : isClosedAccount(p) ? DELETED_NAME : p.first_name ?? fallback);
+
+export type PurgeState = 'open' | 'waiting' | 'due' | 'purged';
+/** open: not closed. waiting: closed, the final clean-up is still ahead. due: the date has passed, the nightly job has not run yet. purged: done. */
+export function purgeState(p: { deleted_at?: string | null; purge_after?: string | null; purged_at?: string | null } | null | undefined, now: number | Date = Date.now()): PurgeState {
+  if (!p || !p.deleted_at) return 'open';
+  if (p.purged_at) return 'purged';
+  const t = typeof now === 'number' ? now : now.getTime();
+  return p.purge_after && Date.parse(p.purge_after) > t ? 'waiting' : 'due';
+}
+
+/** Filter used by the Users page (?account=open|closed). */
+export const matchesAccount = (filter: string, p: ClosedInfo): boolean => (filter === 'closed' ? isClosedAccount(p) : filter === 'open' ? !isClosedAccount(p) : true);

@@ -60,7 +60,7 @@ test('the accent button is brand orange with navy text (docs/design-system.md)',
   assert.ok((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= 4.5, 'navy on orange must pass AA');
 });
 
-import { hoursWaiting, matchesMembership, membershipState, validateSetting, waitingText } from './rules.ts';
+import { DELETED_NAME, hoursWaiting, isClosedAccount, matchesAccount, matchesMembership, membershipState, personName, purgeState, validateSetting, waitingText } from './rules.ts';
 
 test('membership state from the paid-until date', () => {
   assert.equal(membershipState(null, '2026-11-01'), 'unpaid');
@@ -105,4 +105,64 @@ test('the users filter for membership', () => {
   assert.equal(matchesMembership('expiring', '2026-11-05', '2026-11-01'), true);
   assert.equal(matchesMembership('expiring', '2026-12-05', '2026-11-01'), false);
   assert.equal(matchesMembership('paused', '2026-10-01', '2026-11-01'), true);
+});
+
+test('the three phase 9 settings mirror admin_set_setting exactly', () => {
+  assert.equal(validateSetting('push_enabled', 'true'), null);
+  assert.equal(validateSetting('push_enabled', ' false '), null);
+  assert.match(validateSetting('push_enabled', 'yes')!, /on or off/);
+  assert.match(validateSetting('push_enabled', '')!, /on or off/);
+  assert.match(validateSetting('push_enabled', 'TRUE')!, /on or off/);
+  assert.equal(validateSetting('deletion_grace_days', '30'), null);
+  assert.equal(validateSetting('deletion_grace_days', '1'), null);
+  assert.equal(validateSetting('deletion_grace_days', '365'), null);
+  assert.match(validateSetting('deletion_grace_days', '0')!, /1 to 365/);
+  assert.match(validateSetting('deletion_grace_days', '366')!, /1 to 365/);
+  assert.match(validateSetting('deletion_grace_days', '1000')!, /whole number/);   // four digits: the database pattern allows three
+  assert.match(validateSetting('deletion_grace_days', '3.5')!, /whole number/);
+  assert.match(validateSetting('deletion_grace_days', '-1')!, /whole number/);
+  assert.match(validateSetting('deletion_grace_days', '')!, /whole number/);
+  assert.equal(validateSetting('shared_history_months', '24'), null);
+  assert.equal(validateSetting('shared_history_months', '120'), null);
+  assert.match(validateSetting('shared_history_months', '121')!, /1 to 120/);
+  assert.match(validateSetting('shared_history_months', '0')!, /1 to 120/);
+  assert.match(validateSetting('shared_history_months', 'two years')!, /whole number/);
+  assert.match(validateSetting('reminder_days', '007')!, /whole number/);           // three digits: the database allows two
+  assert.equal(validateSetting('registration_fee_egp', '100000'), null);
+  assert.match(validateSetting('registration_fee_egp', '1000000')!, /whole number/);
+});
+
+test('a closed account shows as Deleted user and offers no actions', () => {
+  const stub = { status: 'removed', first_name: DELETED_NAME, deleted_at: '2026-11-01T10:00:00Z' };
+  assert.equal(isClosedAccount(stub), true);
+  assert.equal(isClosedAccount({ status: 'removed', first_name: 'Mona', deleted_at: null }), false);   // removed by a moderator
+  assert.equal(isClosedAccount({ status: 'removed', first_name: DELETED_NAME, deleted_at: null }), true);
+  assert.equal(isClosedAccount(null), false);
+  assert.equal(personName(stub), 'Deleted user');
+  assert.equal(personName(null), 'Deleted user');
+  assert.equal(personName({ status: 'active', first_name: 'Mona' }), 'Mona');
+  assert.deepEqual(actionsFor('removed', true), []);
+  assert.deepEqual(actionsFor('removed'), ['reinstatement']);                    // a person removed by a moderator can still be reinstated
+  assert.match(validateAction('removed', form({ action: 'reinstatement', rule: '', message: '' }), true)!, /closed/);
+  assert.equal(validateAction('removed', form({ action: 'reinstatement', rule: '', message: '' })), null);
+});
+
+test('when a closed account is purged', () => {
+  const now = Date.parse('2026-11-10T00:00:00Z');
+  assert.equal(purgeState({ deleted_at: null }, now), 'open');
+  assert.equal(purgeState(null, now), 'open');
+  assert.equal(purgeState({ deleted_at: '2026-11-01T00:00:00Z', purge_after: '2026-12-01T00:00:00Z', purged_at: null }, now), 'waiting');
+  assert.equal(purgeState({ deleted_at: '2026-10-01T00:00:00Z', purge_after: '2026-11-01T00:00:00Z', purged_at: null }, now), 'due');
+  assert.equal(purgeState({ deleted_at: '2026-10-01T00:00:00Z', purge_after: '2026-11-01T00:00:00Z', purged_at: '2026-11-02T00:00:00Z' }, now), 'purged');
+  assert.equal(purgeState({ deleted_at: '2026-10-01T00:00:00Z', purge_after: null, purged_at: null }, now), 'due');
+});
+
+test('the users filter for closed accounts', () => {
+  const closed = { status: 'removed', first_name: DELETED_NAME, deleted_at: '2026-11-01T00:00:00Z' };
+  const open = { status: 'active', first_name: 'Mona', deleted_at: null };
+  assert.equal(matchesAccount('', closed), true);
+  assert.equal(matchesAccount('closed', closed), true);
+  assert.equal(matchesAccount('closed', open), false);
+  assert.equal(matchesAccount('open', closed), false);
+  assert.equal(matchesAccount('open', open), true);
 });

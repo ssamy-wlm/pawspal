@@ -10,8 +10,8 @@ const removedNote = (status: AccountStatus, action: ActionKind) =>
 const LABEL: Record<ActionKind, string> = { reminder: 'Reminder', warning: 'Warning', suspension: 'Suspension', removal: 'Removal', reinstatement: 'Reinstate', approval: 'Approve' };
 
 /** The "Take action" panel. Only the actions that fit the account's status are offered; the database checks again. */
-export function ActionPanel({ userId, status, onDone, only }: { userId: string; status: AccountStatus; onDone: () => void; only?: ActionKind[] }) {
-  const options = actionsFor(status).filter((a) => !only || only.includes(a));
+export function ActionPanel({ userId, status, onDone, only, closed = false }: { userId: string; status: AccountStatus; onDone: () => void; only?: ActionKind[]; closed?: boolean }) {
+  const options = actionsFor(status, closed).filter((a) => !only || only.includes(a));
   const [form, setForm] = React.useState<ActionForm>({ action: options[0] ?? 'reminder', rule: '', message: '', length: '', checklist: '' });
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -19,11 +19,12 @@ export function ActionPanel({ userId, status, onDone, only }: { userId: string; 
   const [ready, setReady] = React.useState(false);
   React.useEffect(() => { if (!sure) { setReady(false); return; } const t = setTimeout(() => setReady(true), 600); return () => clearTimeout(t); }, [sure]);
   const set = (patch: Partial<ActionForm>) => { setForm((f) => ({ ...f, ...patch })); setSure(false); setError(null); };
+  if (closed) return <Card><H2>Take action</H2><Muted>The person closed this account. It cannot be suspended, lifted, approved or reinstated.</Muted></Card>;
   if (options.length === 0) return <Card><H2>Take action</H2><Muted>Nothing can be done for this account right now.</Muted></Card>;
   const serious = form.action === 'removal' || form.action === 'suspension';
 
   const submit = async () => {
-    const problem = validateAction(status, form);
+    const problem = validateAction(status, form, closed);
     if (problem) { setError(problem); return; }
     if (serious && !sure) { setSure(true); return; }
     setBusy(true); setError(null);

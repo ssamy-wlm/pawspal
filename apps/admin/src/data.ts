@@ -11,7 +11,8 @@ function must<T>(r: { data: T | null; error: { message: string } | null }): T {
 /** The database's refusal as a sentence for the page. */
 export const refusal = (e: unknown) => {
   const m = e instanceof Error ? e.message : '';
-  return /not allowed for this status/.test(m) ? 'This action does not fit the account status.'
+  return /account deleted/.test(m) ? 'This account was closed by the person. Nothing can be done for it.'
+    : /not allowed for this status/.test(m) ? 'This action does not fit the account status.'
     : /cannot act on an admin/.test(m) ? 'Admins cannot be acted on here.'
     : /admins only/.test(m) ? 'Your session no longer has admin rights. Sign in again.'
     : /rule and a message/.test(m) ? 'A rule and a message are required.'
@@ -52,9 +53,11 @@ export interface Profile {
   id: string; first_name: string | null; role: string; bio: string | null; area: string | null; status: AccountStatus;
   face_verified: boolean; id_verified: boolean; is_adult: boolean; face_photo_path: string | null;
   home_photo_path: string | null; rating_avg: number | null; stays_count: number; created_at: string;
+  /** Set when the person deleted their account: the profile is then an anonymised stub (first_name 'Deleted user', status 'removed'). */
+  deleted_at: string | null; purge_after: string | null; purged_at: string | null;
   membership: Membership | null;
 }
-const PROFILE_BASE = 'id, first_name, role, bio, area, status, face_verified, id_verified, is_adult, face_photo_path, home_photo_path, rating_avg, stays_count, created_at';
+const PROFILE_BASE = 'id, first_name, role, bio, area, status, face_verified, id_verified, is_adult, face_photo_path, home_photo_path, rating_avg, stays_count, created_at, deleted_at, purge_after, purged_at';
 const PROFILE_COLS = `${PROFILE_BASE}, memberships(paid_until)`;
 /** The embed comes back as an object (one row per person) or a list, depending on how PostgREST reads the key. */
 function withMembership(row: Record<string, unknown>): Profile {
@@ -63,12 +66,15 @@ function withMembership(row: Record<string, unknown>): Profile {
   const { memberships: _drop, ...rest } = row; void _drop;
   return { ...rest, membership: one ?? null } as unknown as Profile;
 }
-export async function searchUsers(query: string, status: string): Promise<Profile[]> {
+/** account: '' (everyone), 'closed' (deleted accounts, waiting for the final clean-up or done) or 'open'. */
+export async function searchUsers(query: string, status: string, account = ''): Promise<Profile[]> {
   let q = supabase().from('profiles').select(PROFILE_COLS);
   const text = query.trim();
   if (/^[0-9a-f-]{36}$/i.test(text)) q = q.eq('id', text);
   else if (text) q = q.ilike('first_name', `%${text.replace(/[%_\\]/g, '')}%`);
   if (status) q = q.eq('status', status);
+  if (account === 'closed') q = q.not('deleted_at', 'is', null);
+  else if (account === 'open') q = q.is('deleted_at', null);
   const rows = must(await q.order('created_at', { ascending: false }).limit(200)) as unknown as Record<string, unknown>[];
   return rows.map(withMembership);
 }
@@ -111,10 +117,11 @@ export async function countVerificationsOlderThan(hours: number): Promise<number
 
 // ---- Payments ----
 export interface PaymentClaim {
-  id: string; user_id: string; kind: string; amount_egp: number; reference: string | null; screenshot_path: string | null;
-  status: string; note: string | null; created_at: string; decided_at: string | null; user: { id: string; first_name: string | null; role: string } | null;
+  /** null once the person's account was purged: the payment record stays (amount, date, reference), the person does not. */
+  id: string; user_id: string | null; kind: string; amount_egp: number; reference: string | null; screenshot_path: string | null;
+  status: string; note: string | null; created_at: string; decided_at: string | null; user: { id: string; first_name: string | null; role: string; status: string; deleted_at: string | null } | null;
 }
-const CLAIM_COLS = 'id, user_id, kind, amount_egp, reference, screenshot_path, status, note, created_at, decided_at, user:profiles!user_id(id, first_name, role)';
+const CLAIM_COLS = 'id, user_id, kind, amount_egp, reference, screenshot_path, status, note, created_at, decided_at, user:profiles!user_id(id, first_name, role, status, deleted_at)';
 export const getPendingClaims = async () => must(await supabase().from('payment_claims').select(CLAIM_COLS).eq('status', 'pending').order('created_at').limit(50)) as unknown as PaymentClaim[];
 export const getDecidedClaims = async () => must(await supabase().from('payment_claims').select(CLAIM_COLS).in('status', ['confirmed', 'rejected']).order('decided_at', { ascending: false }).limit(20)) as unknown as PaymentClaim[];
 export const getUserClaims = async (userId: string) => must(await supabase().from('payment_claims').select(CLAIM_COLS).eq('user_id', userId).order('created_at', { ascending: false }).limit(20)) as unknown as PaymentClaim[];
@@ -125,6 +132,12 @@ export async function decidePayment(claim: string, confirm: boolean, note: strin
 }
 
 // ---- Settings ----
+/**
+ * What the signed-in session can read. Since migration 0017 the read policy on app_settings leaves out push_enabled,
+ * deletion_grace_days and shared_history_months for EVERY signed-in role, admins included (there is no admin policy), so these
+ * three keys are missing from the result until the database gets an admin-only read. The Settings page treats a missing key
+ * as "unknown" and still lets the founder set it (admin_set_setting works).
+ */
 export async function getSettings(): Promise<Record<string, string>> {
   const rows = must(await supabase().from('app_settings').select('key, value')) as unknown as { key: string; value: string }[];
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));

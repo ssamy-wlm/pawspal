@@ -1,14 +1,14 @@
 'use client';
 import React from 'react';
 import { decideVerification, getPendingVerifications, refusal, type VerificationRow } from '../../src/data';
-import { OVERDUE_HOURS, hoursWaiting, nice, waitingText } from '../../src/rules';
+import { OVERDUE_HOURS, hoursWaiting, nice, personName, waitingText } from '../../src/rules';
 import { Badge, Btn, Card, Err, Field, H1, inputStyle, Muted, pageStyle, Photo, PersonLink, Status, useLoad, when } from '../../src/ui';
 
 const LEFT_OVER = 'The decision is saved. The ID file will be deleted by the nightly clean-up.';
 
 function Request({ r, onDone }: { r: VerificationRow; onDone: () => void }) {
   const p = r.profile;
-  const name = p?.first_name ?? 'this person';
+  const name = personName(p);                    // closing an account deletes its requests, but a stub must never crash this page
   const hours = hoursWaiting(r.submitted_at);
   const late = hours > OVERDUE_HOURS;
   const [adult, setAdult] = React.useState(false);
@@ -43,7 +43,7 @@ function Request({ r, onDone }: { r: VerificationRow; onDone: () => void }) {
           <Muted>ID photo</Muted>
         </div>
         <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <strong style={{ fontSize: 20 }}>{p ? <PersonLink id={p.id} name={p.first_name} /> : 'No name'}</strong>
+          <strong style={{ fontSize: 20 }}>{p ? <PersonLink id={p.id} name={name} /> : name}</strong>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Badge>{nice(p?.role)}</Badge>
             <Badge tone={late ? 'warn' : 'neutral'}>{waitingText(hours)}</Badge>

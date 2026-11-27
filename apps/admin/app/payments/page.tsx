@@ -1,13 +1,15 @@
 'use client';
 import React from 'react';
 import { decidePayment, getDecidedClaims, getPendingClaims, refusal, type PaymentClaim } from '../../src/data';
-import { OVERDUE_HOURS, hoursWaiting, nice, waitingText } from '../../src/rules';
+import { OVERDUE_HOURS, hoursWaiting, isClosedAccount, nice, personName, waitingText } from '../../src/rules';
 import { Badge, Btn, Card, Field, Err, H1, H2, inputStyle, Muted, pageStyle, Photo, PersonLink, Status, statusTone, Table, Td, useLoad, when } from '../../src/ui';
 
 const LEFT_OVER = 'The decision is saved. The screenshot will be deleted by the nightly clean-up.';
 
 function Claim({ c, onDone }: { c: PaymentClaim; onDone: () => void }) {
   const hours = hoursWaiting(c.created_at);
+  const name = personName(c.user);                 // 'Deleted user' when the account is closed or purged (user_id is then null)
+  const gone = !c.user || isClosedAccount(c.user);   // nobody left to give a membership to
   const [note, setNote] = React.useState('');
   const [sure, setSure] = React.useState<'confirm' | 'reject' | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -25,16 +27,16 @@ function Claim({ c, onDone }: { c: PaymentClaim; onDone: () => void }) {
     } catch (e) { setError(refusal(e)); setSure(null); setBusy(false); }
   };
 
-  if (warning) return <Card><strong>{c.user?.first_name ?? 'No name'}</strong><p role="status" style={{ margin: 0 }}>{warning}</p><Btn kind="secondary" onClick={onDone}>Done</Btn></Card>;
+  if (warning) return <Card><strong>{name}</strong><p role="status" style={{ margin: 0 }}>{warning}</p><Btn kind="secondary" onClick={onDone}>Done</Btn></Card>;
   return (
     <Card>
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <Photo bucket="payments" path={c.screenshot_path} alt={`Payment screenshot from ${c.user?.first_name ?? 'this person'}`} size={220} />
+          <Photo bucket="payments" path={c.screenshot_path} alt={`Payment screenshot from ${gone ? 'a deleted user' : name}`} size={220} />
           <Muted>Screenshot</Muted>
         </div>
         <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <strong style={{ fontSize: 20 }}>{c.user ? <PersonLink id={c.user.id} name={c.user.first_name} /> : 'No name'}</strong>
+          <strong style={{ fontSize: 20 }}>{c.user ? <PersonLink id={c.user.id} name={name} /> : name}</strong>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Badge>{nice(c.kind)}</Badge><Badge>{c.amount_egp} EGP</Badge>
             <Badge tone={hours > OVERDUE_HOURS ? 'warn' : 'neutral'}>{waitingText(hours)}</Badge>
@@ -43,14 +45,15 @@ function Claim({ c, onDone }: { c: PaymentClaim; onDone: () => void }) {
           <p style={{ margin: 0, overflowWrap: 'anywhere' }}>{c.reference ? <>Reference: {c.reference}</> : <Muted>No reference written.</Muted>}</p>
         </div>
       </div>
-      <Muted>Check the payment arrived in your InstaPay or bank account, then confirm. The screenshot is deleted as soon as you decide.</Muted>
+      {gone ? <Muted>This person deleted their account, so there is no membership to start. You can only reject this payment.</Muted>
+        : <Muted>Check the payment arrived in your InstaPay or bank account, then confirm. The screenshot is deleted as soon as you decide.</Muted>}
       <Field label="Note (needed to reject, the person will read it)">
         <textarea style={{ ...inputStyle, minHeight: 70 }} maxLength={1000} value={note} onChange={(e) => { setNote(e.target.value); setSure(null); setError(null); }} />
       </Field>
       <Err>{error}</Err>
-      {sure ? <Muted>{sure === 'confirm' ? `Please check: confirm ${c.amount_egp} EGP from ${c.user?.first_name ?? 'this person'}. Their membership starts or extends.` : 'Please check: reject this payment. The person will see your note.'} This is written to the audit log.</Muted> : null}
+      {sure ? <Muted>{sure === 'confirm' ? `Please check: confirm ${c.amount_egp} EGP from ${name}. Their membership starts or extends.` : 'Please check: reject this payment. The person will see your note.'} This is written to the audit log.</Muted> : null}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <Btn kind="primary" disabled={busy || sure === 'reject'} onClick={() => { decide(true).catch(() => {}); }}>{sure === 'confirm' ? 'Yes, confirm' : 'Confirm'}</Btn>
+        {gone ? null : <Btn kind="primary" disabled={busy || sure === 'reject'} onClick={() => { decide(true).catch(() => {}); }}>{sure === 'confirm' ? 'Yes, confirm' : 'Confirm'}</Btn>}
         <Btn kind="danger" disabled={busy || sure === 'confirm'} onClick={() => { decide(false).catch(() => {}); }}>{sure === 'reject' ? 'Yes, reject' : 'Reject'}</Btn>
         {sure ? <Btn kind="secondary" onClick={() => setSure(null)}>Cancel</Btn> : null}
       </div>
@@ -75,7 +78,7 @@ export default function Payments() {
           <Table head={['Decided', 'Person', 'Kind', 'Amount', 'Result', 'Note']}>
             {(decided.data ?? []).map((c) => (
               <tr key={c.id}>
-                <Td>{when(c.decided_at)}</Td><Td>{c.user ? <PersonLink id={c.user.id} name={c.user.first_name} /> : ''}</Td><Td>{nice(c.kind)}</Td>
+                <Td>{when(c.decided_at)}</Td><Td>{c.user ? <PersonLink id={c.user.id} name={personName(c.user)} /> : 'Deleted user'}</Td><Td>{nice(c.kind)}</Td>
                 <Td>{c.amount_egp} EGP</Td><Td><Badge tone={statusTone(c.status)}>{nice(c.status)}</Badge></Td><Td wide>{c.note ?? ''}</Td>
               </tr>
             ))}

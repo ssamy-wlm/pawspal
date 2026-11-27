@@ -3,7 +3,7 @@ import { useParams } from 'next/navigation';
 import React from 'react';
 import { ActionPanel } from '../../../src/action-panel';
 import { getProfile, getSettings, getUserClaims, getUserCase, getVerificationHistory } from '../../../src/data';
-import { REPORT_REASONS, nice } from '../../../src/rules';
+import { REPORT_REASONS, isClosedAccount, nice, personName, purgeState } from '../../../src/rules';
 import { Badge, MembershipBadge, Card, Err, H1, H2, Muted, pageStyle, Photo, PersonLink, statusTone, Table, Td, useLoad, when, day } from '../../../src/ui';
 
 const Check = ({ ok, label }: { ok: boolean; label: string }) => <Badge tone={ok ? 'good' : 'warn'}>{ok ? '✓' : '·'} {label}</Badge>;
@@ -18,29 +18,34 @@ export default function UserCase() {
   const p = profile.data;
   const reload = () => { profile.reload(); kase.reload(); claims.reload(); verifications.reload(); };
   if (profile.error) return <div style={pageStyle}><Err>{profile.error}</Err></div>;
-  if (!p) return <div style={pageStyle}><Muted>{profile.data === null && !profile.error ? 'Loading…' : 'No such user.'}</Muted></div>;
+  if (!p) return <div style={pageStyle}><Muted>{profile.loading ? 'Loading…' : 'No such user. If the person deleted their account, the clean-up may have removed the last trace of it.'}</Muted></div>;
+  const closed = isClosedAccount(p);
+  const purge = purgeState(p);
   const k = kase.data;
   const strikes = (k?.actions ?? []).filter((a) => a.action === 'warning' || a.action === 'suspension' || a.action === 'removal').length;
   return (
     <div style={pageStyle}>
-      <H1 sub={`User id ${p.id}`}>{p.first_name ?? 'No name'}</H1>
+      <H1 sub={`User id ${p.id}`}>{personName(p)}</H1>
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <Card style={{ flex: '1 1 380px' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Badge tone={statusTone(p.status)}>{nice(p.status)}</Badge><Badge>{nice(p.role)}</Badge>
-            <Check ok={p.face_verified} label="Face" /><Check ok={p.id_verified} label="ID" /><Check ok={p.is_adult} label="Adult" />
+            {closed ? <Badge tone="bad">Closed by the person</Badge> : <Badge tone={statusTone(p.status)}>{nice(p.status)}</Badge>}<Badge>{nice(p.role)}</Badge>
+            {closed ? null : <><Check ok={p.face_verified} label="Face" /><Check ok={p.id_verified} label="ID" /><Check ok={p.is_adult} label="Adult" /></>}
           </div>
-          <span>Membership: <MembershipBadge paidUntil={p.membership?.paid_until} reminderDays={Number(settings.data?.reminder_days) || 7} /> {p.membership?.paid_until ? `paid until ${day(p.membership.paid_until)}` : 'never paid'}</span>
+          {closed ? <Muted>{purge === 'purged' ? `The person deleted this account on ${day(p.deleted_at)}. The sign-in account and personal data are wiped.` : purge === 'due' ? `The person deleted this account on ${day(p.deleted_at)}. The final clean-up is due and runs tonight.` : `The person deleted this account on ${day(p.deleted_at)}. Their data is wiped for good on ${day(p.purge_after)}.`}</Muted> : null}
+          {closed ? null : <span>Membership: <MembershipBadge paidUntil={p.membership?.paid_until} reminderDays={Number(settings.data?.reminder_days) || 7} /> {p.membership?.paid_until ? `paid until ${day(p.membership.paid_until)}` : 'never paid'}</span>}
           <Muted>Joined {when(p.created_at)} · {p.stays_count} stays · rating {p.rating_avg ?? 'none yet'} · {strikes} strike(s)</Muted>
           {p.area ? <span>Area: {p.area}</span> : null}
           {p.bio ? <p style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{p.bio}</p> : null}
-          <div style={{ display: 'flex', gap: 12 }}>
-            <Photo bucket="faces" path={p.face_photo_path} alt={`Face photo of ${p.first_name ?? 'this person'}`} />
-            <Photo bucket="homes" path={p.home_photo_path} alt={`Home photo of ${p.first_name ?? 'this person'}`} />
-          </div>
+          {closed ? null : (
+            <div style={{ display: 'flex', gap: 12 }}>
+              <Photo bucket="faces" path={p.face_photo_path} alt={`Face photo of ${p.first_name ?? 'this person'}`} />
+              <Photo bucket="homes" path={p.home_photo_path} alt={`Home photo of ${p.first_name ?? 'this person'}`} />
+            </div>
+          )}
         </Card>
         <div style={{ flex: '1 1 380px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <ActionPanel key={p.status} userId={p.id} status={p.status} onDone={reload} />
+          <ActionPanel key={`${p.status}-${closed}`} userId={p.id} status={p.status} closed={closed} onDone={reload} />
         </div>
       </div>
       <Err>{kase.error}</Err>
@@ -95,7 +100,7 @@ export default function UserCase() {
           <Table head={['When', 'Reason', 'Status', 'By', 'Details']}>
             {(k?.reportsAbout ?? []).map((r) => (
               <tr key={r.id}><Td>{when(r.created_at)}</Td><Td>{REPORT_REASONS[r.reason] ?? r.reason}</Td><Td><Badge tone={statusTone(r.status)}>{nice(r.status)}</Badge></Td>
-                <Td>{r.reporter ? <PersonLink id={r.reporter.id} name={r.reporter.first_name} /> : ''}</Td><Td wide>{r.details ?? ''}</Td></tr>
+                <Td>{r.reporter ? <PersonLink id={r.reporter.id} name={r.reporter.first_name} /> : 'Deleted user'}</Td><Td wide>{r.details ?? ''}</Td></tr>
             ))}
           </Table>
         )}
@@ -106,7 +111,7 @@ export default function UserCase() {
           <Table head={['When', 'Reason', 'Status', 'About']}>
             {(k?.reportsBy ?? []).map((r) => (
               <tr key={r.id}><Td>{when(r.created_at)}</Td><Td>{REPORT_REASONS[r.reason] ?? r.reason}</Td><Td><Badge tone={statusTone(r.status)}>{nice(r.status)}</Badge></Td>
-                <Td>{r.reported ? <PersonLink id={r.reported.id} name={r.reported.first_name} /> : ''}</Td></tr>
+                <Td>{r.reported ? <PersonLink id={r.reported.id} name={r.reported.first_name} /> : 'Deleted user'}</Td></tr>
             ))}
           </Table>
         )}

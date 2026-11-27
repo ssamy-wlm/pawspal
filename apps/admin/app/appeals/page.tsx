@@ -16,7 +16,7 @@ function Appeal({ a, onDone }: { a: AppealRow; onDone: () => void }) {
   return (
     <Card>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <PersonLink id={a.user_id} name={a.user?.first_name} />
+        <PersonLink id={a.user_id} name={a.user?.first_name ?? 'Deleted user'} />
         <Badge tone="warn">appealing a {a.action?.action ?? 'decision'}</Badge>
         <span style={{ color: C.textMuted, fontSize: 14 }}>{when(a.created_at)}</span>
       </div>
