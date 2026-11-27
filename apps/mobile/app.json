@@ -60,7 +60,9 @@
         {
           "backgroundColor": "#1F2D3D"
         }
-      ]
+      ],
+      "expo-sharing",
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true
