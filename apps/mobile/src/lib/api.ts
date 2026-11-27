@@ -14,6 +14,7 @@ export class ApiError extends Error {
 /** Which sentence to show for each error code the functions can return. */
 const ERROR_KEYS: Record<string, Key> = {
   try_again_later: 'err.try_again_later', invalid_image: 'err.invalid_image', network: 'err.network',
+  not_allowed: 'err.notAllowed',
 };
 export const errorKey = (e: unknown): Key => (e instanceof ApiError ? ERROR_KEYS[e.code] : undefined) ?? 'err.generic';
 
@@ -123,4 +124,19 @@ export async function handoverPhotoUrl(photoId: string): Promise<string> {
 export async function sendEmergency(bookingId: string, note: string | null): Promise<'sent' | 'already_sent'> {
   const r = await call<{ status: 'sent' | 'already_sent' }>('emergency', { booking_id: bookingId, ...(note ? { note } : {}) }, await accessToken());
   return r.status;
+}
+
+export interface ExportedData {
+  ok: true; exported_at: string; data: Record<string, unknown>;
+  files: { kind: string; name: string; url: string }[];
+}
+
+/** Everything the server holds about me, with links to my photos (good for 1 hour). The server allows 3 a day. */
+export async function exportMyData(): Promise<ExportedData> {
+  return call<ExportedData>('export-my-data', {}, await accessToken());
+}
+
+/** Closes my account at once; the data is deleted after a waiting period. The server checks the password and any active booking. */
+export async function deleteAccount(password: string): Promise<void> {
+  await call<{ ok: true }>('delete-account', { password }, await accessToken());
 }

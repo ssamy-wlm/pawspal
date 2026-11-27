@@ -37,5 +37,5 @@ export function StepScreen(props: Props) {
 export function ErrorText({ children }: { children?: string | null }) {
   const c = useTheme().color;
   if (!children) return null;
-  return <Text accessibilityRole="alert" style={{ color: c.danger, fontSize: 15, fontFamily: fontFamily('medium', isRTL()) }}>{children}</Text>;
+  return <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ color: c.danger, fontSize: 15, fontFamily: fontFamily('medium', isRTL()) }}>{children}</Text>;
 }

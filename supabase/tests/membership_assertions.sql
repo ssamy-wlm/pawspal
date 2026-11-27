@@ -141,7 +141,7 @@ select pg_temp.check(pg_temp.as_aal('aal1', pg_temp.u(5), 'select count(*) from 
 select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(10), 'select count(*) from jsonb_object_keys(public.get_payment_settings())')::bigint = 11, 'get_payment_settings should have 11 keys');
 select pg_temp.check(pg_temp.as_role('authenticated', pg_temp.u(10), 'select string_agg(k, '','' order by k) from jsonb_object_keys(public.get_payment_settings()) k') = 'bank_account_name,bank_account_number,bank_iban,bank_name,instapay_link,instapay_qr_url,membership_months,payment_note,registration_fee_egp,reminder_days,renewal_fee_egp', 'the payment setting keys are wrong');
 select pg_temp.check((pg_temp.as_role('authenticated', pg_temp.u(10), $$select (public.get_payment_settings() ->> 'registration_fee_egp')$$)) = '75' and (pg_temp.as_role('authenticated', pg_temp.u(10), $$select (public.get_payment_settings() ->> 'renewal_fee_egp')$$)) = '25', 'default fees are not 75 and 25');
-select pg_temp.check((select count(*) = 11 from public.app_settings), 'app_settings should hold exactly 11 settings');
+select pg_temp.check((select count(*) = 14 from public.app_settings), 'app_settings should hold exactly 14 settings (11 payment settings + the 3 phase 9 settings: push_enabled, deletion_grace_days, shared_history_months)');
 select pg_temp.fails_as('anon', null, $$select public.get_payment_settings()$$, 'anon read the payment settings');
 select pg_temp.check(pg_temp.as_role('authenticated', null, $$select public.get_payment_settings()::text$$) = '{}', 'a session without a person read the settings');
 select pg_temp.check(pg_temp.as_role('anon', null, 'select count(*) from public.app_settings')::bigint = 0, 'anon read app_settings');

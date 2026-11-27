@@ -42,7 +42,7 @@ export function scrubValue(value: unknown, depth = 0): unknown {
 interface EventLike {
   user?: unknown; request?: unknown; breadcrumbs?: unknown; server_name?: unknown; message?: unknown; logentry?: unknown;
   exception?: { values?: { value?: unknown; type?: unknown; stacktrace?: unknown }[] };
-  tags?: unknown; extra?: unknown; contexts?: unknown; [k: string]: unknown;
+  tags?: unknown; extra?: unknown; contexts?: unknown;
 }
 
 /**
@@ -63,7 +63,7 @@ export function scrubEvent<T extends EventLike>(event: T): T {
   return e as T;
 }
 
-interface BreadcrumbLike { category?: string; type?: string; message?: string; data?: unknown; [k: string]: unknown }
+interface BreadcrumbLike { category?: string; type?: string; message?: string; data?: unknown }
 
 /** Breadcrumbs of what was tapped, typed, logged or fetched are dropped; navigation and the rest are kept but cleaned. */
 export function scrubBreadcrumb<T extends BreadcrumbLike>(crumb: T): T | null {

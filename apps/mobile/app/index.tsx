@@ -70,7 +70,7 @@ export default function Welcome() {
       <View style={{ flex: 1, minHeight: 340, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, paddingTop: 24, gap: 6 }}>
         <AnimatedLogo size={170} />
         <Enter delay={500} rise={0}>
-          <Text style={{ fontFamily: fontFamily('extrabold', false), fontSize: 36, color: c.text, marginTop: 12 }}>PawsPal</Text>
+          <Text accessibilityRole="header" style={{ fontFamily: fontFamily('extrabold', false), fontSize: 36, color: c.text, marginTop: 12 }}>PawsPal</Text>
         </Enter>
         <Enter delay={800}>
           <Text style={{ fontFamily: fontFamily('semibold', false), fontSize: 18, color: c.primary }}>Dahab</Text>
@@ -90,7 +90,7 @@ export default function Welcome() {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 4 }}>
           {LEGAL.map(({ slug, label }) => (
             <Link key={slug} href={`/legal/${slug}` as never} asChild>
-              <Pressable accessibilityRole="link" style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', paddingHorizontal: 8 }}>
+              <Pressable accessibilityRole="link" accessibilityLabel={tr(label)} style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', paddingHorizontal: 8 }}>
                 <Text style={{ color: c.link, fontSize: 14, fontFamily: fontFamily('medium', rtl) }}>{tr(label)}</Text>
               </Pressable>
             </Link>

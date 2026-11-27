@@ -34,6 +34,12 @@
       body { margin: 0; overflow: hidden; }
       #root { display: flex; height: 100%; flex: 1; }
     </style>
+    <!-- Keyboard users: a clear two-colour ring (orange, with a navy gap) on whatever has focus. It shows for the keyboard only
+         (focus-visible), never after a tap or a click. React Native for Web makes buttons, links and switches focusable. -->
+    <style id="pp-focus-style">
+      :focus-visible { outline: 3px solid #FF9F43 !important; outline-offset: 2px !important; box-shadow: 0 0 0 2px #1F2D3D; }
+      input:focus-visible, textarea:focus-visible { outline-offset: 0 !important; }
+    </style>
     <style id="pp-splash-style">
       html { background-color: #1F2D3D; }
       #pp-splash { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 2147483647; display: flex; align-items: center; justify-content: center; background-color: #1F2D3D; transition: opacity .3s ease-out; }

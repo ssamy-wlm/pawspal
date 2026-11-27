@@ -58,3 +58,23 @@ jest.mock('react-native-webview', () => {
   const { View } = require('react-native');
   return { WebView: (props) => require('react').createElement(View, { testID: 'webview', ...props }) };
 });
+
+// Push notifications and crash reporting: the real modules are native. Tests that need behaviour override these.
+jest.mock('expo-notifications', () => ({
+  AndroidImportance: { DEFAULT: 3 },
+  getPermissionsAsync: jest.fn(async () => ({ granted: false, canAskAgain: true })),
+  requestPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  getExpoPushTokenAsync: jest.fn(async () => ({ data: 'ExponentPushToken[abc123]' })),
+  setNotificationChannelAsync: jest.fn(async () => null),
+  setNotificationHandler: jest.fn(),
+  addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+  clearLastNotificationResponseAsync: jest.fn(async () => {}),
+}));
+jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn(async () => true), shareAsync: jest.fn(async () => {}) }));
+jest.mock('expo-file-system', () => {
+  class File { constructor(...p) { this.uri = 'file:///cache/' + p.filter((x) => typeof x === 'string').join('/'); } create() {} write() {} delete() {} }
+  return { File, Paths: { cache: 'cache' } };
+});
+jest.mock('@sentry/react-native', () => ({ init: jest.fn() }));

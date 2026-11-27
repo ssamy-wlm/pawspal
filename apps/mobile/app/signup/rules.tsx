@@ -58,7 +58,7 @@ export default function RulesStep() {
               <Text style={{ flex: 1, color: c.text, fontSize: 16, fontFamily: fontFamily('medium', rtl) }}>{tr('signup.rules.accept', { doc: tr(d.label) })}</Text>
             </Pressable>
             <Link href={`/legal/${d.slug}` as never} asChild>
-              <Pressable accessibilityRole="link" style={{ minHeight: 44, justifyContent: 'center', paddingStart: 46 }}>
+              <Pressable accessibilityRole="link" accessibilityLabel={tr(d.label)} style={{ minHeight: 44, justifyContent: 'center', paddingStart: 46 }}>
                 <Text style={{ color: c.link, fontSize: 14, fontFamily: fontFamily('medium', rtl) }}>{tr(d.label)}</Text>
               </Pressable>
             </Link>

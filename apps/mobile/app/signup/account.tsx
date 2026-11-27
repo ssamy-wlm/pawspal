@@ -88,7 +88,7 @@ export default function AccountStep() {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 8 }}>
         {([['termsOfService', 'legal.terms'], ['privacyPolicy', 'legal.privacy']] as const).map(([slug, label]) => (
           <Link key={slug} href={`/legal/${slug}` as never} asChild>
-            <Pressable accessibilityRole="link" style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', paddingHorizontal: 8 }}>
+            <Pressable accessibilityRole="link" accessibilityLabel={tr(label)} style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', paddingHorizontal: 8 }}>
               <Text style={{ color: c.link, fontSize: 14, fontFamily: fontFamily('medium', rtl) }}>{tr(label)}</Text>
             </Pressable>
           </Link>

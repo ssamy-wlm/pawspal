@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, PixelRatio, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { fontFamily, useTheme } from '../../src/theme';
 import { formatDay, isRTL, Key, t as tr, tn } from '../../src/i18n';
@@ -43,15 +43,18 @@ export const ROW_HEIGHT = 124;
 const ROW_GAP = 12;
 const NOTE_HEIGHT = 72;
 type Row = { kind: 'note' } | { kind: 'host'; r: StayResult };
-export const rowLayout = (rows: Row[], index: number) => {
+/** Rows grow with the phone's text size (up to 2x) so large text is never cut off; the list still knows every height in advance. */
+export const textScale = () => Math.min(2, Math.max(1, PixelRatio.getFontScale()));
+export const rowLayout = (rows: Row[], index: number, scale = 1) => {
+  const height = (i: number) => Math.round((rows[i]?.kind === 'note' ? NOTE_HEIGHT : ROW_HEIGHT) * scale);
   let offset = 0;
-  for (let i = 0; i < index; i++) offset += (rows[i]?.kind === 'note' ? NOTE_HEIGHT : ROW_HEIGHT) + ROW_GAP;
-  return { length: rows[index]?.kind === 'note' ? NOTE_HEIGHT : ROW_HEIGHT, offset, index };
+  for (let i = 0; i < index; i++) offset += height(i) + ROW_GAP;
+  return { length: height(index), offset, index };
 };
 
 const HostRow = React.memo(function HostRow({ r, onOpen }: { r: StayResult; onOpen: (r: StayResult) => void }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={[r.first_name, r.area, priceLabel(r), tr('card.available', { from: formatDay(r.starts_on), to: formatDay(r.ends_on) }), r.match_label ? tr(r.match_label === 'Exact match' ? 'match.exact' : 'match.close') : null].filter(Boolean).join('. ')} onPress={() => onOpen(r)} style={{ height: ROW_HEIGHT }}>
+    <Pressable accessibilityRole="button" accessibilityLabel={[r.first_name, r.area, priceLabel(r), tr('card.available', { from: formatDay(r.starts_on), to: formatDay(r.ends_on) }), r.match_label ? tr(r.match_label === 'Exact match' ? 'match.exact' : 'match.close') : null].filter(Boolean).join('. ')} onPress={() => onOpen(r)} style={{ height: Math.round(ROW_HEIGHT * textScale()) }}>
       <BrowseCard r={r} compact />
     </Pressable>
   );
@@ -143,7 +146,7 @@ export default function Explore() {
   const segment = () => (
     <View accessibilityRole="tablist" style={{ flexDirection: 'row', backgroundColor: c.surface, borderRadius: 999, padding: 4, borderWidth: 1, borderColor: c.border }}>
       {MODES.map(({ mode: m, label }) => (
-        <Pressable key={m} accessibilityRole="tab" accessibilityState={{ selected: mode === m }}
+        <Pressable key={m} accessibilityRole="tab" accessibilityLabel={tr(label)} accessibilityState={{ selected: mode === m }}
           onPress={() => { setMode(m); setResults(null); if (m === 'swipe') run('swipe'); }}
           style={{ flex: 1, minHeight: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: mode === m ? c.primary : 'transparent' }}>
           <Text style={{ color: mode === m ? c.onPrimary : c.text, fontFamily: fontFamily('semibold', rtl), fontSize: 14 }}>{tr(label)}</Text>
@@ -217,13 +220,13 @@ export default function Explore() {
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
             data={rows}
             keyExtractor={(row) => (row.kind === 'note' ? 'note' : row.r.availability_id)}
-            getItemLayout={(data, i) => rowLayout((data ?? []) as Row[], i)}
+            getItemLayout={(data, i) => rowLayout((data ?? []) as Row[], i, textScale())}
             initialNumToRender={8}
             maxToRenderPerBatch={8}
             windowSize={7}
             removeClippedSubviews
             ListHeaderComponent={<View style={{ gap: 8, marginBottom: 12 }}>
-              <Text style={[heading, { fontSize: 18 }]}>
+              <Text accessibilityRole="header" style={[heading, { fontSize: 18 }]}>
                 {tn('count.exactMatch', exact.length)}{close.length ? ` · ${tn('count.closeMatch', close.length)}` : ''}
               </Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -233,7 +236,7 @@ export default function Explore() {
             </View>}
             ListEmptyComponent={<Text style={muted}>{tr('explore.results.empty')}</Text>}
             renderItem={({ item }) => item.kind === 'note'
-              ? <Text style={[muted, { height: NOTE_HEIGHT, textAlignVertical: 'center' }]}>{tr('explore.results.closeNote')}</Text>
+              ? <Text style={[muted, { height: Math.round(NOTE_HEIGHT * textScale()), textAlignVertical: 'center' }]}>{tr('explore.results.closeNote')}</Text>
               : <View style={{ marginBottom: ROW_GAP }}><HostRow r={item.r} onOpen={openHost} /></View>}
           />
         )}
@@ -247,7 +250,7 @@ export default function Explore() {
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={{ padding: 20, gap: 22, paddingBottom: 48 }}>
       {segment()}
       {actions()}
-      <Text style={{ fontFamily: fontFamily('extrabold', rtl), fontSize: 28, color: c.text }}>{tr('explore.whenAway')}</Text>
+      <Text accessibilityRole="header" style={{ fontFamily: fontFamily('extrabold', rtl), fontSize: 28, color: c.text }}>{tr('explore.whenAway')}</Text>
       <View style={{ padding: 16, borderRadius: 24, backgroundColor: c.surface }}>
         <CalendarRange start={start} end={end} onChange={(s, e) => { setStart(s); setEnd(e); }} />
       </View>

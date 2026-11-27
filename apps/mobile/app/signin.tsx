@@ -61,7 +61,7 @@ export default function SignIn() {
       <ErrorText>{error}</ErrorText>
       {unconfirmed ? <Button navy variant="secondary" title={tr('signin.resend')} disabled={busy || !isEmail(email)} onPress={() => { resend().catch(() => {}); }} /> : null}
       {resent ? <Text accessibilityRole="alert" style={{ color: c.primary, fontSize: 15, fontFamily: fontFamily('medium', rtl) }}>{tr('signup.check.sent')}</Text> : null}
-      <Pressable accessibilityRole="link" onPress={() => router.push('/forgot')} style={{ minHeight: 44, justifyContent: 'center' }}>
+      <Pressable accessibilityRole="link" accessibilityLabel={tr('signin.forgot')} onPress={() => router.push('/forgot')} style={{ minHeight: 44, justifyContent: 'center' }}>
         <Text style={{ color: c.link, fontSize: 15, fontFamily: fontFamily('medium', rtl) }}>{tr('signin.forgot')}</Text>
       </Pressable>
     </AuthScreen>

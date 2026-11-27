@@ -44,7 +44,7 @@ export function nextStep(missing: string[]): StepName {
 }
 
 // Screens anyone may open, signed in or not.
-const FREE = ['legal', 'settings', 'showcase', 'reset-password'];
+const FREE = ['legal', 'settings', 'showcase', 'reset-password', 'goodbye'];
 // Screens only for people who are not signed in yet (or are being moved on from).
 const ENTRY = ['index', 'signup', 'signin', 'forgot', 'pending'];
 // A person whose membership is unpaid or paused can still read and pay, but cannot search, message or book.

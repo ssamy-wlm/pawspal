@@ -11,15 +11,19 @@ import { initHaptics } from '../src/lib/haptics';
 import { ToastProvider } from '../src/components/Toast';
 import { AuthProvider } from '../src/lib/auth';
 import { useAuthLinks } from '../src/lib/authLinks';
+import { initMonitoring } from '../src/lib/monitoring';
+import { useNotificationEvents } from '../src/lib/useNotificationEvents';
 import { captureInstallPrompt } from '../src/lib/installPrompt';
 import { hideWebSplash, registerServiceWorker } from '../src/lib/webShell';
 
+initMonitoring(); // crash reporting: only in a production build that has EXPO_PUBLIC_SENTRY_DSN (src/lib/monitoring.ts)
 SplashScreen.preventAutoHideAsync().catch(() => {});
 captureInstallPrompt(); // the browser offers "install" once, early: catch it before any screen exists
 
 function Nav() {
   const t = useTheme();
   useAuthLinks();
+  useNotificationEvents();
   return (
     <>
       <StatusBar style={t.name === 'navy' ? 'light' : 'dark'} />
@@ -41,6 +45,9 @@ function Nav() {
         <Stack.Screen name="membership" options={{ title: tr('membership.title') }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: tr('settings.title') }} />
+        <Stack.Screen name="settings/notifications" options={{ title: tr('notif.title') }} />
+        <Stack.Screen name="settings/delete-account" options={{ title: tr('delete.title') }} />
+        <Stack.Screen name="goodbye" options={{ headerShown: false }} />
         <Stack.Screen name="profile/edit" options={{ title: tr('edit.title') }} />
         <Stack.Screen name="pets/index" options={{ title: tr('pets.title') }} />
         <Stack.Screen name="pets/[id]" options={{ title: '' }} />

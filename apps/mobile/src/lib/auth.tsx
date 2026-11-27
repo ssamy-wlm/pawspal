@@ -3,6 +3,7 @@ import { router, useSegments } from 'expo-router';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { AccountState, routeFor } from './gate';
+import { disableNotifications } from './notifications';
 
 interface AuthValue {
   ready: boolean;
@@ -44,7 +45,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { live = false; };
   }, [userId]);
 
-  const signOut = React.useCallback(async () => { await supabase.auth.signOut(); setState(null); }, []);
+  const signOut = React.useCallback(async () => {
+    await disableNotifications();   // while the session still works: this phone stops getting this account's notifications
+    await supabase.auth.signOut();
+    setState(null);
+  }, []);
 
   const target = ready ? routeFor(!!session, state, segments as string[]) : null;
   React.useEffect(() => { if (target) router.replace(target as never); }, [target]);

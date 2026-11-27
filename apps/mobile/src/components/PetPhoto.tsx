@@ -12,7 +12,7 @@ export function PetPhoto({ path, size, label }: { path: string | null | undefine
   return (
     <View accessible={!!label} accessibilityRole={label ? 'image' : undefined} accessibilityLabel={label}
       style={{ width: size, height: size, borderRadius: size / 5, overflow: 'hidden', backgroundColor: t.tint.teal, alignItems: 'center', justifyContent: 'center' }}>
-      {url && !failed ? <Image source={{ uri: url }} onError={() => setFailed(true)} style={{ width: size, height: size }} resizeMode="cover" /> : <Illustration name="pawspalIcon" width={size * 0.4} />}
+      {url && !failed ? <Image source={{ uri: url }} alt={label ?? ''} accessible={false} importantForAccessibility="no" onError={() => setFailed(true)} style={{ width: size, height: size }} resizeMode="cover" /> : <Illustration name="pawspalIcon" width={size * 0.4} />}
     </View>
   );
 }

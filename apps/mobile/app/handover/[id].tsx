@@ -27,7 +27,7 @@ function Thumb({ photo }: { photo: HandoverPhoto }) {
   return (
     <View accessible accessibilityLabel={label} style={{ width: 104, gap: 4 }}>
       <View style={{ width: 104, height: 104, borderRadius: 20, backgroundColor: c.surface, overflow: 'hidden' }}>
-        {url ? <Image source={{ uri: url }} accessibilityIgnoresInvertColors style={{ width: 104, height: 104 }} /> : null}
+        {url ? <Image source={{ uri: url }} alt="" accessible={false} importantForAccessibility="no" accessibilityIgnoresInvertColors style={{ width: 104, height: 104 }} /> : null}
       </View>
       <Text style={{ color: c.textMuted, fontSize: 12, fontFamily: fontFamily('regular', isRTL()) }}>{label}</Text>
     </View>
