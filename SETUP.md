@@ -24,7 +24,7 @@ Written for a non-developer. Do the steps in order. Anything in `code style` is 
 | **A domain name** (any registrar) | Sending email from your own address | Now |
 | **Resend** (resend.com) | Sign-up, password-reset and reminder emails (see E5) | Now |
 | **MapTiler** (maptiler.com), optional | Map tiles once many people use the map (see E12) | Before launch |
-| **InstaPay and your bank** | Where people pay you the membership (nothing to install) | Now |
+| **InstaPay and Vodafone Cash** | Where people pay you the membership (nothing to install) | Now |
 | **Apple Developer** ($99/yr) and **Google Play** ($25) | Store release | Phase 9 |
 
 ## C. Install the tools (one time)
@@ -196,18 +196,20 @@ Photos that were uploaded but never saved (a pet photo you added and then left t
 
 ## E8. Reviewing people and taking membership payments (by hand)
 
-There is no payment company in the app. People pay you **registration (75 EGP)** and **renewal (25 EGP every 6 months)** by InstaPay or bank transfer, then send you a reference number or a screenshot, and **you confirm it in the admin site**.
+There is no payment company in the app. People pay you **registration (75 EGP)** and **renewal (25 EGP every 6 months)** by InstaPay or Vodafone Cash, then send you a reference number or a screenshot, and **you confirm it in the admin site**.
 
 **One-time: give people your payment details** (admin site → **Settings**)
 1. Open the admin site and sign in (E10). Click **Settings** in the left menu.
-2. Under **InstaPay**: paste your **InstaPay payment link** (it must start with `https://`) and, if you have a QR code image online, its `https://` address. Click **Save** next to each box.
-3. Under **Bank transfer**: fill **Bank name**, **Account name**, **Account number**, **IBAN**, and a **Payment note** (for example "Write your email in the transfer note"). Click **Save** next to each.
+2. Under **InstaPay**, click the box **InstaPay address**, type your address (for example `yourname@instapay`, no spaces) and click **Save** next to it. If you have an InstaPay payment link, paste it into **InstaPay link (optional)** (it must start with `https://`) and click **Save**. Leave **InstaPay QR image address** empty: it is not used for now.
+3. Under **Vodafone Cash**, click **Vodafone Cash number**, type your wallet number (for example `01012345678`, or `+201012345678`, no spaces) and click **Save**. Click **Account holder name**, type the name on the wallet (for example `Sara Ali`) and click **Save**. If you have a Vodafone Cash payment link, paste it into **Vodafone Cash link (optional)** (it must start with `https://`) and click **Save**.
+   Under **Note for people paying**, click **Payment note**, type a short line (for example "Write your email in the payment note") and click **Save**.
+   You can fill in only one of InstaPay or Vodafone Cash. The app shows an option only when it is filled in, and a box you clear and save disappears from the app.
 4. Under **Fees** you can change 75, 25, 6 months and the 7-day reminder. People see the new amounts for their next payment.
 Until you fill these in, the app tells people "Payment details are coming soon".
 
 **Every working day (aim to finish within 1 business day, as the app promises)**
 - **Verification:** open it, look at each selfie and ID photo, tick "I checked that the person is 18 or older and that the photos match", then **Approve** or **Reject** (a rejection needs a reason the person will read). **The ID photo is deleted the moment you decide.**
-- **Payments:** check your bank or InstaPay app for the payment, then open **Payments** and **Confirm** it (or **Reject** with a reason). The screenshot is deleted when you decide. A confirmed registration starts six months of membership; a renewal adds six months to the date they already have.
+- **Payments:** check your InstaPay or Vodafone Cash app for the payment, then open **Payments** and **Confirm** it (or **Reject** with a reason). The screenshot is deleted when you decide. A confirmed registration starts six months of membership; a renewal adds six months to the date they already have.
 - If a renewal is not paid, the account **pauses by itself** on the day it ends (no searching, messaging or booking) until you confirm their payment.
 
 ## E7. Chat

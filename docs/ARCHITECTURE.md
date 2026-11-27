@@ -9,7 +9,7 @@ This file replaces the parts of `HANDOVER.md` that it contradicts (accounts, sig
 | Account types | Owner, Host or Both | **Owner or Host** only, chosen at sign-up. No "both", no swaps. |
 | Sign-up | Phone number + SMS code (Egypt only), Turnstile, SMS hook | **Email + password + confirmation link.** Any nationality. No phone, no SMS, no Cloudflare in the app. |
 | Verification | Provider (fake or real) checks selfie and ID | **Selfie + ID photo uploaded by the user; the founder approves or rejects by hand** in the admin site within one business day. The ID photo is **deleted right after the decision**. |
-| Money to PawsPal | Booking fee per stay (Paymob) | **Registration fee 75 EGP, then 25 EGP every 6 months**, paid **outside the app** (InstaPay or bank transfer). The user shows a reference number or screenshot; the founder confirms in the admin site. |
+| Money to PawsPal | Booking fee per stay (Paymob) | **Registration fee 75 EGP, then 25 EGP every 6 months**, paid **outside the app** (InstaPay or Vodafone Cash). The user shows a reference number or screenshot; the founder confirms in the admin site. |
 | Money between users | Handled by the booking fee flow | **Owners and hosts pay each other directly.** The app never touches that money. |
 | Booking confirmation | Both accept terms, then pay the fee | **Both accept the terms: the booking is confirmed.** Contact details and the exact address unlock at that moment. |
 | Search | Cards, swipe, list, area map | Same, plus a **map of host availability with the price per night on each pin** (MapLibre GL JS + OpenStreetMap, approximate areas only). |
@@ -54,7 +54,7 @@ Unchanged: the safety design (RLS everywhere, server enforces every rule), hando
 
 ### 4.4 Membership (registration and renewal)
 
-- Settings (table `app_settings`, edited by the founder in the admin site, readable by every signed-in user): `registration_fee_egp` = 75, `renewal_fee_egp` = 25, `membership_months` = 6, `reminder_days` = 7, `instapay_link`, `instapay_qr_url`, `bank_name`, `bank_account_name`, `bank_account_number`, `bank_iban`, `payment_note` (the last seven are placeholders until the founder fills them in).
+- Settings (table `app_settings`, edited by the founder in the admin site, readable by every signed-in user): `registration_fee_egp` = 75, `renewal_fee_egp` = 25, `membership_months` = 6, `reminder_days` = 7, `instapay_address` (for example `name@instapay`), `instapay_link` (optional, https), `instapay_qr_url` (optional, https, not used for now), `vodafone_cash_number` (Egyptian mobile, `01012345678` or `+201012345678`), `vodafone_cash_name` (account holder, 1 to 60 characters), `vodafone_cash_link` (optional, https), `payment_note` (the last seven are empty until the founder fills them in; the app shows an option only when it is filled in). The four bank settings were removed in migration 0019 (the founder is paid by InstaPay and Vodafone Cash). `admin_set_setting` validates each with the same patterns as `apps/admin/src/rules.ts`.
 - `memberships(user_id, paid_until, reminded_for)`. A new person has `paid_until = null` (registration due). A confirmed payment sets `paid_until = greatest(today, paid_until) + membership_months`.
 - **An account is usable only when `profiles.status = 'active'` AND `paid_until >= today`.** `public.is_active(uid)` encodes both, so every existing rule that needs an active person (search, messages, requests, bookings, profile cards) automatically stops working for a paused account. A paused account can still sign in, see its own bookings, pay and contact support.
 - Membership state shown to the user (`my_account_state().membership.state`): `unpaid` (registration due), `active`, `due_soon` (7 days or fewer left), `paused` (renewal overdue).
@@ -110,7 +110,7 @@ Storage buckets (all private): `faces`, `pets`, `homes`, `handovers`, `ids` (new
 | `my_account_state()` | `jsonb` (below) | replaces `my_signup_state()` |
 | `submit_verification(p_face_path text, p_id_path text)` | `uuid` | paths come from `process-upload`; own folder, file must exist |
 | `submit_profile()` | `account_status` | needs `missing` to be empty; moves to `pending_review` |
-| `get_payment_settings()` | `jsonb` (all `app_settings` keys) | readable even when unpaid |
+| `get_payment_settings()` | `jsonb` (exactly 11 keys: `registration_fee_egp`, `renewal_fee_egp`, `membership_months`, `reminder_days`, `instapay_link`, `instapay_qr_url`, `instapay_address`, `vodafone_cash_number`, `vodafone_cash_name`, `vodafone_cash_link`, `payment_note`) | readable even when unpaid |
 | `submit_payment_claim(p_reference text, p_screenshot_path text)` | `uuid` | reference or screenshot required; one pending at a time |
 | `map_availability(p_pet_type pet_type default null, p_limit int default 200)` | table (section 6) | active callers only |
 | `request_booking`, `propose_terms`, `accept_terms`, `cancel_booking`, `get_booking_location`, `get_pet_care` | as before without swap, fee, refund | `accept_terms` may now return `confirmed` |
